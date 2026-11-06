@@ -1,7 +1,7 @@
 # NodeX — Project Specification & Engineering Guide
 ### Cross-platform, Asterisk-free AllStarLink node (.NET 10 / Avalonia UI)
 
-> **Last updated:** 2026-11-05 · **Build:** `dotnet build NodeX.sln` → 0 errors, 0 warnings · **Tests:** 306 passing (xUnit)
+> **Last updated:** 2026-11-05 · **Build:** `dotnet build NodeX.sln` → 0 errors, 0 warnings · **Tests:** 327 passing (xUnit)
 >
 > This document is written for **humans and AI coding agents** who pick the project up cold. Read §0 first.
 
@@ -10,7 +10,7 @@
 ## 0. How to use this document (read first)
 
 1. **Authority order when sources disagree:** (1) the code and its tests, (2) this document, (3) anything else. An earlier "master specification" file existed and contained **wrong protocol details** (wrong registration endpoint, wrong IAX subclass numbers, wrong keep-alive); it has been removed from the folder and must not be recreated or trusted. Protocol facts below are verified against RFC 5456 and the ASL3 source — see §5 and §15.
-2. **Be honest about verification.** Nothing in this project has been run against a *real* AllStarLink node or on a *physical* phone yet. §2 and §14 list exactly what is and is not verified. Do not describe unverified behaviour as working.
+2. **Be honest about verification.** The core protocol path has been validated live against a real ASL3 node (Windows only; log in `docs/LIVE_VALIDATION.md`), but **nothing has run on a *physical* phone, on Linux/macOS, or against a node on a different public IP**. §2 and §14 list exactly what is and is not verified. Do not describe unverified behaviour as working.
 3. **Before changing behaviour, find its tests** (§11). Almost every rule in this document is pinned by a test. If you change a rule, change the test and this document together.
 4. **Build rules matter** (§3.3): the repo is inside OneDrive and build output is deliberately redirected outside it. Do not undo `Directory.Build.props`.
 5. **Conventions and pitfalls** (§12) record mistakes already made once. Skim them before writing code.
@@ -33,18 +33,19 @@ Design stance: **outbound-linking only.** Carrier-grade NAT blocks unsolicited i
 |---|---|---|
 | IAX2 protocol engine (framing, reliability, VNAK, keep-alive, LAG, call token) | Implemented | Unit + loopback tests against a scripted fake node |
 | ASL HTTPS registration | Implemented to the real ASL3 wire format | Request format read from ASL3 source; tested against a stub server |
-| Node resolution | Implemented, **REST schema unverified** (see §14) | Stubbed tests only |
+| Node resolution | Implemented; REST endpoint and DNS fallback **verified live** (§14) | Stubbed tests + live check |
 | PTT state machine (momentary/toggle, TOT, sources) | Implemented | Tests |
 | Audio pipeline (jitter buffer, resampler, levels, engine) | Implemented | Tests with fake devices |
 | Settings + secure password storage | Implemented | Tests; first-run screen visually checked on Windows |
 | `NodeRuntime` (registration, link, **auto-reconnect, network handoff**) | Implemented | Tests with fake node + fake network |
-| Desktop head (Windows) | Runs; NAudio WASAPI audio; **never used with real mic/speaker** | Launched and screenshot-checked |
+| Desktop head (Windows) | Runs; NAudio `WaveIn`/`WaveOut` audio; mic and speaker **verified** via `LiveCheck` (the full GUI app has not been used for an on-air QSO) | Launched and screenshot-checked; live audio checks |
 | Desktop head (Linux/macOS) | Compiles; **runs silently** (no audio backend) | — |
 | Android head | Compiles/builds; **never run on a device** | Build only |
 | iOS head | Compiles/builds; **never run on a device** | Build only |
 | Bluetooth PTT (BLE GATT, SCO audio, media key, Learn wizard) | **Not implemented** (interface + packet parser only) | Parser tests |
 | Responsive/phone layout | Implemented (single-column phone layout with docked PTT bar below 720 px; two-column desktop above). **Verified only by resizing the Windows app (340–1100 px), not on a real phone** | Screenshots at 340 / 410 / 780 / 1100 px |
-| Live-node interoperability | **Never tested** | — |
+| Live-node interoperability | **Verified against owner's cloud node 523800 (2026-11-05):** registration, call-token handshake, `radio` login, keep-alive, keying, DTMF `*70`, mic audio TX, re-dial (same IP). **Not verified:** different-IP handoff, TX audio quality by ear, other app_rpt versions | `tools/NodeX.LiveCheck`; log in `docs/LIVE_VALIDATION.md` |
+| Transmit voice clean-up (`MicProcessor`) | Implemented, unit-tested; **not yet A/B-confirmed by ear on air** | Tests |
 
 ---
 
@@ -57,6 +58,8 @@ NodeX/
 ├── Directory.Build.props            # redirects bin/obj OUT of OneDrive (see 3.3) — keep!
 ├── NodeX.sln                        # Core, UI, Desktop, Android, iOS, Tests
 ├── PROJECT_SPEC.md                  # this file
+├── docs/LIVE_VALIDATION.md          # dated log of tests against real nodes/hardware
+├── tools/NodeX.LiveCheck/           # console harness: resolve/register/link/redial/audio/tone (drives the real Core engine)
 ├── src/
 │   ├── NodeX.Core/                  # net10.0 class library; no UI/platform dependencies
 │   │   ├── Protocol/
@@ -101,7 +104,7 @@ NodeX/
 - All projects are SDK-style. SDK in use: **.NET 10.0.403** (a 6.0 SDK is also installed; there is **no `global.json`** — adding one to pin 10.x would be sensible).
 - Avalonia **12.1.5**, CommunityToolkit.Mvvm 8.4.2 (uses C# partial properties: `[ObservableProperty] public partial string X { get; set; }`), NAudio 2.2.1 (Windows audio), System.Security.Cryptography.ProtectedData (DPAPI). Central package management lives in `src/NodeX.UI/Directory.Packages.props`.
 - Workloads installed on the dev machine: android, ios, maui-windows. iOS **compiles** on Windows; producing a signed `.ipa` needs a Mac with Xcode.
-- The folder is **not a git repository**. (Initialising git is a pending housekeeping item.)
+- Git: private repo `Russell-KV4S/NodeX` on GitHub (initialised 2026-11-05, branch `main`). `.gitignore` excludes `bin/`, `obj/`, local config and secrets. The checkout is inside OneDrive (see §3.3); `.git` lives there too.
 
 ### 3.3 Build output location — IMPORTANT
 The repo lives in a **OneDrive** folder. OneDrive pins `bin`/`obj` directories as read-only cloud-file reparse points, which made Android/iOS builds fail intermittently with "Access to the path … is denied" (`MSB3231`, `XARDF7024`) — *not* code errors. `Directory.Build.props` therefore redirects all intermediate/output paths to **`%LOCALAPPDATA%\NodeX\build\{obj,bin}\<ProjectName>\`** (override with the `NODEX_BUILD_ROOT` environment variable). Consequences:
@@ -159,7 +162,8 @@ Sources: UI button, Bluetooth, media key, VOX. Modes: **Momentary** (hold) / **T
 - **`PcmResampler`:** streaming area-averaging resampler to 8 kHz (used on iOS capture; hardware is usually 44.1/48 kHz). **`AudioLevelMeter`:** RMS/peak with attack/release ballistics; UI maps RMS −60…0 dBFS to 0…1.
 - **Transmit voice clean-up (`MicProcessor`, added 2026-11-05 after the first on-air test sounded "mostly clear"):** G.711 does nothing to the signal (8 kHz sampling + log quantisation), and the first live test sent the raw mic at only −28 dBFS peak. Per 20 ms frame, after `MicGain` and before the VU meter/encoder (`NodeAudioEngineOptions.MicProcessing`, driven by the `MicProcessing` setting, default **on**, checkbox in Settings): (1) 2nd-order Butterworth **high-pass at 300 Hz**; (2) slow **AGC** towards −21 dBFS RMS (≈ −6 dBFS speech peaks): gain range −12…+24 dB, attack 0.5/frame, release 0.03/frame (~0.7 s), **gate at −50 dBFS** — pauses/noise never raise the gain and it drifts back to 0 dB (0.02/frame) so hiss is not left boosted; gain is ramped across each frame (no clicks); (3) **soft limiter** (tanh knee from 70% of a 0.89 FS ceiling) instead of hard clipping. Unit-tested (rumble −18 dB+, 1 kHz within 1.5 dB, quiet voice lifted to target, loud voice tamed under the ceiling, pauses not amplified, silence stays silence, ramped gain). **Not yet confirmed by ear on air** (A/B with the owner pending).
 - **Voice timestamps (`Iax2Session.NextVoiceTimestamp`):** mini-frame timestamps used to be the wall clock at send time, which measured live as 16–24 ms spacing around a nominal 20. Now each voice frame is stamped previous + its own duration (20 ms), nudged ≤ 1 ms/frame towards the wall clock when it is > 5 ms away (so drift never accumulates), and restarted from the wall clock after a gap > 100 ms or at the start of an over. Unit-tested (jitter → 19–21 ms spacing, 1 % clock drift stays within 8 ms over 60 s, gap resync, 16-bit wrap).
-- **Known behaviour:** capture runs for the *whole* connection (the mic is open while linked), not only while keyed.
+- **Known behaviour:** on **desktop** capture runs for the *whole* connection (the mic is open while linked). The Android and iOS heads set `OpenMicOnlyWhileKeyed` so the mic is open only while keyed (+3 s hold-off) — see the Appendix.
+- **Echo (desktop):** there is no acoustic echo cancellation on desktop; with open speakers and a live mic the received audio will be re-transmitted. Use a headset. Mobile uses the platform's voice-communication processing (§7). Not yet addressed.
 
 ### 4.5 `NodeLink` and `NodeRuntime` (Core/Link)
 - **`NodeLink`** = one call: `Iax2Session` + `NodePttController` + `NodeAudioEngine` + its device. Logs in as IAX user **`radio`** with `CALLING_NUMBER` = local node (see §5.4). Audio starts when the session reaches `Connected` (off the receive thread). `WasConnected` records whether it ever connected.
@@ -220,8 +224,8 @@ Back-off (`ReconnectPolicy`): first retry after `InitialDelay` 2 s (immediately 
 ### 5.3 Call handshake
 `NEW`(+empty CALLTOKEN IE) → `CALLTOKEN`(token) → `NEW`(+token, fresh sequence space) → `ACCEPT` → we `ACK`. Then control/voice flow. Hang-up: `HANGUP` with a `CAUSE` IE.
 
-### 5.4 How a node-to-node link logs in (from ASL `iax.conf` docs; **unverified against a live node**)
-Incoming node connections land on the IAX user **`radio`** (`[radio]`: `type=user`, `context=radio-secure`, **no secret**); authentication happens afterwards in the `radio-secure` dialplan via `app_rpt`, which validates the calling node (my inference: against the registry/DNS, hence the importance of registration). Therefore the link must use **Username `radio`**, `CALLING_NUMBER` = our node number, **no password**. The node **password is for registration only** and is never sent to remote nodes (a test asserts this). `[allstar-public]` (md5, secret `allstar`) and `[allstar-sys]` (RSA) are different, unused paths.
+### 5.4 How a node-to-node link logs in (from ASL `iax.conf` docs; **verified live against ASL3 node 523800**, see `docs/LIVE_VALIDATION.md`)
+Incoming node connections land on the IAX user **`radio`** (`[radio]`: `type=user`, `context=radio-secure`, **no secret**); authentication happens afterwards in the `radio-secure` dialplan via `app_rpt`, which validates the calling node against the **remote node's own local node list** (refreshed from the registry/DNS on a delay of minutes — hence the importance of registration, and the early-hangup retry rule in §4.6). Therefore the link must use **Username `radio`**, `CALLING_NUMBER` = our node number, **no password**. The node **password is for registration only** and is never sent to remote nodes (a test asserts this). `[allstar-public]` (md5, secret `allstar`) and `[allstar-sys]` (RSA) are different, unused paths.
 
 ### 5.5 Keying and DTMF
 PTT down → control `KEY` (0x0C) then voice; PTT up → stop voice, control `UNKEY` (0x0D). DTMF = full frame type 1 whose subclass is the ASCII digit. ASL function codes used: `*3<node>`, `*1<node>`, `*70`.
@@ -288,7 +292,7 @@ Contract and parser exist; no platform implements `IBluetoothPttService`.
 
 ## 11. Testing
 
-`tests/NodeX.Core.Tests` (xUnit, **306 tests**, ~5 s). It references Core **and** `NodeX.UI` (view-model tests). `MainViewModel` itself is untested (needs an Avalonia dispatcher).
+`tests/NodeX.Core.Tests` (xUnit, **327 tests**, ~7 s). It references Core **and** `NodeX.UI` (view-model tests). `MainViewModel` itself is untested (needs an Avalonia dispatcher).
 
 | File | Covers |
 |---|---|
@@ -327,48 +331,39 @@ Contract and parser exist; no platform implements `IBluetoothPttService`.
 
 ## 13. Backlog (prioritised) with acceptance criteria
 
-1. **Live-node validation** — connect to a real ASL node you control: verify call-token handshake, `radio` login, registration, keying, audio both ways, and that a re-dial after handoff is accepted (the remote may still hold the old call until it times out — check behaviour; add a delay/DTMF-free reconnect strategy if it rejects duplicates). Capture packets (Wireshark IAX2 dissector) and compare with §5. Review app_rpt link text protocol (§14).
+1. **Live-node validation — mostly done** (see `docs/LIVE_VALIDATION.md`). Remaining: re-dial from a genuinely different public IP (e.g. phone on cellular, then Wi-Fi) and whether the early-hangup retry budget is long enough; RX audio quality with real speech from a remote; A/B the `MicProcessor` voice clean-up on air; optional DTMF_BEGIN/END polish; parse link TEXT frames (`L …`, `T … STATUS`) for a "linked nodes" panel.
 2. ~~Phone-friendly layout~~ — **done** (§4.8, verified by resizing the desktop app). Remaining: confirm on real phones/tablets and fix landscape-phone density, insets and keyboard behaviour (§9).
 3. **Bluetooth PTT**: implement `IBluetoothPttService` for Android (BLE GATT), iOS (CoreBluetooth), desktop (Windows BLE/`InTheHand`/WinRT), plus the Learn wizard UI and media-key fallback; wire status into the BLE badge.
 4. **Cross-platform desktop audio** (Linux/macOS): add a backend (spec originally named SoundFlow/MiniAudio; OpenAL/PortAudio are alternatives) behind `IAudioDeviceService`; audio-device pickers for all platforms using `InputDeviceId`/`OutputDeviceId`.
-5. **Open the mic only while keyed (or on a short hold-off)** to improve privacy/battery; keep playback pipeline alive.
-6. **Android connectivity monitor** (ConnectivityManager callbacks) implementing `INetworkMonitor`; battery-optimisation prompt; permission-denied UX.
+5. ~~Open the mic only while keyed~~ — **done for Android/iOS** (`OpenMicOnlyWhileKeyed`, Appendix; device-untested). Desktop still keeps the mic open; consider enabling it there too.
+6. ~~Android connectivity monitor~~ — **done** (`AndroidNetworkMonitor`, battery-optimisation prompt; device-untested). Remaining: permission-denied UX.
 7. **Device testing** on a physical Android phone and iPhone (background audio for ≥1 h screen-off, Wi-Fi↔cellular handoff, Bluetooth headset).
-8. **Housekeeping:** `git init`, `global.json`, delete `NodeX.UI.Browser`, CI (Windows build + test; macOS runner for iOS signing), `.editorconfig`.
+8. **Housekeeping:** ~~`git init`~~ (done, private GitHub repo); `global.json`; delete `NodeX.UI.Browser`; CI (Windows build + test; macOS runner for iOS signing); `.editorconfig`; README and LICENSE.
 9. **Nice to have:** parse ASL status/linked-node text frames into a "linked nodes" panel; bind configured `IaxPort` to the socket; IPv6; additional codecs; inbound mode over VPN.
+10. **Amateur-radio compliance decisions** (§17): who sends the station ID, and what the app shows/enforces about licensing.
+11. **Desktop echo handling** (§4.4): headset advisory in the UI or software echo cancellation.
+12. **Linux/macOS secret storage:** use the OS keyring (libsecret / macOS Keychain) instead of a key file beside the ciphertext (§4.7).
 
 ---
 
 ## 14. Unverified assumptions & risks (check before relying)
 
-- **Link login as `radio` with no password** and acceptance by real nodes (§5.4).
-- **Empty-CALLTOKEN-IE-on-first-NEW** behaviour (from Asterisk call-token docs, not RFC 5456).
+**Verified live against node 523800 on 2026-11-05** (details in `docs/LIVE_VALIDATION.md`): ASL registration; call-token handshake (empty CALLTOKEN IE on the first `NEW`); link login as `radio` with no password and `CALLING_NUMBER` = our node; keep-alive both ways; keying (`KEY`/`UNKEY` + voice) relayed on air; DTMF function codes (`*70`); real Windows mic → G.711 → network; Windows speaker output; re-dial from the same IP while a stale call exists. **Still unverified:** everything in the list below, plus voice-cleanup quality (§4.4) and TX audio quality heard on air.
+
 - **`NodeResolution` REST schema — VERIFIED & FIXED 2026-11-05 against the live service.** The inherited guess (`/api/node/<n>` → `data.ip`) was wrong (404). Real endpoint: `GET https://stats.allstarlink.org/api/stats/<n>` (docs: allstarlink.github.io/developers/api; 30 req/min/IP, cache results). The node's own record is the **top-level `node` object** (`ipaddr`, `port`, `callsign`, `node_frequency`, `Status`, ...); `stats.data.linkedNodes[]` describes its links and must not be used. Checked with node 2530 → 144.202.112.210:4569, identical to DNS `2530.nodes.allstarlink.org` A record (also verified live). Legacy `node<n>.allstarlink.org` returned no data (kept as a harmless last fallback). Nodes that don't report stats return 404 and fall through to DNS.
 
-### Live-validation tool (`tools/NodeX.LiveCheck`)
-Console harness driving the real Core engine with a decoded packet trace (`Iax2Session.PacketTrace` tap; independent frame decoder). Commands: `resolve <node>` (read-only), `register` (env `NODEX_NODE`, `NODEX_PASSWORD`), `link <target> [--ip ip[:port]] [--listen s] [--key s] [--dtmf digits] [--trace file]`. Nothing is keyed unless `--key` is given; password only via env var. Run: `dotnet %LOCALAPPDATA%\NodeX\build\bin\NodeX.LiveCheck\Debug\net10.0\NodeX.LiveCheck.dll <command>`. `register` has **not been run yet**.
+### Live validation
 
-**First live link result (2026-11-05, owner's cloud node 523800 at 44.240.92.195:4569, dialled from portable node 523802 while UNREGISTERED, listen-only):**
-- VERIFIED on the wire: `NEW`(IEs 1 called, 2 calling, 3 name, 9 format, 8 capability, 11 version, 6 username `radio`, 54 CALLTOKEN empty) → server `CALLTOKEN` (IE 54 = `<epoch>?<40-hex>` string) → `NEW` with token → `ACK` + `ACCEPT` (IEs 9 format = ulaw 4, 56 = FORMAT2) → our `ACK` → `Connected` in ~160 ms. So username `radio` with no password is accepted at the IAX layer, and the call-token flow matches §5.3.
-- **Remote sent `HANGUP` (IE 42 = 0x00, no text cause) ~90 ms after ACCEPT**; session ended `RemoteHangup`. Likely app_rpt rejecting the caller after the dialplan starts. **Registration VERIFIED live** (`register` → `registered=True`, registry sees 108.65.179.71:4569, server `refresh` = 179 s, status text "Registered as ip:port"). **Re-dial after registering gave the identical result** (ACCEPT then HANGUP IE 42=0x00 after ~90 ms), and the dialling host's public IP equals the registered IP, so "unregistered" and "source IP mismatch" are ruled out. A third dial after the node appeared in the public listing/DNS (`523802.nodes.allstarlink.org` → 108.65.179.71, stats API 200, `callsign='KV4S'`) was again identical, so registry propagation delay is not the (only) cause (523800's own DNS cache could still lag). **LIVE MIC OVER THE NETWORK VERIFIED ON THE SERVER SIDE (2026-11-05 ~23:57 UTC, `LiveCheck link 523800 --mic 6`, owner-approved; relayed to the owner's node 47923):** 6 s keyed with the real Shure mic through `NAudioDeviceService` → G.711 → IAX2: `CONTROL/KEY`, 1 full + 298 mini voice frames (299 mic frames ≈ 6.0 s, peak −28.2 dBFS), `CONTROL/UNKEY`, **0 retransmits, 0 VNAKs**. Polling 523800 (`rpt show variables 523800` over SSH every ~0.4 s) showed **`RPT_TXKEYED` 0 → 1 for ~6.1 s (16 consecutive polls) while we were keyed, then back to 0** (RPT_RXKEYED/ETXKEYED stayed 0), i.e. app_rpt accepted our link keying, keyed its transmit path for exactly our transmission length and unkeyed when we unkeyed. What the owner heard on 47923 is recorded in the next sentence if confirmed; otherwise pending.
+The dated results of testing against real nodes and hardware (registration, link, keying, DTMF, Windows audio, re-dial) are in [`docs/LIVE_VALIDATION.md`](docs/LIVE_VALIDATION.md). The console harness is `tools/NodeX.LiveCheck` (see §3.1 and that file). Summary of what is **verified** vs **not** is in §2 and the list below.
 
-**DTMF FUNCTION CODES VERIFIED (2026-11-05 23:41 UTC, `LiveCheck link 523800 --dtmf '*70'`, owner-approved on their own nodes):** NodeX sent `*`, `7`, `0` as full DTMF frames (type 1, subclass = ASCII digit, 120 ms apart). 523800's Asterisk log shows each arriving as `DTMF end '<d>' received ... duration 0 ms` (then Asterisk "emulates" begin/end because the duration is 0 / below its 80 ms minimum — harmless, it works), and app_rpt executed the function: 0.14 s after the last digit it answered with a link TEXT frame **`T 523800 STATUS,523800,0,T523802,T47923,T1997,T1996`** (= `*70` → `ilink,5` system status: node, the node's links; 523802 is now listed as a transceive link). `link_functions = functions` on 523800, so function digits from a link are honoured and `*3/*1/*70` macros in the UI use the right mechanism. No spoken audio came back (status over a link is text, 0 non-silent frames), so nothing was relayed on air. **Observed app_rpt link TEXT messages:** `!NEWKEY1!` (once at connect), `L <T-prefixed linked nodes>` (at connect and every ~30 s), `T <node> STATUS,<node>,<n>,<links...>` (reply to `*70`). NodeX shows them raw; parsing the link list/status for the UI is a possible enhancement. **Possible polish:** Asterisk's DTMF emulation message suggests sending DTMF_BEGIN (frame type 0x0C) + END with a duration ≥ 80 ms instead of END-only; not needed for function codes to work.
-
-**WINDOWS AUDIO BACKEND (`LiveCheck audio`, 2026-11-05; compiles the production `NAudioDeviceService.cs` unchanged; local only, no network, nothing keyed or saved):** capture mechanics VERIFIED on the dev PC — default WaveIn opened at 8 kHz/16-bit/mono, delivered 199 blocks of 160 samples (20 ms) = 3.98 s of audio in 4.14 s wall clock (real-time rate, no drops), playback opened and drained (`IsPlaying`, 400 ms buffer then empty). **Mic capture of real speech VERIFIED:** the first run was silence (−89.5 dBFS; nobody speaking), the rerun with the owner speaking gave **−39.5 dBFS RMS / −16.1 dBFS peak** with the same real-time block cadence (199 × 160 samples in 4.11 s). **G.711 round trip on that speech:** error −75.4 dBFS against signal −39.5 dBFS, i.e. ~36 dB SNR, normal for µ-law. **Speaker output VERIFIED by ear:** `LiveCheck tone` (1 kHz, fade-in −46→−20 dBFS, mic not involved, production `NAudioDeviceService` playback on the system default output) was heard by the owner. Two later mic runs were near silent (−73/−74 dBFS) and their playback was therefore barely audible — most likely the Windows default input changed (headphones plugged in) or the mic level was low; not a playback fault. The quiet runs were the owner not speaking (`LiveCheck miclevels` showed the default mapper and the Shure MV7+ give identical levels; the Virtual Audio Cables read ~−97 dBFS). Second good speech run: **−37.5 dBFS RMS / −22.3 dBFS peak, G.711 round-trip error −73.3 dBFS (~36 dB SNR)**. A further run (−43.8 dBFS RMS, round-trip error −77.7 dBFS) was **heard by the owner: "sounds great"** — so Windows mic → G.711 → speaker audio is VERIFIED for NodeX's own code (local only; the same chain over the network/relay is not yet tested). Input devices on the PC: Shure MV7+, three Virtual Audio Cable lines, MOTIV Mix; the app always uses the system default device (device pickers are backlog item 4).
-
-**LINK WORKS (2026-11-05, after 523800's node list learned 523802): 45 s listen-only session, ended by our clean `HANGUP` (`LocalRequest`).** Verified on the wire, from trace + 523800's console: `ACCEPT` → remote `CONTROL/ANSWER` → unknown control subclass 0x7F (ACKed, ignored) → app_rpt text `!NEWKEY1!` at ~0.75 s, then `L T47923,T1997,T1996` (link list, repeats every ~30 s). **Keep-alive both directions:** our `PING` every 15 s answered by `PONG` (RTT 66–67 ms; the PONG carries ~34 bytes of IEs); remote `PING` every ~21 s answered by our `PONG`; remote `LAGRQ` every 10 s answered by our `LAGRP`. **Audio RX:** remote streams µ-law continuously — one full `VOICE` frame (subclass 0x04, 172 B) then 2,130 mini frames of 160 B over 45 s (~47/s ≈ 95% of the 50/s nominal; content was silence 0xFF — **not** a quality test). No retransmits, VNAKs or INVALs; every sequenced frame was ACKed. **We never answer `!NEWKEY1!`:** 523800's log shows `newkeytimer expired on connected node, setting newkey from RADIO_KEY_NOT_ALLOWED to RADIO_KEY_ALLOWED` ~0.8 s after connect, i.e. app_rpt falls back to allowing keying without the NEWKEY handshake. **Still unverified:** that our `CONTROL/KEY`/`UNKEY` + voice are honoured (needs `--key`), TX audio quality, real mic/speaker audio, DTMF function codes, re-dial from a new IP while the stale call lingers.
-
-**KEYING VERIFIED END-TO-END (2026-11-05 23:19 UTC, trace8.log, run with owner's knowledge):** `CONTROL/KEY` at 0.24 s, 1 full + ~249 mini voice frames (5 s of µ-law silence), `CONTROL/UNKEY` at 5.25 s, no retransmits/VNAKs; 523800 relayed it and **the owner observed their own node 47923 key** (523800 is permanently linked transceive to 47923, 1997, 1996). The KEY was sent ~0.24 s after connect, before 523800's `newkeytimer` expired (~0.9 s), and was still honoured as far as the owner could see, so no extra hold-off appears necessary (the exact moment of the first key-up was not measured). **Safety note:** testing against 523800 keys real RF on 47923 — never run `--key` there without the owner present and aware. Earlier unobserved 22:15:36 UTC keyed test (trace7.log) is likely to have done the same. Server console at verbose 4 shows only bridge join/leave and the newkey-timer warning, not key-up lines.
-
-**RE-DIAL WHILE A STALE CALL EXISTS (2026-11-05 ~23:41 UTC, `LiveCheck redial 523800`, no keying):** call A connected (ANSWER, NEWKEY, link list), was then **abandoned silently** (socket closed, no HANGUP), and call B was dialled 15 ms later from a fresh socket (new source port, same public IP). **B was accepted immediately** (CALLTOKEN → ACCEPT → ANSWER → text → voice in ~2.4 s), ran 20 s with PING/PONG, and ended with a clean HANGUP. 523800 did **not** reject the duplicate from the same node number; its `iax2 show channels` showed A already in `Tx:HANGUP` state seconds later and gone afterwards, i.e. the stale call is cleaned up promptly (cause not determined: new link from the same node replacing the old one, or ICMP port-unreachable). No delay/duplicate-avoidance strategy is needed for the same-IP case. **Still unverified:** a genuinely different public IP (only one IPv4 interface on the dev PC; the registry/remote node list must learn the new address first — remotes appear to store the registered IP, `rpt lookup 523802` → `radio@108.65.179.71:4569/523802,108.65.179.71` — and may reject a caller whose address is not yet the registered one; that was not testable here).
-
-**ROOT CAUSE of the earlier immediate HANGUP, found from 523800's Asterisk console (ASL3 `Asterisk 22.10.1+asl3-3.10.8`)** — the call lands on `[523800@radio-secure]`: "Accepting UNAUTHENTICATED call", `Set(NODENUM=523802)` (taken from our CALLING_NUMBER IE), allowlist/denylist steps pass, then `Rpt(523800)` fails with **`app_rpt.c:7526 rpt_exec: Reported node 523802 cannot be found!!`** and the channel is hung up. So app_rpt validates the caller by looking it up in the **remote node's own local node list**, which refreshes from the registry on a delay (owner: up to ~5 min, sometimes more) — this is §5.4's inference, now confirmed. It is NOT a NodeX protocol bug (handshake, `radio` login, CALLING_NUMBER are all accepted). Implication for the app: a freshly registered/moved node (e.g. after a network handoff to a new IP) can be rejected by remotes until their lists refresh; reconnect logic should treat a quick post-ACCEPT HANGUP as "not yet recognised" and retry with back-off rather than give up. (Earlier note, now superseded:) cause was unknown — needed 523800's Asterisk log during a dial (and its allow/deny or private-node config); the HANGUP carries no text cause.
-- Tool bug fixed: connect wait loop must also wait through `CallTokenHandshake`.
-- **app_rpt link text protocol:** real ASL links exchange `AST_FRAME_TEXT` messages (link/keying status such as `!!NEWKEY…`-style negotiation and periodic status). NodeX sends only control KEY/UNKEY and ignores/prints text. This may be sufficient or may cause odd behaviour (e.g. remote not recognising keying) — verify against app_rpt source (`rpt_link`/`rpt_manager`) and a packet capture.
-- **Reconnect from a new address** being accepted by the remote while it still holds the stale call.
-- **Mic-open-while-connected** and iOS background longevity with the zero-PCM keeper (Apple may still suspend the app; needs device testing).
-- **Android `NetworkChange`** availability on API 30+ (see §4.6).
-- Windows audio path (NAudio `WaveInEvent`/`WaveOutEvent` at 8 kHz) never exercised with real hardware.
+**Still unverified / open risks:**
+- **app_rpt link text protocol:** observed messages are `!NEWKEY1!`, `L <links>` (~30 s) and `T <node> STATUS,…` (reply to `*70`). NodeX never answers `!NEWKEY1!`; 523800 falls back to allowing keying after its `newkeytimer` (~0.9 s) and honoured our early KEY. Other app_rpt versions/configs could behave differently — check app_rpt source (`rpt_link`/`rpt_manager`). Text is shown raw.
+- **Reconnect from a genuinely different public IP** (network handoff): same-IP re-dial with a stale call is verified; a new address may be rejected until the remote's node list learns it (see root cause in the live log). The early-hangup retry budget (§4.6, ≈ 6 min) is close to the observed "up to ~5 min, sometimes more" refresh — consider a longer budget.
+- **Mic-open-while-connected on mobile** (gated by `OpenMicOnlyWhileKeyed`, Appendix) and iOS background longevity with the zero-PCM keeper (Apple may still suspend the app; needs device testing).
+- **Android `NetworkChange`/`AndroidNetworkMonitor`** behaviour on real devices (API 30+).
+- **Transmit voice clean-up** (`MicProcessor`, §4.4) A/B by ear on air — pending owner.
+- **DTMF end-only frames:** works for function codes; Asterisk logs "emulating" because duration is 0. Optional polish: send DTMF_BEGIN + END ≥ 80 ms.
+- Amateur-radio compliance questions in §17 are open decisions, not verified behaviour.
 
 ---
 
@@ -389,6 +384,19 @@ Console harness driving the real Core engine with a decoded packet trace (`Iax2S
 - **Resilience:** disconnect reasons, auto-reconnect with back-off, network-change handoff with immediate re-registration.
 - **Phone layout:** responsive main screen (single column + docked PTT bar < 720 px, compact header < 920 px, 44 px touch targets); DTMF pad as a data-driven list; time-out counter now shows the configured limit (was hard-coded "03:00"); PTT button face redrawn so state colours can't be overridden by the theme; "Quick Recall" hidden when there are no favourites.
 - **Build:** build output moved out of OneDrive; iOS and Android build on Windows; solution includes all heads and tests.
+- **Live validation (2026-11-05):** registration, link, keying, DTMF, mic/speaker and re-dial verified against a real ASL3 node; early-hangup retry added to auto-reconnect; resolution endpoint fixed; transmit voice clean-up and voice-timestamp pacing added; always-connected battery model (Appendix).
+- **Repo & docs (2026-11-05):** private GitHub repo created; live results moved to `docs/LIVE_VALIDATION.md`; this spec reconciled with them (stale "never tested" statements removed); §17 added.
+
+---
+
+## 17. Amateur-radio compliance — OPEN DECISIONS (not implemented, not legal advice)
+
+NodeX links into ASL nodes that key real RF transmitters (the owner's test node 523800 is permanently linked to RF node 47923). Transmitting through such a link is amateur-radio transmission by the control operator of the *remote RF node* and by the person speaking. The spec previously said nothing about this; the following are **undecided** and need an owner decision before NodeX is distributed to anyone else:
+
+1. **Station identification.** `Callsign` is stored but nothing transmits an ID. Decide whether NodeX (a) relies on the remote node's own ID, (b) reminds the user to identify (e.g. a timer + UI prompt), or (c) sends an automatic ID. Check the rules that apply in the operator's country.
+2. **Licensing.** Decide whether the app states that a valid amateur licence is required to transmit, and whether `Callsign` is required before keying is enabled (currently the validator makes it optional).
+3. **Third-party / link policy.** Some node owners restrict who may link; NodeX should surface "rejected/busy" clearly (it does) and never retry in a way that looks like abuse (early-hangup retries are capped at 10).
+4. **Testing etiquette.** Live tests that key a linked RF node require the owner present and aware (see the safety note in `docs/LIVE_VALIDATION.md`).
 
 ---
 
