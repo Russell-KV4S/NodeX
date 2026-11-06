@@ -670,13 +670,43 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
                 break;
 
             case Iax2Protocol.IaxControlSubclass.Hangup:
+                RemoteCause = DescribeCause(payload);
                 SetDisconnected(Iax2DisconnectReason.RemoteHangup);
                 break;
 
             case Iax2Protocol.IaxControlSubclass.Reject:
+                RemoteCause = DescribeCause(payload);
                 SetDisconnected(Iax2DisconnectReason.RemoteRejected);
                 break;
         }
+    }
+
+    /// <summary>The reason text and code the remote put in its HANGUP/REJECT (empty when it gave none).</summary>
+    public string RemoteCause { get; private set; } = "";
+
+    internal static string DescribeCause(byte[] payload)
+    {
+        string text = "";
+        int? code = null;
+        try
+        {
+            foreach (var ie in Iax2Protocol.ParseInformationElements(payload))
+            {
+                if (ie.Id == Iax2Protocol.InformationElementId.Cause)
+                    text = Encoding.UTF8.GetString(ie.Data).Trim();
+                else if (ie.Id == Iax2Protocol.InformationElementId.CauseCode && ie.Data.Length > 0)
+                    code = ie.Data[0];
+            }
+        }
+        catch (Exception)
+        {
+            // A malformed IE block must never stop the hangup being processed.
+        }
+
+        if (text.Length == 0 && code == null) return "";
+        return text.Length > 0 && code != null ? $"{text} (code {code})"
+            : text.Length > 0 ? text
+            : $"code {code}";
     }
 
     private void HandleControlFrame(Iax2Protocol.ControlSubclass subclass)

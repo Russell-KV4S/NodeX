@@ -153,6 +153,8 @@ public static class Iax2Protocol
         RrDropped = 33,
         RrOoo = 34,
         DateTime = 35,
+        /// <summary>Hangup cause code (Q.931-style, 1 byte; 16 = normal clearing). Asterisk extension.</summary>
+        CauseCode = 42,
         /// <summary>IAX2 Call Token IE (0x36 / 54) for Asterisk 20+ / ASL3 security handshakes</summary>
         CallToken = 54
     }

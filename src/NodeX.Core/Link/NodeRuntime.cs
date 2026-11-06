@@ -645,7 +645,9 @@ public sealed class NodeRuntime : IAsyncDisposable
                     ErrorOccurred?.Invoke($"Node {node} is busy.");
                     break;
                 case Iax2DisconnectReason.RemoteHangup:
-                    Notice?.Invoke($"Node {node} disconnected{up}: the far node hung up, so NodeX is not reconnecting.");
+                    Notice?.Invoke($"Node {node} disconnected{up}: the far node hung up" +
+                        (link.RemoteCause.Length > 0 ? $" (reason: {link.RemoteCause})" : " (no reason given)") +
+                        ", so NodeX is not reconnecting.");
                     break;
             }
 

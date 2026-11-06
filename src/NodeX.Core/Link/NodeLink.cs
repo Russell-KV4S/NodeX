@@ -83,6 +83,9 @@ public sealed class NodeLink : IAsyncDisposable
 
     /// <summary>Why the call ended; meaningful once the session is Disconnected.</summary>
     public Iax2DisconnectReason DisconnectReason => Session.DisconnectReason;
+
+    /// <summary>Reason text/code the remote gave when it hung up or rejected, or empty.</summary>
+    public string RemoteCause => Session.RemoteCause;
     public Iax2Session Session { get; }
     public NodePttController Ptt { get; }
     public NodeAudioEngine Audio { get; }
