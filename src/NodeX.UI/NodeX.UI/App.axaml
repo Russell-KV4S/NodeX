@@ -28,6 +28,10 @@
 
         <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F0F6FC" />
         <SolidColorBrush x:Key="TextSecondaryBrush" Color="#8B949E" />
-        <SolidColorBrush x:Key="TextMutedBrush" Color="#484F58" />
+        <!-- Muted text was #484F58 (2.1:1 on cards). #848D97 is 5.1:1 on cards and 4.6:1 on the header, so hints stay readable (WCAG AA). -->
+        <SolidColorBrush x:Key="TextMutedBrush" Color="#848D97" />
+
+        <!-- Fill for buttons that carry white text: #EF4444 gives only 3.8:1 with white, #DC2626 gives 4.8:1. -->
+        <SolidColorBrush x:Key="DangerButtonBrush" Color="#DC2626" />
     </Application.Resources>
 </Application>

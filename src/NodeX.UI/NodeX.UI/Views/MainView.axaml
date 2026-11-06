@@ -59,6 +59,14 @@
             <Setter Property="Fill" Value="{StaticResource RxGreenBrush}" />
         </Style>
 
+        <!-- Bluetooth dot: grey until a headset/speaker-mic is connected, then cyan -->
+        <Style Selector="Ellipse#BleDot">
+            <Setter Property="Fill" Value="#6B7280" />
+        </Style>
+        <Style Selector="Ellipse#BleDot.connected">
+            <Setter Property="Fill" Value="{StaticResource CyanAccentBrush}" />
+        </Style>
+
         <!-- PTT button: the button itself is transparent and the visible face is a Border inside it, so the
              theme's hover/press styling can never override the keyed (red) state. Order matters below:
              later rules of equal specificity win, so the keyed rules come last. -->
@@ -134,7 +142,7 @@
                     </Border>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="NodeX" FontSize="18" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" />
-                        <TextBlock x:Name="BrandTagline" Text="AllStarLink Radio Client" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock x:Name="BrandTagline" Text="AllStarLink Radioless Node" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
                     </StackPanel>
                 </StackPanel>
 
@@ -164,13 +172,13 @@
 
                     <Border Classes="card" CornerRadius="12" Padding="10,5">
                         <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Ellipse Width="8" Height="8" Fill="{StaticResource CyanAccentBrush}" />
+                            <Ellipse x:Name="BleDot" Width="8" Height="8" Classes.connected="{Binding IsBleConnected}" />
                             <TextBlock Text="{Binding BleStatusText}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
                         </StackPanel>
                     </Border>
                 </WrapPanel>
 
-                <Button x:Name="SettingsButton" Grid.Column="3" Content="Settings"
+                <Button x:Name="SettingsButton" AutomationProperties.Name="Open settings" Grid.Column="3" Content="Settings"
                         Command="{Binding OpenSettingsCommand}" Margin="10,0,0,0" VerticalAlignment="Center"
                         Background="{StaticResource CardBackgroundBrush}"
                         BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1"
@@ -230,24 +238,37 @@
 
                     <!-- RX / TX LIVE ACTIVITY CARDS -->
                     <Grid x:Name="RxTxRow" ColumnDefinitions="*,*" ColumnSpacing="12">
-                        <Border x:Name="RxCard" Grid.Column="0" Classes="card" Classes.active="{Binding IsRemoteKeyed}"
+                        <Border x:Name="RxCard" AutomationProperties.Name="Receive indicator" Grid.Column="0" Classes="card" Classes.active="{Binding IsRemoteKeyed}"
                                 BorderThickness="2" CornerRadius="10">
                             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                 <Border x:Name="RxDot" Width="16" Height="16" CornerRadius="8" Classes.on="{Binding IsRemoteKeyed}" />
                                 <StackPanel>
                                     <TextBlock Text="RECEIVE (RX)" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" />
-                                    <TextBlock x:Name="RxSubtitle" Text="Remote station speaking" FontSize="11" TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextSecondaryBrush}" />
+                                    <!-- Text state, so on-air status never depends on colour alone (and shows on phones too) -->
+                                    <StackPanel x:Name="RxSubtitle">
+                                        <TextBlock Text="Idle" FontSize="11" IsVisible="{Binding !IsRemoteKeyed}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                        <TextBlock Text="Receiving" FontSize="11" FontWeight="Bold" IsVisible="{Binding IsRemoteKeyed}"
+                                                   AutomationProperties.LiveSetting="Polite"
+                                                   Foreground="{StaticResource RxGreenBrush}" />
+                                    </StackPanel>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
 
-                        <Border x:Name="TxCard" Grid.Column="1" Classes="card" Classes.active="{Binding IsTransmitting}"
+                        <Border x:Name="TxCard" AutomationProperties.Name="Transmit indicator" Grid.Column="1" Classes="card" Classes.active="{Binding IsTransmitting}"
                                 BorderThickness="2" CornerRadius="10">
                             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                 <Border x:Name="TxDot" Width="16" Height="16" CornerRadius="8" Classes.on="{Binding IsTransmitting}" />
                                 <StackPanel>
                                     <TextBlock Text="TRANSMIT (TX)" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" />
-                                    <TextBlock x:Name="TxSubtitle" Text="Transmitter keyed" FontSize="11" TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextSecondaryBrush}" />
+                                    <StackPanel x:Name="TxSubtitle">
+                                        <TextBlock Text="Idle" FontSize="11" IsVisible="{Binding !IsTransmitting}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                        <TextBlock Text="ON AIR" FontSize="11" FontWeight="Bold" IsVisible="{Binding IsTransmitting}"
+                                                   AutomationProperties.LiveSetting="Assertive"
+                                                   Foreground="#FCA5A5" />
+                                    </StackPanel>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -258,14 +279,14 @@
                         <StackPanel Spacing="10">
                             <Grid ColumnDefinitions="50,*,40">
                                 <TextBlock Grid.Column="0" Text="MIC" FontWeight="Bold" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                                <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding MicAudioLevel}"
+                                <ProgressBar Grid.Column="1" AutomationProperties.Name="Microphone level" Minimum="0" Maximum="1" Value="{Binding MicAudioLevel}"
                                              Height="8" CornerRadius="4" Margin="8,0"
                                              Foreground="{StaticResource TxRedBrush}" Background="#1F2937" />
                                 <TextBlock Grid.Column="2" Text="{Binding MicAudioLevel, StringFormat='{}{0:P0}'}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
                             </Grid>
                             <Grid ColumnDefinitions="50,*,40">
                                 <TextBlock Grid.Column="0" Text="SPK" FontWeight="Bold" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                                <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding RxAudioLevel}"
+                                <ProgressBar Grid.Column="1" AutomationProperties.Name="Speaker level" Minimum="0" Maximum="1" Value="{Binding RxAudioLevel}"
                                              Height="8" CornerRadius="4" Margin="8,0"
                                              Foreground="{StaticResource RxGreenBrush}" Background="#1F2937" />
                                 <TextBlock Grid.Column="2" Text="{Binding RxAudioLevel, StringFormat='{}{0:P0}'}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
@@ -277,7 +298,7 @@
                     <Border x:Name="PttCard" Classes="card" CornerRadius="16" Padding="24">
                         <StackPanel x:Name="PttInner" Spacing="18" HorizontalAlignment="Center">
 
-                            <Button x:Name="PttButton"
+                            <Button x:Name="PttButton" AutomationProperties.Name="Push to talk"
                                     Width="260" Height="140" Padding="0"
                                     CornerRadius="20" BorderThickness="0" Background="Transparent"
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
@@ -309,17 +330,19 @@
                                     <TextBlock Grid.Column="0" Text="Time-Out Timer (TOT)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
                                     <TextBlock Grid.Column="1" Text="{Binding TotCounterText}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
                                 </Grid>
-                                <ProgressBar Minimum="0" Maximum="1" Value="{Binding TotProgressPercent}"
+                                <ProgressBar AutomationProperties.Name="Transmit time-out used" Minimum="0" Maximum="1" Value="{Binding TotProgressPercent}"
                                              Height="6" CornerRadius="3"
                                              Foreground="{StaticResource AmberAccentBrush}" Background="#1F2937" />
 
                                 <Button Command="{Binding TogglePttModeCommand}"
+                                        AutomationProperties.Name="Switch push-to-talk mode"
                                         HorizontalAlignment="Center" Margin="0,4,0,0"
-                                        Background="Transparent" BorderThickness="0">
+                                        Background="#1F2937" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1"
+                                        CornerRadius="14" Padding="12,4">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <TextBlock Text="Mode:" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
                                         <TextBlock Text="{Binding PttModeLabel}" FontSize="12" FontWeight="Bold" Foreground="{StaticResource CyanAccentBrush}" VerticalAlignment="Center" />
-                                        <TextBlock x:Name="PttModeHint" Text="(Click to switch)" FontSize="10" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="PttModeHint" Text="⇄ tap to switch" FontSize="11" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </Button>
                             </StackPanel>
@@ -336,7 +359,7 @@
                             <TextBlock Text="Connect to Node" FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}" />
 
                             <Grid x:Name="ConnectGrid" ColumnDefinitions="*,Auto" RowDefinitions="Auto">
-                                <TextBox x:Name="TargetBox" Grid.Column="0" Text="{Binding TargetNodeInput}"
+                                <TextBox x:Name="TargetBox" AutomationProperties.Name="Node number to connect to" Grid.Column="0" Text="{Binding TargetNodeInput}"
                                          PlaceholderText="e.g. 27339" Margin="0,0,8,0"
                                          FontSize="15" FontWeight="SemiBold"
                                          CornerRadius="6" VerticalContentAlignment="Center" />
@@ -351,7 +374,7 @@
                                     </Button>
                                     <Button Grid.Column="1" Command="{Binding DisconnectNodeCommand}"
                                             IsEnabled="{Binding CanDisconnect}"
-                                            Background="{StaticResource TxRedBrush}"
+                                            Background="{StaticResource DangerButtonBrush}"
                                             Foreground="#FFFFFF" FontWeight="Bold"
                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
                                             CornerRadius="6" Padding="14,8">
