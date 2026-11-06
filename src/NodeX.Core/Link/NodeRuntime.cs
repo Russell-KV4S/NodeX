@@ -6,9 +6,10 @@ namespace NodeX.Core;
 
 /// <summary>
 /// Application-level coordinator, independent of any UI toolkit: owns the saved configuration, the
-/// AllStarLink registration and the (single) active <see cref="NodeLink"/>, and keeps the link alive
+/// AllStarLink registration and up to <see cref="MaxLinks"/> simultaneous node links (one
+/// <see cref="NodeConnection"/> each, of which exactly one is the transmit node), and keeps every link alive
 /// across failures: it re-dials a link that was established and then lost (with back-off), and when the
-/// device's network changes it re-registers immediately and re-establishes the call from the new address.
+/// device's network changes it re-registers immediately and re-establishes the calls from the new address.
 /// UIs bind to its events.
 /// </summary>
 public sealed class NodeRuntime : IAsyncDisposable
@@ -21,19 +22,16 @@ public sealed class NodeRuntime : IAsyncDisposable
     private readonly Action<Iax2Session>? _configureSession;
     private readonly bool _ownsMonitor;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly object _reconnectLock = new();
     private readonly object _activeLock = new();
+    private readonly object _connLock = new();
+    private readonly List<NodeConnection> _connections = [];   // guarded by _connLock
+    private string? _transmitNode;                              // guarded by _connLock
 
     private INetworkMonitor? _monitor;
     private AslRegistrationService? _registration;
-    private NodeLink? _link;
-    private string? _desiredTarget;          // node the user wants to be linked to; null = nothing wanted
-    private CancellationTokenSource? _reconnectCts;
-    private Task _reconnectTask = Task.CompletedTask;
     private CancellationTokenSource? _debounceCts;
     private TaskCompletionSource _networkSignal = NewSignal();
     private string _lastSignature = "";
-    private int _earlyHangups;               // consecutive "remote hung up right after ACCEPT" outcomes
     private bool _active;
     private string? _activeNode;
     private bool _started;
@@ -84,11 +82,63 @@ public sealed class NodeRuntime : IAsyncDisposable
 
     // ----- link state -----
 
-    /// <summary>The active link, or null when not connected.</summary>
-    public NodeLink? Link => Volatile.Read(ref _link);
+    /// <summary>The most nodes that can be linked at once (each costs a UDP socket and an audio output).</summary>
+    public const int MaxLinks = 4;
 
-    /// <summary>Raised when a link is created (non-null) or ends (null). May be raised on any thread.</summary>
-    public event Action<NodeLink?>? LinkChanged;
+    /// <summary>
+    /// The transmit link: the live call to <see cref="TransmitNode"/>, or null when that node is between attempts or
+    /// none is chosen. With one node linked this is simply "the link".
+    /// </summary>
+    public NodeLink? Link
+    {
+        get
+        {
+            lock (_connLock)
+                return _connections.FirstOrDefault(c => c.Node == _transmitNode)?.Link;
+        }
+    }
+
+    /// <summary>Every live call, in the order they were added.</summary>
+    public IReadOnlyList<NodeLink> Links
+    {
+        get
+        {
+            lock (_connLock)
+                return _connections.Select(c => c.Link).OfType<NodeLink>().ToArray();
+        }
+    }
+
+    /// <summary>Every node the user wants linked (including ones still connecting or reconnecting), in the order added.</summary>
+    public IReadOnlyList<NodeConnection> Connections
+    {
+        get
+        {
+            lock (_connLock)
+                return _connections.ToArray();
+        }
+    }
+
+    /// <summary>The node the user's voice goes to; null when none is chosen (every link is then listen-only).</summary>
+    public string? TransmitNode
+    {
+        get
+        {
+            lock (_connLock)
+                return _transmitNode;
+        }
+    }
+
+    /// <summary>Raised when a call is created. May be raised on any thread.</summary>
+    public event Action<NodeLink>? LinkAdded;
+
+    /// <summary>Raised after a call has ended and been disposed. May be raised on any thread.</summary>
+    public event Action<NodeLink>? LinkRemoved;
+
+    /// <summary>
+    /// Raised (on any thread) whenever the set of connections, a connection's state, the transmit choice or a mute
+    /// changes. UIs re-read <see cref="Connections"/>.
+    /// </summary>
+    public event Action? ConnectionsChanged;
 
     /// <summary>
     /// Raised when the node link becomes wanted (true) or no longer wanted (false), so platform heads can
@@ -272,14 +322,34 @@ public sealed class NodeRuntime : IAsyncDisposable
     }
 
     // =====================================================================================
-    // Connecting and disconnecting
+    // Connecting and disconnecting (one NodeConnection per linked node)
     // =====================================================================================
 
+    private NodeConnection[] SnapshotConnections()
+    {
+        lock (_connLock) return _connections.ToArray();
+    }
+
+    private NodeConnection? FindConnection(string node)
+    {
+        lock (_connLock) return _connections.FirstOrDefault(c => c.Node == node);
+    }
+
+    /// <summary>Prefixes a message with the node it is about when more than one node is linked.</summary>
+    private string ForNode(NodeConnection c, string message)
+    {
+        int count;
+        lock (_connLock) count = _connections.Count;
+        return count > 1 ? $"Node {c.Node}: {message}" : message;
+    }
+
     /// <summary>
-    /// Resolves <paramref name="targetNode"/> and dials it. Returns null when the node cannot be resolved.
-    /// Any existing link or reconnect cycle is stopped first.
+    /// Resolves <paramref name="targetNode"/> and dials it, <b>in addition to</b> any nodes already linked (up to
+    /// <see cref="MaxLinks"/>). The first node linked becomes the transmit target; later ones are listen-only until
+    /// <see cref="SetTransmitNode"/> chooses them. Connecting again to a node that is already linked redials just that
+    /// node. Returns null when the node cannot be resolved.
     /// </summary>
-    /// <exception cref="InvalidOperationException">The node number or password has not been configured.</exception>
+    /// <exception cref="InvalidOperationException">Not configured, or <see cref="MaxLinks"/> nodes are already linked.</exception>
     public async Task<NodeInfo?> ConnectAsync(string targetNode, CancellationToken cancellationToken = default)
     {
         if (!Config.IsComplete)
@@ -288,41 +358,68 @@ public sealed class NodeRuntime : IAsyncDisposable
         if (!NodeSettingsValidator.IsValidNodeNumber(targetNode))
             throw new ArgumentException("Target must be a 3 to 7 digit node number.", nameof(targetNode));
 
-        await DisconnectAsync();
+        NodeConnection? existing;
+        NodeConnection c;
+        lock (_connLock)
+        {
+            existing = _connections.FirstOrDefault(x => x.Node == targetNode);
+            if (existing == null && _connections.Count >= MaxLinks)
+                throw new InvalidOperationException(
+                    $"You can link up to {MaxLinks} nodes at once. Disconnect one first.");
 
-        _desiredTarget = targetNode;
-        Volatile.Write(ref _earlyHangups, 0);
+            c = existing ?? new NodeConnection(targetNode);
+            if (existing == null)
+            {
+                _connections.Add(c);
+                if (_connections.Count == 1) _transmitNode = targetNode;   // the only link is where you transmit
+            }
+        }
+
+        if (existing != null)
+        {
+            // Redial just this node: stop its recovery and end its call, keeping its transmit/mute choices.
+            await StopReconnectAsync(c);
+            var old = c.Link;
+            if (old != null) await EndLinkAsync(c, old, transient: true);
+            c.Wanted = true;
+        }
+
+        Interlocked.Exchange(ref c.EarlyHangups, 0);
+        ApplyTransmitFlags();
+        UpdateActive();
+        ConnectionsChanged?.Invoke();
+
         try
         {
-            var info = await DialAsync(targetNode, cancellationToken);
-            if (info == null)
-            {
-                _desiredTarget = null;
-                SetActive(false, null);
-            }
+            var info = await DialAsync(c, cancellationToken);
+            if (info == null) RemoveConnection(c, byUser: true);
             return info;
         }
         catch
         {
-            _desiredTarget = null;
-            SetActive(false, null);
+            RemoveConnection(c, byUser: true);
             throw;
         }
     }
 
     /// <summary>Resolves and starts a call, publishing the new link. Used for the first dial and for retries.</summary>
-    private async Task<NodeInfo?> DialAsync(string target, CancellationToken cancellationToken)
+    private async Task<NodeInfo?> DialAsync(NodeConnection c, CancellationToken cancellationToken)
     {
-        var info = await _resolver.ResolveNodeAsync(target, cancellationToken);
+        var info = await _resolver.ResolveNodeAsync(c.Node, cancellationToken);
         if (info == null) return null;
+        c.Info = info;
 
         var link = new NodeLink(Config.Settings, info, _audioFactory(), _audioOptions, _configureSession, Transmit);
-        link.Error += m => ErrorOccurred?.Invoke(m);
-        link.Session.StateChanged += state => OnLinkState(link, state);
+        link.Ptt.ListenOnlyReason = $"Node {c.Node} is listen-only. Choose it as the transmit node to talk on it.";
+        link.Audio.Muted = c.Muted;
+        link.Error += m => ErrorOccurred?.Invoke(ForNode(c, m));
+        link.Session.StateChanged += state => OnLinkState(c, link, state);
 
-        Volatile.Write(ref _link, link);
-        LinkChanged?.Invoke(link);
-        SetActive(true, info.NodeNumber);
+        c.Link = link;
+        ApplyTransmitFlags();          // sets this link's TransmitEnabled from the current choice
+        LinkAdded?.Invoke(link);
+        ConnectionsChanged?.Invoke();
+        UpdateActive();
 
         try
         {
@@ -330,39 +427,142 @@ public sealed class NodeRuntime : IAsyncDisposable
         }
         catch
         {
-            await EndLinkAsync(link, transient: true);
+            await EndLinkAsync(c, link, transient: true);
             throw;
         }
         return info;
     }
 
-    /// <summary>The user hangs up: stops any reconnecting and closes the link.</summary>
+    /// <summary>The user hangs up every link: stops any reconnecting and closes them all.</summary>
     public async Task DisconnectAsync()
     {
-        _desiredTarget = null;
-        await StopReconnectAsync();
-
-        var link = Link;
-        if (link != null) await EndLinkAsync(link, transient: false);
-        else SetActive(false, null);
+        foreach (var c in SnapshotConnections())
+            await DisconnectConnectionAsync(c);
+        UpdateActive();
     }
 
-    private void OnLinkState(NodeLink link, Iax2SessionState state)
+    /// <summary>The user hangs up one node, leaving the others linked.</summary>
+    public async Task DisconnectAsync(string node)
     {
+        var c = FindConnection(node);
+        if (c != null) await DisconnectConnectionAsync(c);
+    }
+
+    private async Task DisconnectConnectionAsync(NodeConnection c)
+    {
+        c.Wanted = false;
+        await StopReconnectAsync(c);
+
+        var link = c.Link;
+        if (link != null) await EndLinkAsync(c, link, transient: false, byUser: true);
+        else RemoveConnection(c, byUser: true);
+    }
+
+    // ----- transmit target, mute -----
+
+    /// <summary>
+    /// Chooses the one linked node the user transmits to; every other link becomes listen-only (an active key on the
+    /// old one is released). <c>null</c> means no transmit node. Returns false when <paramref name="node"/> is not linked.
+    /// </summary>
+    public bool SetTransmitNode(string? node)
+    {
+        lock (_connLock)
+        {
+            if (node != null && !_connections.Any(c => c.Node == node)) return false;
+            if (_transmitNode == node) return true;
+            _transmitNode = node;
+        }
+
+        ApplyTransmitFlags();
+        Notice?.Invoke(node == null ? "No transmit node chosen." : $"Transmitting to node {node}.");
+        ConnectionsChanged?.Invoke();
+        return true;
+    }
+
+    /// <summary>Silences (or restores) the received audio of one linked node. It is still received and shown.</summary>
+    public void SetMuted(string node, bool muted)
+    {
+        var c = FindConnection(node);
+        if (c == null || c.Muted == muted) return;
+        c.Muted = muted;
+        if (c.Link is { } link) link.Audio.Muted = muted;
+        ConnectionsChanged?.Invoke();
+    }
+
+    /// <summary>Pushes the transmit choice onto every connection and live link.</summary>
+    private void ApplyTransmitFlags()
+    {
+        List<(NodeConnection C, bool Tx)> items;
+        lock (_connLock)
+        {
+            items = _connections.Select(c => (c, c.Node == _transmitNode)).ToList();
+            foreach (var (c, tx) in items) c.IsTransmitTarget = tx;
+        }
+
+        // Outside the lock: clearing TransmitEnabled on a keyed link starts an async unkey.
+        foreach (var (c, tx) in items)
+            if (c.Link is { } link) link.Ptt.TransmitEnabled = tx;
+    }
+
+    /// <summary>
+    /// Forgets a node that is no longer wanted. If it was the transmit node, transmitting moves to the one remaining
+    /// link only when the user caused it (hung up); if the far end dropped us, the choice is left empty so a
+    /// transmission is never silently redirected to a different node.
+    /// </summary>
+    private void RemoveConnection(NodeConnection c, bool byUser)
+    {
+        bool lostTransmit = false;
+        int remaining;
+        lock (_connLock)
+        {
+            if (!_connections.Remove(c)) return;
+            c.Wanted = false;
+            if (_transmitNode == c.Node)
+            {
+                lostTransmit = true;
+                _transmitNode = byUser && _connections.Count == 1 ? _connections[0].Node : null;
+            }
+            remaining = _connections.Count;
+        }
+
+        ApplyTransmitFlags();
+        UpdateActive();
+        if (lostTransmit && remaining > 0)
+        {
+            string? now = TransmitNode;
+            Notice?.Invoke(now != null
+                ? $"Node {c.Node} ended; transmitting to node {now}."
+                : $"Node {c.Node} ended. Choose a node to transmit to.");
+        }
+        ConnectionsChanged?.Invoke();
+    }
+
+    /// <summary>Publishes "a link is wanted" (and which nodes) from the current connections.</summary>
+    private void UpdateActive()
+    {
+        string[] nodes;
+        lock (_connLock) nodes = _connections.Where(c => c.Wanted).Select(c => c.Node).ToArray();
+        SetActive(nodes.Length > 0, nodes.Length > 0 ? string.Join(", ", nodes) : null);
+    }
+
+    private void OnLinkState(NodeConnection c, NodeLink link, Iax2SessionState state)
+    {
+        ConnectionsChanged?.Invoke();
+
         // Handle off the receive thread: disposing a session from inside its own event handler would
         // wait on itself.
-        if (state == Iax2SessionState.Disconnected && ReferenceEquals(Link, link))
+        if (state == Iax2SessionState.Disconnected && ReferenceEquals(c.Link, link))
         {
-            _ = Task.Run(() => HandleLinkEndedAsync(link));
+            _ = Task.Run(() => HandleLinkEndedAsync(c, link));
         }
     }
 
-    private async Task HandleLinkEndedAsync(NodeLink link)
+    private async Task HandleLinkEndedAsync(NodeConnection c, NodeLink link)
     {
         try
         {
-            if (!ReferenceEquals(Link, link)) return;
-            if (IsReconnectRunning) return;           // the reconnect loop owns the links it creates
+            if (!ReferenceEquals(c.Link, link)) return;
+            if (IsReconnectRunning(c)) return;           // the reconnect loop owns the links it creates
 
             var reason = link.DisconnectReason;
             string node = link.Target.NodeNumber;
@@ -381,43 +581,43 @@ public sealed class NodeRuntime : IAsyncDisposable
                                && link.WasConnected
                                && link.ConnectedDuration < _policy.EarlyHangupWindow;
 
-            if (earlyHangup && _desiredTarget != null && Config.Settings.AutoReconnect)
+            if (earlyHangup && c.Wanted && Config.Settings.AutoReconnect)
             {
-                int n = Interlocked.Increment(ref _earlyHangups);
+                int n = Interlocked.Increment(ref c.EarlyHangups);
                 if (n <= _policy.EarlyHangupMaxRetries)
                 {
                     var delay = BackoffDelay(n);
-                    await EndLinkAsync(link, transient: true);
+                    await EndLinkAsync(c, link, transient: true);
                     Notice?.Invoke(
                         $"Node {node} hung up straight after accepting; it may not know this node yet. " +
                         $"Retrying in {Math.Ceiling(delay.TotalSeconds):0} s (retry {n} of {_policy.EarlyHangupMaxRetries}).");
-                    StartReconnect(immediate: false, initialDelay: delay, attemptOffset: n - 1);
+                    StartReconnect(c, immediate: false, initialDelay: delay, attemptOffset: n - 1);
                     return;
                 }
 
                 ErrorOccurred?.Invoke(
                     $"Node {node} keeps hanging up right after accepting the link. It probably does not " +
                     "recognise this node yet (its node list refreshes every few minutes after registering). Try again shortly.");
-                Volatile.Write(ref _earlyHangups, 0);
-                _desiredTarget = null;
-                await EndLinkAsync(link, transient: false);
+                Volatile.Write(ref c.EarlyHangups, 0);
+                c.Wanted = false;
+                await EndLinkAsync(c, link, transient: false);
                 return;
             }
 
-            if (link.WasConnected && !earlyHangup) Volatile.Write(ref _earlyHangups, 0);   // it really was up
+            if (link.WasConnected && !earlyHangup) Volatile.Write(ref c.EarlyHangups, 0);   // it really was up
 
             // Only a link that was up and then died is worth re-dialling. A call that was never answered,
             // or that the other side ended on purpose, is not.
-            bool recoverable = _desiredTarget != null
+            bool recoverable = c.Wanted
                                && Config.Settings.AutoReconnect
                                && link.WasConnected
                                && reason == Iax2DisconnectReason.LinkLost;
 
             if (recoverable)
             {
-                await EndLinkAsync(link, transient: true);
+                await EndLinkAsync(c, link, transient: true);
                 Notice?.Invoke($"Link to node {node} lost{up} (no reply to keep-alives).");
-                StartReconnect(immediate: false);
+                StartReconnect(c, immediate: false);
                 return;
             }
 
@@ -440,8 +640,8 @@ public sealed class NodeRuntime : IAsyncDisposable
                     break;
             }
 
-            _desiredTarget = null;
-            await EndLinkAsync(link, transient: false);
+            c.Wanted = false;
+            await EndLinkAsync(c, link, transient: false);
         }
         catch (Exception ex)
         {
@@ -449,10 +649,11 @@ public sealed class NodeRuntime : IAsyncDisposable
         }
     }
 
-    /// <param name="transient">True when another attempt follows, so the "link wanted" state is kept.</param>
-    private async Task EndLinkAsync(NodeLink link, bool transient)
+    /// <param name="transient">True when another attempt follows, so the connection is kept.</param>
+    /// <param name="byUser">The user hung up (see <see cref="RemoveConnection"/>).</param>
+    private async Task EndLinkAsync(NodeConnection c, NodeLink link, bool transient, bool byUser = false)
     {
-        if (!ReferenceEquals(Interlocked.CompareExchange(ref _link, null, link), link)) return;
+        if (!c.TryClearLink(link)) return;
 
         try
         {
@@ -463,8 +664,9 @@ public sealed class NodeRuntime : IAsyncDisposable
             ErrorOccurred?.Invoke($"Error while closing link: {ex.Message}");
         }
 
-        LinkChanged?.Invoke(null);
-        if (!transient) SetActive(false, null);
+        LinkRemoved?.Invoke(link);
+        ConnectionsChanged?.Invoke();
+        if (!transient) RemoveConnection(c, byUser);
     }
 
     private void SetActive(bool active, string? node)
@@ -480,12 +682,12 @@ public sealed class NodeRuntime : IAsyncDisposable
     }
 
     // =====================================================================================
-    // Auto-reconnect
+    // Auto-reconnect (per node)
     // =====================================================================================
 
-    private bool IsReconnectRunning
+    private static bool IsReconnectRunning(NodeConnection c)
     {
-        get { lock (_reconnectLock) return _reconnectCts != null; }
+        lock (c.ReconnectLock) return c.ReconnectCts != null;
     }
 
     /// <summary>Delay before retry number <paramref name="n"/> (1-based): InitialDelay, doubling, capped at MaxDelay.</summary>
@@ -495,27 +697,26 @@ public sealed class NodeRuntime : IAsyncDisposable
         return TimeSpan.FromTicks((long)Math.Min(ticks, _policy.MaxDelay.Ticks));
     }
 
-    private void StartReconnect(bool immediate, TimeSpan? initialDelay = null, int attemptOffset = 0)
+    private void StartReconnect(NodeConnection c, bool immediate, TimeSpan? initialDelay = null, int attemptOffset = 0)
     {
-        lock (_reconnectLock)
+        lock (c.ReconnectLock)
         {
-            if (_disposed || _reconnectCts != null || _desiredTarget == null) return;
+            if (_disposed || c.ReconnectCts != null || !c.Wanted) return;
 
             var cts = new CancellationTokenSource();
-            _reconnectCts = cts;
-            string target = _desiredTarget;
-            _reconnectTask = Task.Run(() => ReconnectLoopAsync(target, immediate, cts, initialDelay, attemptOffset));
+            c.ReconnectCts = cts;
+            c.ReconnectTask = Task.Run(() => ReconnectLoopAsync(c, immediate, cts, initialDelay, attemptOffset));
         }
     }
 
-    private async Task StopReconnectAsync()
+    private static async Task StopReconnectAsync(NodeConnection c)
     {
         CancellationTokenSource? cts;
         Task task;
-        lock (_reconnectLock)
+        lock (c.ReconnectLock)
         {
-            cts = _reconnectCts;
-            task = _reconnectTask;
+            cts = c.ReconnectCts;
+            task = c.ReconnectTask;
         }
         if (cts == null) return;
 
@@ -530,16 +731,29 @@ public sealed class NodeRuntime : IAsyncDisposable
         }
     }
 
-    private void PublishReconnect(ReconnectStatus status)
+    /// <summary>Records one node's recovery status and republishes the combined <see cref="Reconnect"/>.</summary>
+    private void PublishReconnect(NodeConnection c, ReconnectStatus status)
     {
-        Reconnect = status;
-        ReconnectChanged?.Invoke(status);
+        c.Reconnect = status;
+
+        ReconnectStatus combined;
+        lock (_connLock)
+        {
+            // The first node that is recovering speaks for all; per-node status is on each NodeConnection.
+            var active = _connections.Select(x => x.Reconnect).Where(s => s.Active).Cast<ReconnectStatus?>().FirstOrDefault();
+            combined = active ?? ReconnectStatus.Inactive;
+        }
+
+        Reconnect = combined;
+        ReconnectChanged?.Invoke(combined);
+        ConnectionsChanged?.Invoke();
     }
 
     private async Task ReconnectLoopAsync(
-        string target, bool immediate, CancellationTokenSource cts, TimeSpan? initialDelay = null, int attemptOffset = 0)
+        NodeConnection c, bool immediate, CancellationTokenSource cts, TimeSpan? initialDelay = null, int attemptOffset = 0)
     {
         var ct = cts.Token;
+        string target = c.Node;
         int attempt = attemptOffset;
         TimeSpan delay = immediate ? TimeSpan.Zero : initialDelay ?? _policy.InitialDelay;
         bool recovered = false;
@@ -552,21 +766,21 @@ public sealed class NodeRuntime : IAsyncDisposable
 
                 if (delay > TimeSpan.Zero)
                 {
-                    PublishReconnect(new(true, attempt + 1, delay,
+                    PublishReconnect(c, new(true, attempt + 1, delay,
                         $"Reconnecting to node {target} in {Math.Ceiling(delay.TotalSeconds):0} s (attempt {attempt + 1})."));
                     await WaitAsync(delay, ct);      // a network change cuts the wait short
                 }
 
                 while (_monitor != null && !_monitor.IsAvailable)
                 {
-                    PublishReconnect(new(true, attempt + 1, null, "Waiting for a network connection…"));
+                    PublishReconnect(c, new(true, attempt + 1, null, "Waiting for a network connection…"));
                     await WaitAsync(TimeSpan.FromSeconds(5), ct);
                 }
 
                 attempt++;
-                PublishReconnect(new(true, attempt, null, $"Reconnecting to node {target} (attempt {attempt})…"));
+                PublishReconnect(c, new(true, attempt, null, $"Reconnecting to node {target} (attempt {attempt})…"));
 
-                if (await TryReconnectOnceAsync(target, ct))
+                if (await TryReconnectOnceAsync(c, ct))
                 {
                     Notice?.Invoke(attempt == 1
                         ? $"Reconnected to node {target}."
@@ -578,8 +792,7 @@ public sealed class NodeRuntime : IAsyncDisposable
                 if (_policy.MaxAttempts is { } max && attempt >= max)
                 {
                     ErrorOccurred?.Invoke($"Gave up reconnecting to node {target} after {attempt} attempts.");
-                    _desiredTarget = null;
-                    SetActive(false, null);
+                    RemoveConnection(c, byUser: false);
                     return;
                 }
 
@@ -594,31 +807,31 @@ public sealed class NodeRuntime : IAsyncDisposable
         }
         finally
         {
-            lock (_reconnectLock)
+            lock (c.ReconnectLock)
             {
-                if (ReferenceEquals(_reconnectCts, cts)) _reconnectCts = null;
+                if (ReferenceEquals(c.ReconnectCts, cts)) c.ReconnectCts = null;
             }
-            PublishReconnect(ReconnectStatus.Inactive);
+            PublishReconnect(c, ReconnectStatus.Inactive);
 
             // The recovered link may have dropped while we still owned it; make sure that is noticed.
-            if (recovered && Link is { } live && live.Session.State == Iax2SessionState.Disconnected)
+            if (recovered && c.Link is { } live && live.Session.State == Iax2SessionState.Disconnected)
             {
-                _ = Task.Run(() => HandleLinkEndedAsync(live));
+                _ = Task.Run(() => HandleLinkEndedAsync(c, live));
             }
         }
     }
 
     /// <summary>One dial attempt. True only when the call reaches Connected within the policy's timeout.</summary>
-    private async Task<bool> TryReconnectOnceAsync(string target, CancellationToken ct)
+    private async Task<bool> TryReconnectOnceAsync(NodeConnection c, CancellationToken ct)
     {
         NodeInfo? info;
         try
         {
-            info = await DialAsync(target, ct);
+            info = await DialAsync(c, ct);
         }
         catch (OperationCanceledException)
         {
-            if (Link is { } attemptLink) await EndLinkAsync(attemptLink, transient: true);
+            if (c.Link is { } attemptLink) await EndLinkAsync(c, attemptLink, transient: true);
             throw;
         }
         catch (Exception ex)
@@ -629,11 +842,11 @@ public sealed class NodeRuntime : IAsyncDisposable
 
         if (info == null)
         {
-            ErrorOccurred?.Invoke($"Could not resolve node {target}; will retry.");
+            ErrorOccurred?.Invoke($"Could not resolve node {c.Node}; will retry.");
             return false;
         }
 
-        var link = Link;
+        var link = c.Link;
         if (link == null) return false;
 
         bool connected;
@@ -643,13 +856,13 @@ public sealed class NodeRuntime : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            await EndLinkAsync(link, transient: true);
+            await EndLinkAsync(c, link, transient: true);
             throw;
         }
 
         if (!connected)
         {
-            await EndLinkAsync(link, transient: true);
+            await EndLinkAsync(c, link, transient: true);
             return false;
         }
         return true;
@@ -733,11 +946,13 @@ public sealed class NodeRuntime : IAsyncDisposable
         Task<bool> registration = available ? RefreshRegistrationAsync() : Task.FromResult(false);
 
         // 2. A call is bound to the old source address, so it cannot continue: dial again from the new one.
-        if (_desiredTarget == null || !Config.Settings.AutoReconnect) return;
-        if (IsReconnectRunning) return;             // already retrying; it was woken by the signal
+        //    Every established link is affected, so each node recovers on its own.
+        if (!Config.Settings.AutoReconnect) return;
 
-        var link = Link;
-        if (link == null || !link.WasConnected) return;
+        var affected = SnapshotConnections()
+            .Where(c => c.Wanted && !IsReconnectRunning(c) && c.Link is { WasConnected: true })
+            .ToArray();
+        if (affected.Length == 0) return;
 
         if (available)
         {
@@ -748,8 +963,13 @@ public sealed class NodeRuntime : IAsyncDisposable
             ? "Network changed; re-establishing the link from the new address."
             : "Network connection lost; will reconnect when it returns.");
 
-        await EndLinkAsync(link, transient: true);
-        StartReconnect(immediate: available);
+        foreach (var c in affected)
+        {
+            var link = c.Link;
+            if (link == null) continue;
+            await EndLinkAsync(c, link, transient: true);
+            StartReconnect(c, immediate: available);
+        }
     }
 
     // =====================================================================================

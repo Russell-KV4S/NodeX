@@ -169,7 +169,7 @@ public partial class MainView : UserControl
     private void ApplyBodyLayout(bool narrow, bool dock)
     {
         // Take every card out of whatever currently holds it, then place it for the new layout.
-        foreach (var card in new Control[] { HeroCard, RxTxRow, MetersCard, PttCard, ConnectCard, DtmfCard, LogCard })
+        foreach (var card in new Control[] { HeroCard, LinksCard, RxTxRow, MetersCard, PttCard, ConnectCard, DtmfCard, LogCard })
         {
             Detach(card);
         }
@@ -184,7 +184,7 @@ public partial class MainView : UserControl
             Grid.SetColumn(RightColumn, 0);     // the grid has a single column now; a stale index crashes measure
 
             // Order for operating: who am I linked to, connect, activity, meters, keypad, log.
-            foreach (var card in new Control[] { HeroCard, ConnectCard, RxTxRow, MetersCard, DtmfCard, LogCard })
+            foreach (var card in new Control[] { HeroCard, LinksCard, ConnectCard, RxTxRow, MetersCard, DtmfCard, LogCard })
             {
                 LeftColumn.Children.Add(card);
             }
@@ -207,7 +207,7 @@ public partial class MainView : UserControl
             {
                 LeftColumn.Children.Add(card);
             }
-            foreach (var card in new Control[] { ConnectCard, DtmfCard, LogCard })
+            foreach (var card in new Control[] { LinksCard, ConnectCard, DtmfCard, LogCard })
             {
                 RightColumn.Children.Add(card);
             }

@@ -77,6 +77,27 @@ public sealed class NodePttController : IAsyncDisposable, IDisposable
 
     private readonly TransmitPolicy? _policy;
 
+    private volatile bool _transmitEnabled = true;
+
+    /// <summary>
+    /// Whether this link is the one the user transmits to. With several nodes linked at once only one link may
+    /// key; the others stay listen-only. Defaults to true (the single-link case). Clearing it releases an active key.
+    /// </summary>
+    public bool TransmitEnabled
+    {
+        get => _transmitEnabled;
+        set
+        {
+            if (_transmitEnabled == value) return;
+            _transmitEnabled = value;
+            if (!value && IsPttActive)
+                _ = Task.Run(() => SetPttStateAsync(false, PttSource.External));
+        }
+    }
+
+    /// <summary>Shown when keying is refused because <see cref="TransmitEnabled"/> is false.</summary>
+    public string ListenOnlyReason { get; set; } = "This link is listen-only. Choose it as the transmit node to talk on it.";
+
     private void OnPolicyChanged()
     {
         if (_policy is { CanTransmit: false } && IsPttActive)
@@ -155,6 +176,12 @@ public sealed class NodePttController : IAsyncDisposable, IDisposable
     public async Task SetPttStateAsync(bool key, PttSource source)
     {
         bool stateChanged = false;
+
+        if (key && !_transmitEnabled)
+        {
+            WarningLogged?.Invoke($"Not transmitting. {ListenOnlyReason}");
+            return;
+        }
 
         if (key && _policy is { CanTransmit: false })
         {

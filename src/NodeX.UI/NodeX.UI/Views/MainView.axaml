@@ -104,6 +104,18 @@
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
+        <!-- Linked-node rows: the transmit node gets a red left edge and a text tag (never colour alone) -->
+        <Style Selector="Border.linkRow">
+            <Setter Property="Background" Value="#0D1117" />
+            <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1,1,1,1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="12" />
+        </Style>
+        <Style Selector="Border.linkRow.tx">
+            <Setter Property="BorderBrush" Value="{StaticResource TxRedBrush}" />
+            <Setter Property="BorderThickness" Value="4,1,1,1" />
+        </Style>
         <Style Selector="Button.chip">
             <Setter Property="Background" Value="#1F2937" />
             <Setter Property="CornerRadius" Value="4" />
@@ -324,7 +336,7 @@
                                     Width="260" Height="140" Padding="0"
                                     CornerRadius="20" BorderThickness="0" Background="Transparent"
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
-                                    IsEnabled="{Binding CanTransmit}"
+                                    IsEnabled="{Binding CanKey}"
                                     Command="{Binding TogglePttClickCommand}">
                                 <Button.Resources>
                                     <!-- Neutralise the theme's own hover/press fills; the visible face is PttFace -->
@@ -364,6 +376,14 @@
                                 </StackPanel>
                             </Border>
 
+                            <!-- Nodes are linked but none is chosen for transmit: say so (the key stays inert) -->
+                            <Border x:Name="ChooseTxBanner" IsVisible="{Binding NeedsTransmitNode}"
+                                    Background="#2B2110" BorderBrush="{StaticResource AmberAccentBrush}" BorderThickness="1"
+                                    CornerRadius="8" Padding="12,8">
+                                <TextBlock Text="Pick which linked node to transmit to." TextWrapping="Wrap" FontSize="12"
+                                           Foreground="#FCD34D" AutomationProperties.LiveSetting="Polite" />
+                            </Border>
+
                             <StackPanel x:Name="PttInfo" Spacing="8" Width="300">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock Grid.Column="0" Text="Time-Out Timer (TOT)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
@@ -392,10 +412,103 @@
                 <!-- RIGHT COLUMN (wide layout): connect, DTMF, log -->
                 <StackPanel x:Name="RightColumn" Grid.Column="1" Spacing="16">
 
+                    <!-- LINKED NODES: up to 4 at once; only one is the transmit node, the rest are listen-only -->
+                    <Border x:Name="LinksCard" Classes="card" IsVisible="{Binding HasLinks}">
+                        <StackPanel Spacing="10">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Linked nodes" FontWeight="Bold" FontSize="14"
+                                           Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                <Border Grid.Column="1" CornerRadius="10" Padding="8,3" Background="#1F2937">
+                                    <TextBlock Text="{Binding LinkCountText}" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{StaticResource CyanAccentBrush}" />
+                                </Border>
+                            </Grid>
+                            <TextBlock Text="Choose one node to transmit to. All other links are listen-only."
+                                       FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" />
+
+                            <ItemsControl ItemsSource="{Binding LinkItems}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Spacing="8" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:LinkItemViewModel">
+                                        <Border Classes="linkRow" Classes.tx="{Binding IsTransmitTarget}">
+                                            <StackPanel Spacing="8">
+                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                                    <StackPanel Grid.Column="0">
+                                                        <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="Bold"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                                                        <TextBlock Text="{Binding Details}" FontSize="11" TextTrimming="CharacterEllipsis"
+                                                                   IsVisible="{Binding HasDetails}"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,0">
+                                                            <TextBlock Text="{Binding StatusText}" FontSize="11" FontWeight="Bold"
+                                                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                                                            <TextBlock Text="{Binding RttText}" FontSize="11"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                    <!-- Text pill, so "audio is arriving from this node" is not colour-only -->
+                                                    <Border Grid.Column="1" IsVisible="{Binding IsReceiving}" VerticalAlignment="Top"
+                                                            CornerRadius="12" Padding="8,4" Background="#1A10B981"
+                                                            BorderBrush="{StaticResource RxGreenBrush}" BorderThickness="1">
+                                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                                            <Ellipse Width="8" Height="8" Fill="{StaticResource RxGreenBrush}" VerticalAlignment="Center" />
+                                                            <TextBlock Text="Receiving" FontSize="11" FontWeight="Bold"
+                                                                       AutomationProperties.LiveSetting="Polite"
+                                                                       Foreground="{StaticResource RxGreenBrush}" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </Grid>
+
+                                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                                    <Border Grid.Column="0" IsVisible="{Binding IsTransmitTarget}" VerticalAlignment="Center"
+                                                            CornerRadius="6" Padding="10,6" Background="{StaticResource TxRedBrush}">
+                                                        <TextBlock Text="TRANSMIT HERE" FontSize="11" FontWeight="Black" Foreground="#FFFFFF" />
+                                                    </Border>
+                                                    <Border Grid.Column="0" IsVisible="{Binding CanSelectTransmit}" VerticalAlignment="Center"
+                                                            CornerRadius="6" Padding="10,6" Background="#1F2937">
+                                                        <TextBlock Text="Listen only" FontSize="11" FontWeight="SemiBold"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    </Border>
+                                                    <Button Grid.Column="2" Content="Transmit here" Command="{Binding SelectTransmitCommand}"
+                                                            IsVisible="{Binding CanSelectTransmit}"
+                                                            AutomationProperties.Name="{Binding SelectAutomationName}"
+                                                            Background="#21262D" CornerRadius="6" Padding="12,6" FontSize="12" FontWeight="SemiBold" />
+                                                </Grid>
+
+                                                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                                    <Button Grid.Column="0" Content="{Binding MuteButtonText}" Command="{Binding ToggleMuteCommand}"
+                                                            AutomationProperties.Name="{Binding MuteAutomationName}"
+                                                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                                            Background="#21262D" CornerRadius="6" Padding="10,6" FontSize="12" />
+                                                    <Button Grid.Column="1" Content="Disconnect" Command="{Binding DisconnectCommand}"
+                                                            AutomationProperties.Name="{Binding DisconnectAutomationName}"
+                                                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                                            Background="{StaticResource DangerButtonBrush}" Foreground="#FFFFFF"
+                                                            CornerRadius="6" Padding="10,6" FontSize="12" FontWeight="SemiBold" />
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <TextBlock Text="Up to 4 nodes at once. Received audio from every node is mixed; your voice goes only to the transmit node."
+                                       FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}" />
+                        </StackPanel>
+                    </Border>
+
                     <!-- CONNECT / DIAL CONTROL -->
                     <Border x:Name="ConnectCard" Classes="card">
                         <StackPanel Spacing="12">
                             <TextBlock Text="Connect to Node" FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}" />
+                            <TextBlock Text="Connect adds another link; the nodes you are already linked to stay up."
+                                       IsVisible="{Binding HasLinks}" FontSize="11" TextWrapping="Wrap"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
 
                             <Grid x:Name="ConnectGrid" ColumnDefinitions="*,Auto" RowDefinitions="Auto">
                                 <TextBox x:Name="TargetBox" AutomationProperties.Name="Node number to connect to" Grid.Column="0" Text="{Binding TargetNodeInput}"
@@ -415,10 +528,9 @@
                                             IsEnabled="{Binding CanDisconnect}"
                                             Background="{StaticResource DangerButtonBrush}"
                                             Foreground="#FFFFFF" FontWeight="Bold"
+                                            Content="{Binding DisconnectAllText}"
                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                            CornerRadius="6" Padding="14,8">
-                                        Disconnect
-                                    </Button>
+                                            CornerRadius="6" Padding="14,8" />
                                 </Grid>
                             </Grid>
 

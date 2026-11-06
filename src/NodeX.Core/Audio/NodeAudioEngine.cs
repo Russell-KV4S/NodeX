@@ -88,6 +88,19 @@ public sealed class NodeAudioEngine : IAsyncDisposable
     public JitterBuffer JitterBuffer { get; }
     public bool IsRunning => _cts != null;
 
+    /// <summary>
+    /// When true, received audio is still decoded, metered and reported (<see cref="RemoteAudioActiveChanged"/>) but
+    /// not played: silence goes to the device instead (only when <see cref="NodeAudioEngineOptions.KeepAudioPipelineAlive"/>
+    /// is on). Used to silence one link while several are connected.
+    /// </summary>
+    public bool Muted
+    {
+        get => Volatile.Read(ref _muted);
+        set => Volatile.Write(ref _muted, value);
+    }
+
+    private bool _muted;
+
     /// <summary>Smoothed microphone level (updated every 20 ms while capturing).</summary>
     public AudioLevels InputLevel => _inputMeter.Current;
 
@@ -329,6 +342,13 @@ public sealed class NodeAudioEngine : IAsyncDisposable
         else if (JitterBuffer.IsPriming) SetRemoteAudioActive(false);
 
         OutputLevelChanged?.Invoke(_outputMeter.Process(frame));
+
+        if (Muted)
+        {
+            // Heard-but-silenced: the meter above still moves so the user can see the link is active.
+            if (!_options.KeepAudioPipelineAlive) return;
+            Array.Clear(frame);
+        }
 
         if (!hasAudio && !_options.KeepAudioPipelineAlive) return;
         if (_device.BufferedPlayback > _options.MaxDeviceBacklog) return; // device clock slower than ours

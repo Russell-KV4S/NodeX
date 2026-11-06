@@ -237,7 +237,8 @@ public class NodeRuntimeTests : IDisposable
         await config.SaveAsync(Station, "pw");
         await rt.StartAsync();
         var changes = new List<bool>();      // true = link created, false = link ended
-        rt.LinkChanged += l => { lock (changes) changes.Add(l != null); };
+        rt.LinkAdded += _ => { lock (changes) changes.Add(true); };
+        rt.LinkRemoved += _ => { lock (changes) changes.Add(false); };
 
         await rt.ConnectAsync("2000");
         await _remote.AcceptCallAsync();
@@ -260,7 +261,7 @@ public class NodeRuntimeTests : IDisposable
         await config.SaveAsync(Station, "pw");
         await rt.StartAsync();
         var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        rt.LinkChanged += l => { if (l == null) ended.TrySetResult(); };
+        rt.LinkRemoved += _ => ended.TrySetResult();
 
         await rt.ConnectAsync("2000");
         await _remote.AcceptCallAsync();

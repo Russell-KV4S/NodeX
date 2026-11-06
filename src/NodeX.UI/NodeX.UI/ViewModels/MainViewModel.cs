@@ -32,11 +32,21 @@ public partial class MainViewModel : ViewModelBase
     private const string NotSet = "not set";
 
     private readonly NodeRuntime _runtime;
-    private NodeLink? _link;
     private DispatcherTimer? _timer;
     private volatile float _micMeter;   // written on audio threads, applied by the UI timer
-    private volatile float _rxMeter;
     private DateTime? _backgroundedAt;
+
+    /// <summary>Per-link event hookups and receive meter; touched on the UI thread only.</summary>
+    private readonly Dictionary<NodeLink, LinkWatch> _watches = [];
+
+    private sealed class LinkWatch
+    {
+        public volatile float RxLevel;   // written on that link's playout thread
+        public Action Detach = static () => { };
+    }
+
+    /// <summary>The link that transmits (the runtime's transmit link), or null.</summary>
+    private NodeLink? TxLink => _runtime.Link;
 
     // --- Station & Header Properties ---
     [ObservableProperty]
@@ -173,17 +183,28 @@ public partial class MainViewModel : ViewModelBase
     public partial string ConnectedNodeDetails { get; set; } = "Enter a node number to connect";
 
     [ObservableProperty]
-    public partial Iax2SessionState SessionState { get; set; } = Iax2SessionState.Disconnected;
-
-    [ObservableProperty]
     public partial string ConnectionStateBadgeText { get; set; } = "DISCONNECTED";
 
     [ObservableProperty]
     public partial string LatencyText { get; set; } = "-- ms";
 
-    public bool IsConnected => SessionState == Iax2SessionState.Connected;
-    public bool IsConnecting => SessionState is Iax2SessionState.Connecting or Iax2SessionState.CallTokenHandshake
-                                or Iax2SessionState.Authenticating;
+    // --- Linked nodes: up to NodeRuntime.MaxLinks at once, one of them the transmit node ---
+
+    /// <summary>One row per linked node, in the order they were added.</summary>
+    public ObservableCollection<LinkItemViewModel> LinkItems { get; } = [];
+
+    public bool HasLinks => LinkItems.Count > 0;
+    public bool HasMultipleLinks => LinkItems.Count > 1;
+
+    /// <summary>"2 / 4 linked".</summary>
+    public string LinkCountText => $"{LinkItems.Count} / {NodeRuntime.MaxLinks} linked";
+
+    /// <summary>"Disconnect" for one link, "Disconnect all" for several.</summary>
+    public string DisconnectAllText => HasMultipleLinks ? "Disconnect all" : "Disconnect";
+
+    /// <summary>The transmit node's link is up.</summary>
+    public bool IsConnected => TxLink?.Session.State == Iax2SessionState.Connected;
+
     /// <summary>True while the runtime is automatically re-dialling a lost link.</summary>
     [ObservableProperty]
     public partial bool IsReconnecting { get; set; }
@@ -194,15 +215,29 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanDisconnect));
     }
 
-    public bool CanConnect => SessionState == Iax2SessionState.Disconnected && !IsReconnecting;
-    public bool CanDisconnect => SessionState != Iax2SessionState.Disconnected || IsReconnecting;
+    /// <summary>Connect adds a link, so it stays available until <see cref="NodeRuntime.MaxLinks"/> are linked.</summary>
+    public bool CanConnect => LinkItems.Count < NodeRuntime.MaxLinks;
+    public bool CanDisconnect => HasLinks || IsReconnecting;
 
     // --- Transmit permission: listen-only or microphone denied. Listening always works. ---
     public bool CanTransmit => _runtime.Transmit.CanTransmit;
     public bool IsTransmitBlocked => !CanTransmit;
     public string TransmitBlockedText => _runtime.Transmit.Reason;
-    public string PttHeadline => CanTransmit ? "PUSH TO TALK" : "LISTEN ONLY";
-    public string PttCaption => _runtime.Transmit.Block == TransmitBlock.MicrophoneDenied ? "MIC OFF" : CanTransmit ? "MIC" : "NO TX";
+
+    /// <summary>Several nodes are linked and none has been chosen to transmit to (so the PTT key stays inert).</summary>
+    public bool NeedsTransmitNode => CanTransmit && HasLinks && _runtime.TransmitNode == null;
+
+    /// <summary>The PTT key works: transmitting is allowed and there is a transmit node (or nothing linked yet).</summary>
+    public bool CanKey => CanTransmit && !NeedsTransmitNode;
+
+    public string PttHeadline => !CanTransmit ? "LISTEN ONLY" : NeedsTransmitNode ? "CHOOSE TX NODE" : "PUSH TO TALK";
+
+    public string PttCaption =>
+        _runtime.Transmit.Block == TransmitBlock.MicrophoneDenied ? "MIC OFF"
+        : !CanTransmit ? "NO TX"
+        : NeedsTransmitNode ? "NO TX NODE"
+        : _runtime.TransmitNode is { } tx && HasMultipleLinks ? $"TO NODE {tx}"
+        : "MIC";
 
     /// <summary>True when the OS denied the microphone and the platform can show its permission prompt.</summary>
     public bool CanFixMicrophone =>
@@ -214,6 +249,8 @@ public partial class MainViewModel : ViewModelBase
     private void RefreshTransmit()
     {
         OnPropertyChanged(nameof(CanTransmit));
+        OnPropertyChanged(nameof(CanKey));
+        OnPropertyChanged(nameof(NeedsTransmitNode));
         OnPropertyChanged(nameof(IsTransmitBlocked));
         OnPropertyChanged(nameof(TransmitBlockedText));
         OnPropertyChanged(nameof(PttHeadline));
@@ -350,7 +387,7 @@ public partial class MainViewModel : ViewModelBase
     public partial string TotCounterText { get; set; } = "00:00 / 03:00";
 
     private TimeSpan TotLimit =>
-        _link?.Ptt.TimeOutTimerLimit ?? TimeSpan.FromSeconds(_runtime.Config.Settings.TimeOutTimerSeconds);
+        TxLink?.Ptt.TimeOutTimerLimit ?? TimeSpan.FromSeconds(_runtime.Config.Settings.TimeOutTimerSeconds);
 
     private static string FormatTot(TimeSpan elapsed, TimeSpan limit) =>
         $"{(int)elapsed.TotalMinutes:D2}:{elapsed.Seconds:D2} / {(int)limit.TotalMinutes:D2}:{limit.Seconds:D2}";
@@ -406,7 +443,9 @@ public partial class MainViewModel : ViewModelBase
         Settings.Cancelled += () => IsSettingsOpen = false;
 
         runtime.RegistrationChanged += () => OnUi(ApplyRegistration);
-        runtime.LinkChanged += link => OnUi(() => AttachLink(link));
+        runtime.LinkAdded += link => OnUi(() => AttachLink(link));
+        runtime.LinkRemoved += link => OnUi(() => DetachLink(link));
+        runtime.ConnectionsChanged += () => OnUi(RefreshLinks);
         runtime.ErrorOccurred += msg => LogActivity($"[ERROR] {msg}");
         runtime.Notice += msg => LogActivity(msg);
         runtime.ReconnectChanged += status => OnUi(() => ApplyReconnect(status));
@@ -494,7 +533,7 @@ public partial class MainViewModel : ViewModelBase
     private async Task ConnectToAsync(string node)
     {
         TargetNodeInput = node;
-        if (IsConnected && ConnectedNodeDisplay == $"Node {node}")
+        if (LinkItems.Any(l => l.Node == node && l.IsConnected))
         {
             LogActivity($"Already connected to node {node}.");
             return;
@@ -529,10 +568,6 @@ public partial class MainViewModel : ViewModelBase
                 return;
             }
 
-            ConnectedNodeDisplay = $"Node {info.NodeNumber}";
-            ConnectedNodeDetails = string.IsNullOrWhiteSpace(info.Callsign)
-                ? $"{info.Description} ({info.EndPoint.Address})"
-                : $"{info.Callsign} • {info.Description} ({info.EndPoint.Address})";
             LogActivity($"Connecting to {info.NodeNumber} at {info.EndPoint}...");
         }
         catch (Exception ex)
@@ -541,12 +576,13 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Hangs up every linked node.</summary>
     [RelayCommand]
     public async Task DisconnectNodeAsync()
     {
         try
         {
-            LogActivity("Disconnecting from remote node...");
+            LogActivity(HasMultipleLinks ? "Disconnecting from all nodes..." : "Disconnecting from remote node...");
             await _runtime.DisconnectAsync();
         }
         catch (Exception ex)
@@ -555,28 +591,50 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    private async void DisconnectOne(string node)
+    {
+        try
+        {
+            LogActivity($"Disconnecting from node {node}...");
+            await _runtime.DisconnectAsync(node);
+        }
+        catch (Exception ex)
+        {
+            LogActivity($"[ERROR] Disconnect error: {ex.Message}");
+        }
+    }
+
+    private void SelectTransmitNode(string node) => _runtime.SetTransmitNode(node);
+
+    private void ToggleMuteNode(string node)
+    {
+        bool muted = LinkItems.FirstOrDefault(l => l.Node == node)?.IsMuted ?? false;
+        _runtime.SetMuted(node, !muted);
+        LogActivity(muted ? $"Node {node} audio on." : $"Node {node} muted (still linked).");
+    }
+
     [RelayCommand]
     public async Task PttDownAsync()
     {
-        if (!IsToggleMode && _link != null) await _link.Ptt.HandleUiPttAsync(true);
+        if (!IsToggleMode && TxLink is { } link) await link.Ptt.HandleUiPttAsync(true);
     }
 
     [RelayCommand]
     public async Task PttUpAsync()
     {
-        if (!IsToggleMode && _link != null) await _link.Ptt.HandleUiPttAsync(false);
+        if (!IsToggleMode && TxLink is { } link) await link.Ptt.HandleUiPttAsync(false);
     }
 
     [RelayCommand]
     public async Task TogglePttClickAsync()
     {
-        if (IsToggleMode && _link != null) await _link.Ptt.HandleUiPttAsync(true);
+        if (IsToggleMode && TxLink is { } link) await link.Ptt.HandleUiPttAsync(true);
     }
 
     /// <summary>A mapped phone button went down or up (Android volume key, headset button...).</summary>
     private void OnHardwarePtt(bool pressed)
     {
-        var link = _link;
+        var link = TxLink;
         if (link == null) return;
         _ = link.Ptt.HandleButtonAsync(pressed, PttSource.MediaKey);
     }
@@ -585,7 +643,8 @@ public partial class MainViewModel : ViewModelBase
     public void TogglePttMode()
     {
         IsToggleMode = !IsToggleMode;
-        if (_link != null) _link.Ptt.Mode = IsToggleMode ? PttMode.Toggle : PttMode.Momentary;
+        foreach (var link in _runtime.Links)
+            link.Ptt.Mode = IsToggleMode ? PttMode.Toggle : PttMode.Momentary;
         PttModeLabel = IsToggleMode ? "Toggle (Click)" : "Momentary (Hold)";
         LogActivity($"PTT Mode switched to: {PttModeLabel}");
     }
@@ -621,14 +680,17 @@ public partial class MainViewModel : ViewModelBase
 
     private async Task SendDtmfSequenceAsync(string sequence)
     {
-        var link = _link;
+        // DTMF commands act on the node you are talking to, so they go to the transmit node only.
+        var link = TxLink;
         if (link == null || !IsConnected)
         {
-            LogActivity("[DTMF] Not connected.");
+            LogActivity(HasLinks && _runtime.TransmitNode == null
+                ? "[DTMF] Choose a transmit node first (commands go to that node)."
+                : "[DTMF] Not connected.");
             return;
         }
 
-        LogActivity($"[DTMF] Sending '{sequence}'");
+        LogActivity($"[DTMF] Sending '{sequence}' to node {link.Target.NodeNumber}");
         foreach (char c in sequence)
         {
             await link.Session.SendDtmfAsync(c);
@@ -674,11 +736,13 @@ public partial class MainViewModel : ViewModelBase
 
         AppServices.HardwarePtt.MappedKey = s.HardwarePttKey;
 
-        if (_link == null)
+        if (_watches.Count == 0)
         {
             IsToggleMode = s.TogglePtt;
             PttModeLabel = IsToggleMode ? "Toggle (Click)" : "Momentary (Hold)";
         }
+
+        RefreshLinks();   // favourite names appear in the link rows
     }
 
     private void ApplyRegistration()
@@ -690,156 +754,213 @@ public partial class MainViewModel : ViewModelBase
     private void ApplyReconnect(ReconnectStatus status)
     {
         IsReconnecting = status.Active;
-        if (status.Active)
+        RefreshLinks();
+    }
+
+    private string LabelFor(string node) =>
+        _runtime.Config.Settings.FavoriteLabels.TryGetValue(node, out var label) ? label : "";
+
+    /// <summary>"[node] " when more than one node is linked, so log lines say which link they are about.</summary>
+    private string Tag(string node) => _runtime.Connections.Count > 1 ? $"[{node}] " : "";
+
+    /// <summary>
+    /// Brings the link rows, the hero card and the PTT state in line with the runtime's connections.
+    /// Runs on the UI thread whenever <see cref="NodeRuntime.ConnectionsChanged"/> fires.
+    /// </summary>
+    private void RefreshLinks()
+    {
+        var conns = _runtime.Connections;
+
+        for (int i = LinkItems.Count - 1; i >= 0; i--)
         {
-            ConnectionStateBadgeText = $"RECONNECTING ({status.Attempt})";
-            ConnectedNodeDetails = status.Message;
+            string node = LinkItems[i].Node;
+            if (!conns.Any(c => c.Node == node)) LinkItems.RemoveAt(i);
         }
-        else if (_link == null)
+
+        for (int i = 0; i < conns.Count; i++)
         {
-            // Recovery ended without a link (user cancelled, or gave up).
-            UpdateConnectionBadge();
+            var c = conns[i];
+            int at = -1;
+            for (int j = 0; j < LinkItems.Count; j++)
+                if (LinkItems[j].Node == c.Node) { at = j; break; }
+
+            if (at < 0)
+                LinkItems.Insert(Math.Min(i, LinkItems.Count),
+                    new LinkItemViewModel(c.Node, LabelFor, SelectTransmitNode, ToggleMuteNode, DisconnectOne));
+            else if (at != i)
+                LinkItems.Move(at, i);
+
+            LinkItems[i].Refresh(c);
+        }
+
+        OnPropertyChanged(nameof(HasLinks));
+        OnPropertyChanged(nameof(HasMultipleLinks));
+        OnPropertyChanged(nameof(LinkCountText));
+        OnPropertyChanged(nameof(DisconnectAllText));
+        OnPropertyChanged(nameof(CanConnect));
+        OnPropertyChanged(nameof(CanDisconnect));
+        OnPropertyChanged(nameof(IsConnected));
+
+        IsRemoteKeyed = LinkItems.Any(l => l.IsReceiving);
+        IsTransmitting = _runtime.Links.Any(l => l.Ptt.IsPttActive);
+        RefreshTransmit();
+        RefreshHero(conns);
+    }
+
+    /// <summary>The hero card shows the transmit node (the one you are talking to) and a hint about the others.</summary>
+    private void RefreshHero(IReadOnlyList<NodeConnection> conns)
+    {
+        if (conns.Count == 0)
+        {
+            ConnectionStateBadgeText = "DISCONNECTED";
             ConnectedNodeDisplay = "Not Connected";
             ConnectedNodeDetails = "Enter a node number to connect";
+            LatencyText = "-- ms";
+            return;
+        }
+
+        string? txNode = _runtime.TransmitNode;
+        var tx = conns.FirstOrDefault(c => c.Node == txNode);
+        if (tx == null)
+        {
+            ConnectionStateBadgeText = $"{conns.Count} LINKED";
+            ConnectedNodeDisplay = "No transmit node";
+            ConnectedNodeDetails = "Tap “Transmit here” on a linked node to choose where your voice goes.";
+            LatencyText = "-- ms";
+            return;
+        }
+
+        var item = LinkItems.First(l => l.Node == tx.Node);
+        ConnectionStateBadgeText = item.StatusText;
+        ConnectedNodeDisplay = $"Node {tx.Node}";
+
+        string details = tx.Reconnect.Active && !item.IsConnected ? tx.Reconnect.Message
+            : tx.Info == null ? "Resolving…"
+            : string.IsNullOrWhiteSpace(tx.Info.Callsign)
+                ? $"{tx.Info.Description} ({tx.Info.EndPoint.Address})"
+                : $"{tx.Info.Callsign} • {tx.Info.Description} ({tx.Info.EndPoint.Address})";
+        if (conns.Count > 1)
+            details += $" · also listening: {string.Join(", ", conns.Where(c => c != tx).Select(c => c.Node))}";
+        ConnectedNodeDetails = details;
+    }
+
+    private void AttachLink(NodeLink link)
+    {
+        if (_watches.ContainsKey(link)) return;
+
+        string node = link.Target.NodeNumber;
+        bool first = _watches.Count == 0;
+        var watch = new LinkWatch();
+
+        void OnState(Iax2SessionState s) => OnUi(() =>
+        {
+            LogActivity($"{Tag(node)}IAX2 Session State: {LinkItemViewModel.StateText(s)}");
+            RefreshLinks();
+        });
+
+        void OnKeyed(bool keyed) => OnUi(() =>
+        {
+            var item = LinkItems.FirstOrDefault(l => l.Node == node);
+            if (item != null) item.IsReceiving = keyed;
+            IsRemoteKeyed = LinkItems.Any(l => l.IsReceiving);
+            LogActivity(_runtime.Connections.Count > 1
+                ? keyed ? $"<<< Node {node} keyed (RX active)" : $"<<< Node {node} unkeyed"
+                : keyed ? "<<< Remote Node Keyed (RX Active)" : "<<< Remote Node Unkeyed");
+        });
+
+        void OnMessage(string msg) => LogActivity($"[NODE MSG] {Tag(node)}{msg}");
+        void OnPtt(bool active, PttSource source) => OnUi(() => OnPttStateChanged(node, active, source));
+        void OnWarning(string msg) => LogActivity($"[PTT WARNING] {Tag(node)}{msg}");
+        void OnInput(AudioLevels l) { if (ReferenceEquals(TxLink, link)) _micMeter = ToMeter(l); }
+        void OnOutput(AudioLevels l) => watch.RxLevel = ToMeter(l);
+
+        link.Session.StateChanged += OnState;
+        link.Session.RemoteKeyedChanged += OnKeyed;
+        link.Session.NodeMessageReceived += OnMessage;
+        link.Ptt.PttStateChanged += OnPtt;
+        link.Ptt.TimeOutTimerExceeded += OnTimeOutExceeded;
+        link.Ptt.WarningLogged += OnWarning;
+        link.Audio.InputLevelChanged += OnInput;
+        link.Audio.OutputLevelChanged += OnOutput;
+
+        watch.Detach = () =>
+        {
+            link.Session.StateChanged -= OnState;
+            link.Session.RemoteKeyedChanged -= OnKeyed;
+            link.Session.NodeMessageReceived -= OnMessage;
+            link.Ptt.PttStateChanged -= OnPtt;
+            link.Ptt.TimeOutTimerExceeded -= OnTimeOutExceeded;
+            link.Ptt.WarningLogged -= OnWarning;
+            link.Audio.InputLevelChanged -= OnInput;
+            link.Audio.OutputLevelChanged -= OnOutput;
+        };
+        _watches[link] = watch;
+
+        if (first)
+        {
+            // The first link adopts the mode it was created with (from Settings, or what the user last chose).
+            TotCounterText = FormatTot(TimeSpan.Zero, link.Ptt.TimeOutTimerLimit);
+            IsToggleMode = link.Ptt.Mode == PttMode.Toggle;
+            PttModeLabel = IsToggleMode ? "Toggle (Click)" : "Momentary (Hold)";
         }
         else
         {
-            UpdateConnectionBadge();
+            link.Ptt.Mode = IsToggleMode ? PttMode.Toggle : PttMode.Momentary;
         }
+
+        RefreshLinks();
     }
 
-    private void AttachLink(NodeLink? link)
+    private void DetachLink(NodeLink link)
     {
-        DetachLink();
-        _link = link;
+        if (_watches.Remove(link, out var watch)) watch.Detach();
 
-        if (link == null)
+        if (_watches.Count == 0)
         {
             _idReminder.Reset();
-            SessionState = Iax2SessionState.Disconnected;
-            UpdateConnectionBadge();
-            LatencyText = "-- ms";
-            if (!IsReconnecting)
-            {
-                ConnectedNodeDisplay = "Not Connected";
-                ConnectedNodeDetails = "Enter a node number to connect";
-            }
             IsTransmitting = false;
             IsRemoteKeyed = false;
             TxDurationDisplay = "00:00";
             TotProgressPercent = 0;
             TotCounterText = FormatTot(TimeSpan.Zero, TotLimit);
-            _micMeter = _rxMeter = 0;
-            return;
+            _micMeter = 0;
         }
 
-        TotCounterText = FormatTot(TimeSpan.Zero, link.Ptt.TimeOutTimerLimit);
-        IsToggleMode = link.Ptt.Mode == PttMode.Toggle;
-        PttModeLabel = IsToggleMode ? "Toggle (Click)" : "Momentary (Hold)";
-
-        link.Session.StateChanged += HandleSessionStateChanged;
-        link.Session.RemoteKeyedChanged += OnRemoteKeyedChanged;
-        link.Session.NodeMessageReceived += OnNodeMessage;
-        link.Ptt.PttStateChanged += OnPttStateChanged;
-        link.Ptt.TimeOutTimerExceeded += OnTimeOutExceeded;
-        link.Ptt.WarningLogged += OnPttWarning;
-        link.Audio.InputLevelChanged += OnInputLevel;
-        link.Audio.OutputLevelChanged += OnOutputLevel;
-
-        SessionState = link.Session.State;
-        UpdateConnectionBadge();
+        RefreshLinks();
     }
 
-    private void DetachLink()
+    // --- Link event handlers (marshalled to the UI thread by the callers) ---
+
+    private void OnPttStateChanged(string node, bool active, PttSource source)
     {
-        var link = _link;
-        if (link == null) return;
-
-        link.Session.StateChanged -= HandleSessionStateChanged;
-        link.Session.RemoteKeyedChanged -= OnRemoteKeyedChanged;
-        link.Session.NodeMessageReceived -= OnNodeMessage;
-        link.Ptt.PttStateChanged -= OnPttStateChanged;
-        link.Ptt.TimeOutTimerExceeded -= OnTimeOutExceeded;
-        link.Ptt.WarningLogged -= OnPttWarning;
-        link.Audio.InputLevelChanged -= OnInputLevel;
-        link.Audio.OutputLevelChanged -= OnOutputLevel;
-    }
-
-    // --- Link event handlers (raised on network/audio threads) ---
-
-    private void HandleSessionStateChanged(Iax2SessionState state) => OnUi(() =>
-    {
-        SessionState = state;
-        UpdateConnectionBadge();
-        LogActivity($"IAX2 Session State: {ConnectionStateBadgeText}");
-    });
-
-    private void UpdateConnectionBadge()
-    {
-        if (IsReconnecting && SessionState == Iax2SessionState.Disconnected)
-        {
-            ConnectionStateBadgeText = $"RECONNECTING ({_runtime.Reconnect.Attempt})";
-            OnPropertyChanged(nameof(CanConnect));
-            OnPropertyChanged(nameof(CanDisconnect));
-            return;
-        }
-
-        ConnectionStateBadgeText = SessionState switch
-        {
-            Iax2SessionState.Connected => "CONNECTED",
-            Iax2SessionState.Connecting => "CONNECTING...",
-            Iax2SessionState.CallTokenHandshake => "HANDSHAKE...",
-            Iax2SessionState.Authenticating => "AUTHENTICATING...",
-            Iax2SessionState.Disconnecting => "DISCONNECTING...",
-            _ => "DISCONNECTED"
-        };
-
-        OnPropertyChanged(nameof(IsConnected));
-        OnPropertyChanged(nameof(IsConnecting));
-        OnPropertyChanged(nameof(CanConnect));
-        OnPropertyChanged(nameof(CanDisconnect));
-    }
-
-    private void OnRemoteKeyedChanged(bool keyed) => OnUi(() =>
-    {
-        IsRemoteKeyed = keyed;
-        LogActivity(keyed ? "<<< Remote Node Keyed (RX Active)" : "<<< Remote Node Unkeyed");
-    });
-
-    private void OnPttStateChanged(bool active, PttSource source) => OnUi(() =>
-    {
-        IsTransmitting = active;
+        IsTransmitting = _runtime.Links.Any(l => l.Ptt.IsPttActive);
+        string where = _runtime.Connections.Count > 1 ? $" to node {node}" : "";
         if (active)
         {
             _idReminder.TransmissionStarted();
-            LogActivity($">>> Local PTT Keyed via {source}");
+            LogActivity($">>> Local PTT Keyed via {source}{where}");
         }
         else
         {
             LogActivity(">>> Local PTT Unkeyed");
+            if (IsTransmitting) return;   // another link is still keyed (cannot normally happen)
             TxDurationDisplay = "00:00";
             TotCounterText = FormatTot(TimeSpan.Zero, TotLimit);
             TotProgressPercent = 0;
         }
-    });
+    }
 
     private void OnTimeOutExceeded() =>
         LogActivity("[TOT EXCEEDED] Push-To-Talk auto-unkeyed to prevent transmitter lockup.");
 
-    private void OnPttWarning(string msg) => LogActivity($"[PTT WARNING] {msg}");
-
-    private void OnNodeMessage(string msg) => LogActivity($"[NODE MSG] {msg}");
-
-    private void OnInputLevel(AudioLevels l) => _micMeter = ToMeter(l);
-
-    private void OnOutputLevel(AudioLevels l) => _rxMeter = ToMeter(l);
-
     /// <summary>Maps RMS level -60..0 dBFS onto 0..1 so ordinary speech moves the bar sensibly.</summary>
     private static float ToMeter(AudioLevels l) => (float)Math.Clamp((l.RmsDbfs + 60.0) / 60.0, 0.0, 1.0);
 
+    private int _tick;
+
     private void OnUiTimerTick()
     {
-        var link = _link;
+        var link = TxLink;
 
         if (IsTransmitting && link != null)
         {
@@ -850,13 +971,24 @@ public partial class MainViewModel : ViewModelBase
         }
 
         MicAudioLevel = _micMeter;
-        RxAudioLevel = _rxMeter;
+
+        // The speaker meter shows the loudest linked node.
+        float rx = 0;
+        foreach (var w in _watches.Values) rx = Math.Max(rx, w.RxLevel);
+        RxAudioLevel = rx;
 
         if (IsConnected && link != null)
         {
             LatencyText = link.Session.RoundTripTime > TimeSpan.Zero
                 ? $"{link.Session.RoundTripTime.TotalMilliseconds:F0} ms"
                 : "-- ms";
+        }
+
+        // Round-trip times of the rows change slowly: once a second is plenty.
+        if (++_tick % 10 == 0 && LinkItems.Count > 0)
+        {
+            foreach (var c in _runtime.Connections)
+                LinkItems.FirstOrDefault(l => l.Node == c.Node)?.RefreshRtt(c);
         }
     }
 

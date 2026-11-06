@@ -423,6 +423,59 @@ public class NodeAudioEngineTests
     }
 
     [Fact]
+    public async Task Muted_StillMetersAndReportsActivity_ButPlaysNothing()
+    {
+        var ch = new FakeChannel();
+        var dev = new FakeDevice();
+        await using var engine = new NodeAudioEngine(ch, dev) { Muted = true };
+        bool? active = null;
+        AudioLevels last = AudioLevels.Silent;
+        engine.RemoteAudioActiveChanged += a => active = a;
+        engine.OutputLevelChanged += l => last = l;
+        engine.Start();
+
+        byte code = G711Ulaw.EncodeSample(8000);
+        for (int i = 0; i < 6; i++) ch.Receive((ushort)(i * 20), Enumerable.Repeat(code, 160).ToArray());
+
+        await WaitUntil(() => active == true && last.Peak > 0);   // heard, metered, reported...
+        await Task.Delay(100);
+        lock (dev.Played) Assert.Empty(dev.Played);               // ...but nothing went to the speaker
+    }
+
+    [Fact]
+    public async Task Muted_WithKeepAlive_WritesSilenceInsteadOfAudio()
+    {
+        var ch = new FakeChannel();
+        var dev = new FakeDevice();
+        await using var engine = new NodeAudioEngine(ch, dev, new NodeAudioEngineOptions { KeepAudioPipelineAlive = true })
+        {
+            Muted = true
+        };
+        engine.Start();
+
+        byte code = G711Ulaw.EncodeSample(8000);
+        for (int i = 0; i < 6; i++) ch.Receive((ushort)(i * 20), Enumerable.Repeat(code, 160).ToArray());
+
+        await WaitUntil(() => { lock (dev.Played) return dev.Played.Count >= 8; });
+        lock (dev.Played) Assert.All(dev.Played, f => Assert.All(f, s => Assert.Equal(0, s)));
+    }
+
+    [Fact]
+    public async Task Unmuting_RestoresPlayback()
+    {
+        var ch = new FakeChannel();
+        var dev = new FakeDevice();
+        await using var engine = new NodeAudioEngine(ch, dev) { Muted = true };
+        engine.Start();
+        engine.Muted = false;
+
+        byte code = G711Ulaw.EncodeSample(8000);
+        for (int i = 0; i < 6; i++) ch.Receive((ushort)(i * 20), Enumerable.Repeat(code, 160).ToArray());
+
+        await WaitUntil(() => { lock (dev.Played) return dev.Played.Any(f => f[0] != 0); });
+    }
+
+    [Fact]
     public async Task SilenceIsNotQueued_UnlessKeepAliveEnabled()
     {
         var ch = new FakeChannel();
