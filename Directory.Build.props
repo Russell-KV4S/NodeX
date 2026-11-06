@@ -1,0 +1,20 @@
+<Project>
+  <!--
+    Keep build output OUT of OneDrive.
+
+    This repo lives in a OneDrive folder. OneDrive marks freshly created obj/bin directories as
+    pinned, read-only cloud-file reparse points, and MSBuild (notably the Android and iOS SDK
+    targets) then fails with "Access to the path ... is denied" when it tries to clean or replace
+    them. Redirecting intermediate and output paths to a local, unsynced folder avoids that and
+    also stops OneDrive from uploading thousands of build artifacts.
+
+    Override the location by setting the NODEX_BUILD_ROOT environment variable.
+  -->
+  <PropertyGroup>
+    <NodeXBuildRoot Condition="'$(NODEX_BUILD_ROOT)' != ''">$([MSBuild]::EnsureTrailingSlash('$(NODEX_BUILD_ROOT)'))</NodeXBuildRoot>
+    <NodeXBuildRoot Condition="'$(NodeXBuildRoot)' == ''">$([System.Environment]::GetFolderPath(SpecialFolder.LocalApplicationData))\NodeX\build\</NodeXBuildRoot>
+
+    <BaseIntermediateOutputPath>$(NodeXBuildRoot)obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(NodeXBuildRoot)bin\$(MSBuildProjectName)\</BaseOutputPath>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,33 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:NodeX.UI"
+             x:Class="NodeX.UI.App"
+             RequestedThemeVariant="Dark">
+
+    <Application.DataTemplates>
+        <local:ViewLocator />
+    </Application.DataTemplates>
+
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+
+    <Application.Resources>
+        <!-- Color Palette for Professional Radio Console -->
+        <SolidColorBrush x:Key="ConsoleBackgroundBrush" Color="#0D1117" />
+        <SolidColorBrush x:Key="CardBackgroundBrush" Color="#161B22" />
+        <SolidColorBrush x:Key="CardBorderBrush" Color="#30363D" />
+        <SolidColorBrush x:Key="HeaderBackgroundBrush" Color="#1F242C" />
+
+        <SolidColorBrush x:Key="TxRedBrush" Color="#EF4444" />
+        <SolidColorBrush x:Key="TxRedGlowBrush" Color="#4DE53E3E" />
+        <SolidColorBrush x:Key="RxGreenBrush" Color="#10B981" />
+        <SolidColorBrush x:Key="RxGreenGlowBrush" Color="#4D10B981" />
+        <SolidColorBrush x:Key="AmberAccentBrush" Color="#F59E0B" />
+        <SolidColorBrush x:Key="CyanAccentBrush" Color="#06B6D4" />
+
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F0F6FC" />
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#8B949E" />
+        <SolidColorBrush x:Key="TextMutedBrush" Color="#484F58" />
+    </Application.Resources>
+</Application>

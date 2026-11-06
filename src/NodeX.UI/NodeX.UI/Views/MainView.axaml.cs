@@ -1,0 +1,249 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Layout;
+using NodeX.UI.ViewModels;
+
+namespace NodeX.UI.Views;
+
+public partial class MainView : UserControl
+{
+    /// <summary>Widths below this use the single-column phone layout with the PTT button docked at the bottom.</summary>
+    public const double NarrowBreakpoint = 720;
+
+    /// <summary>The one-row header (brand, station, badges, settings) needs more room than the body does.</summary>
+    public const double CompactHeaderBreakpoint = 920;
+
+    private bool? _narrow;
+    private bool? _compactHeader;
+
+    public MainView()
+    {
+        InitializeComponent();
+
+        var pttButton = this.FindControl<Button>("PttButton");
+        if (pttButton != null)
+        {
+            pttButton.AddHandler(InputElement.PointerPressedEvent, OnPttPointerPressed, RoutingStrategies.Tunnel);
+            pttButton.AddHandler(InputElement.PointerReleasedEvent, OnPttPointerReleased, RoutingStrategies.Tunnel);
+            pttButton.AddHandler(InputElement.PointerCaptureLostEvent, OnPttPointerReleased, RoutingStrategies.Tunnel);
+        }
+
+        SizeChanged += (_, e) =>
+        {
+            ApplyHeaderLayout(e.NewSize.Width < CompactHeaderBreakpoint);
+            ApplyLayout(e.NewSize.Width < NarrowBreakpoint);
+        };
+    }
+
+    private void OnPttPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm && !vm.IsToggleMode)
+        {
+            _ = vm.PttDownAsync();
+        }
+    }
+
+    private void OnPttPointerReleased(object? sender, PointerEventArgs e)
+    {
+        if (DataContext is MainViewModel vm && !vm.IsToggleMode)
+        {
+            _ = vm.PttUpAsync();
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Responsive layout. The same cards are re-parented between a wide two-column arrangement
+    // (desktop/tablet landscape) and a single scrolling column with a docked PTT bar (phones), so
+    // there is one set of controls and bindings for both.
+    // ------------------------------------------------------------------------------------------
+
+    private void ApplyLayout(bool narrow)
+    {
+        if (_narrow == narrow) return;
+        _narrow = narrow;
+
+        Classes.Set("narrow", narrow);
+
+        ApplyBodyLayout(narrow);
+        ApplyPttSizing(narrow);
+        ApplyConnectLayout(narrow);
+
+        RxCard.Padding = TxCard.Padding = new Thickness(narrow ? 12 : 16);
+        RxSubtitle.IsVisible = TxSubtitle.IsVisible = !narrow;
+    }
+
+    private void ApplyHeaderLayout(bool compact)
+    {
+        if (_compactHeader == compact) return;
+        _compactHeader = compact;
+
+        if (compact)
+        {
+            // Row 0: brand + settings. Row 1: station. Row 2: badges.
+            HeaderGrid.ColumnDefinitions = ColumnDefinitions.Parse("*,Auto");
+            HeaderGrid.RowDefinitions = RowDefinitions.Parse("Auto,Auto,Auto");
+
+            Place(BrandPanel, row: 0, column: 0, columnSpan: 1);
+            Place(SettingsButton, row: 0, column: 1, columnSpan: 1);
+            Place(StationBadge, row: 1, column: 0, columnSpan: 2);
+            Place(BadgesPanel, row: 2, column: 0, columnSpan: 2);
+
+            StationBadge.HorizontalAlignment = HorizontalAlignment.Left;
+            StationBadge.Margin = new Thickness(0, 10, 0, 0);
+            BadgesPanel.Margin = new Thickness(0, 8, 0, 0);
+            SettingsButton.Margin = new Thickness(0);
+            BrandTagline.IsVisible = false;
+        }
+        else
+        {
+            HeaderGrid.ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto");
+            HeaderGrid.RowDefinitions = RowDefinitions.Parse("Auto");
+
+            Place(BrandPanel, row: 0, column: 0, columnSpan: 1);
+            Place(StationBadge, row: 0, column: 1, columnSpan: 1);
+            Place(BadgesPanel, row: 0, column: 2, columnSpan: 1);
+            Place(SettingsButton, row: 0, column: 3, columnSpan: 1);
+
+            StationBadge.HorizontalAlignment = HorizontalAlignment.Center;
+            StationBadge.Margin = new Thickness(0);
+            BadgesPanel.Margin = new Thickness(0);
+            SettingsButton.Margin = new Thickness(10, 0, 0, 0);
+            BrandTagline.IsVisible = true;
+        }
+    }
+
+    private void ApplyBodyLayout(bool narrow)
+    {
+        // Take every card out of whatever currently holds it, then place it for the new layout.
+        foreach (var card in new Control[] { HeroCard, RxTxRow, MetersCard, PttCard, ConnectCard, DtmfCard, LogCard })
+        {
+            Detach(card);
+        }
+
+        if (narrow)
+        {
+            BodyGrid.ColumnDefinitions = ColumnDefinitions.Parse("*");
+            BodyScroll.Padding = new Thickness(12);
+            LeftColumn.Margin = new Thickness(0);
+            LeftColumn.Spacing = 12;
+            RightColumn.IsVisible = false;
+            Grid.SetColumn(RightColumn, 0);     // the grid has a single column now; a stale index crashes measure
+
+            // Order for operating: who am I linked to, connect, activity, meters, keypad, log.
+            foreach (var card in new Control[] { HeroCard, ConnectCard, RxTxRow, MetersCard, DtmfCard, LogCard })
+            {
+                LeftColumn.Children.Add(card);
+            }
+
+            LogCard.Height = 200;
+            PttDock.Child = PttCard;
+            PttDock.IsVisible = true;
+        }
+        else
+        {
+            BodyGrid.ColumnDefinitions = ColumnDefinitions.Parse("*,360");
+            BodyScroll.Padding = new Thickness(16);
+            LeftColumn.Margin = new Thickness(0, 0, 16, 0);
+            LeftColumn.Spacing = 16;
+            RightColumn.IsVisible = true;
+            Grid.SetColumn(RightColumn, 1);
+
+            PttDock.Child = null;
+            PttDock.IsVisible = false;
+
+            foreach (var card in new Control[] { HeroCard, RxTxRow, MetersCard, PttCard })
+            {
+                LeftColumn.Children.Add(card);
+            }
+            foreach (var card in new Control[] { ConnectCard, DtmfCard, LogCard })
+            {
+                RightColumn.Children.Add(card);
+            }
+
+            LogCard.Height = 220;
+        }
+    }
+
+    private void ApplyPttSizing(bool narrow)
+    {
+        if (narrow)
+        {
+            // A full-width bar the thumb can find without looking.
+            PttCard.Padding = new Thickness(12);
+            PttCard.CornerRadius = new CornerRadius(12);
+            PttInner.Spacing = 8;
+            PttInner.HorizontalAlignment = HorizontalAlignment.Stretch;
+            PttButton.Width = double.NaN;
+            PttButton.HorizontalAlignment = HorizontalAlignment.Stretch;
+            PttButton.Height = 96;
+            PttInfo.Width = double.NaN;
+            PttInfo.HorizontalAlignment = HorizontalAlignment.Stretch;
+            PttCaption.IsVisible = false;
+            PttModeHint.IsVisible = false;
+        }
+        else
+        {
+            PttCard.Padding = new Thickness(24);
+            PttCard.CornerRadius = new CornerRadius(16);
+            PttInner.Spacing = 18;
+            PttInner.HorizontalAlignment = HorizontalAlignment.Center;
+            PttButton.Width = 260;
+            PttButton.HorizontalAlignment = HorizontalAlignment.Center;
+            PttButton.Height = 140;
+            PttInfo.Width = 300;
+            PttInfo.HorizontalAlignment = HorizontalAlignment.Center;
+            PttCaption.IsVisible = true;
+            PttModeHint.IsVisible = true;
+        }
+    }
+
+    private void ApplyConnectLayout(bool narrow)
+    {
+        if (narrow)
+        {
+            // Node box on its own row, then two equal full-width buttons.
+            ConnectGrid.ColumnDefinitions = ColumnDefinitions.Parse("*");
+            ConnectGrid.RowDefinitions = RowDefinitions.Parse("Auto,Auto");
+            Place(TargetBox, row: 0, column: 0, columnSpan: 1);
+            Place(ConnectButtons, row: 1, column: 0, columnSpan: 1);
+            TargetBox.Margin = new Thickness(0, 0, 0, 8);
+            ConnectButtons.ColumnDefinitions = ColumnDefinitions.Parse("*,*");
+            ConnectButtons.HorizontalAlignment = HorizontalAlignment.Stretch;
+        }
+        else
+        {
+            ConnectGrid.ColumnDefinitions = ColumnDefinitions.Parse("*,Auto");
+            ConnectGrid.RowDefinitions = RowDefinitions.Parse("Auto");
+            Place(TargetBox, row: 0, column: 0, columnSpan: 1);
+            Place(ConnectButtons, row: 0, column: 1, columnSpan: 1);
+            TargetBox.Margin = new Thickness(0, 0, 8, 0);
+            ConnectButtons.ColumnDefinitions = ColumnDefinitions.Parse("Auto,Auto");
+            ConnectButtons.HorizontalAlignment = HorizontalAlignment.Left;
+        }
+    }
+
+    private static void Place(Control control, int row, int column, int columnSpan)
+    {
+        Grid.SetRow(control, row);
+        Grid.SetColumn(control, column);
+        Grid.SetColumnSpan(control, columnSpan);
+    }
+
+    private static void Detach(Control control)
+    {
+        switch (control.Parent)
+        {
+            case Panel panel:
+                panel.Children.Remove(control);
+                break;
+            case Decorator decorator when ReferenceEquals(decorator.Child, control):
+                decorator.Child = null;
+                break;
+            case ContentControl content when ReferenceEquals(content.Content, control):
+                content.Content = null;
+                break;
+        }
+    }
+}

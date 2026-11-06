@@ -1,0 +1,21 @@
+## .NET build output
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+*.log
+*.nupkg
+publish/
+
+## Local config / secrets
+appsettings.Local.json
+appsettings.*.local.json
+*.pfx
+*.pem
+.env
+secrets.json
+
+## Claude Code local state
+.claude/settings.local.json

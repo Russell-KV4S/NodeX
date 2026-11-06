@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NodeX.Core\NodeX.Core.csproj" />
+    <!-- The production Windows audio backend, compiled in as-is so the audio check exercises the real code. -->
+    <Compile Include="..\..\src\NodeX.UI\NodeX.UI.Desktop\Audio\NAudioDeviceService.cs" Link="Audio\NAudioDeviceService.cs" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+
+</Project>

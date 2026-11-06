@@ -1,0 +1,168 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:NodeX.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="900"
+             x:Class="NodeX.UI.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel"
+             Background="{StaticResource ConsoleBackgroundBrush}">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,4,0,0" />
+        </Style>
+        <Style Selector="TextBlock.sectionTitle">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        </Style>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{StaticResource CardBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <StackPanel MaxWidth="560" Margin="16" Spacing="16" HorizontalAlignment="Stretch">
+
+            <StackPanel Spacing="2">
+                <TextBlock Text="Station settings" FontSize="22" FontWeight="Bold"
+                           Foreground="{StaticResource TextPrimaryBrush}" />
+                <TextBlock Classes="hint" Margin="0"
+                           Text="Enter the details of the node you registered on the AllStarLink portal (allstarlink.org)." />
+            </StackPanel>
+
+            <!-- STATION -->
+            <Border Classes="card">
+                <StackPanel Spacing="14">
+                    <TextBlock Classes="sectionTitle" Text="Your node" />
+
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="Node number" />
+                        <TextBox Text="{Binding NodeNumber}" PlaceholderText="e.g. 55553" MaxLength="7" />
+                    </StackPanel>
+
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="Node password" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding Password}" PasswordChar="●"
+                                     RevealPassword="{Binding ShowPassword}" PlaceholderText="Password set on the portal" />
+                            <CheckBox Grid.Column="1" Content="Show" IsChecked="{Binding ShowPassword}" Margin="10,0,0,0" />
+                        </Grid>
+                        <TextBlock Classes="hint"
+                                   Text="This is the password you set for your node on the AllStarLink portal. It is stored encrypted by your operating system and is only ever sent to AllStarLink's registration server, never to other nodes." />
+                    </StackPanel>
+
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="Callsign (optional)" />
+                        <TextBox Text="{Binding Callsign}" PlaceholderText="e.g. W1AW" MaxLength="14" />
+                    </StackPanel>
+
+                    <CheckBox Content="Register with AllStarLink when the app starts" IsChecked="{Binding RegisterOnStartup}" />
+                </StackPanel>
+            </Border>
+
+            <!-- CONNECTING -->
+            <Border Classes="card">
+                <StackPanel Spacing="14">
+                    <TextBlock Classes="sectionTitle" Text="Connecting" />
+
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="Default node to connect to (optional)" />
+                        <TextBox Text="{Binding DefaultTargetNode}" PlaceholderText="e.g. 27339" MaxLength="7" />
+                    </StackPanel>
+
+                    <StackPanel>
+                        <CheckBox Content="Reconnect automatically if the link drops or the network changes"
+                                  IsChecked="{Binding AutoReconnect}" />
+                        <TextBlock Classes="hint"
+                                   Text="Useful on a phone moving between Wi-Fi and mobile data. A connection that was never answered, or that the other node ends on purpose, is not retried." />
+                    </StackPanel>
+
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="Favorite nodes (optional)" />
+                        <TextBox Text="{Binding FavoritesText}" PlaceholderText="e.g. 27339, 2000, 41200" AcceptsReturn="False" />
+                        <TextBlock Classes="hint" Text="Separate node numbers with commas or spaces." />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- PTT & AUDIO -->
+            <Border Classes="card">
+                <StackPanel Spacing="14">
+                    <TextBlock Classes="sectionTitle" Text="Push-to-talk and audio" />
+
+                    <CheckBox Content="Latching PTT (tap to talk, tap again to stop)" IsChecked="{Binding TogglePtt}" />
+
+                    <CheckBox Content="Clean up my voice (rumble filter, automatic level, limiter)" IsChecked="{Binding MicProcessing}" />
+
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="Transmit time-out (seconds)" />
+                        <TextBox Text="{Binding TimeOutSecondsText}" MaxLength="3" />
+                        <TextBlock Classes="hint" Text="Transmit is cut automatically after this long, to protect against a stuck PTT." />
+                    </StackPanel>
+
+                    <StackPanel>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Classes="label" Text="Microphone gain" />
+                            <TextBlock Grid.Column="1" Classes="label" Text="{Binding MicGain, StringFormat='{}{0:0.0}×'}" />
+                        </Grid>
+                        <Slider Minimum="0.5" Maximum="4" Value="{Binding MicGain}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ADVANCED -->
+            <Expander Header="Advanced" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                <StackPanel Spacing="14" Margin="0,8,0,0">
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="Registration server" />
+                        <TextBox Text="{Binding RegistrationUrl}" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="IAX2 port reported to AllStarLink" />
+                        <TextBox Text="{Binding IaxPortText}" MaxLength="5" />
+                    </StackPanel>
+                </StackPanel>
+            </Expander>
+
+            <!-- FEEDBACK -->
+            <Border IsVisible="{Binding HasError}" Background="#2A1215" BorderBrush="{StaticResource TxRedBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="12">
+                <TextBlock Text="{Binding ErrorText}" Foreground="#FCA5A5" TextWrapping="Wrap" FontSize="12" />
+            </Border>
+
+            <Border IsVisible="{Binding HasStatus}" Background="#0F2A22" BorderBrush="{StaticResource RxGreenBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="12">
+                <TextBlock Text="{Binding StatusText}" Foreground="#6EE7B7" TextWrapping="Wrap" FontSize="12" />
+            </Border>
+
+            <!-- ACTIONS -->
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto" IsEnabled="{Binding IsIdle}">
+                <Button Grid.Column="0" Content="Test registration" Command="{Binding TestRegistrationCommand}"
+                        CornerRadius="6" Padding="14,10" />
+                <Button Grid.Column="2" Content="Cancel" Command="{Binding CancelCommand}"
+                        Background="Transparent" CornerRadius="6" Padding="14,10" Margin="0,0,8,0" />
+                <Button Grid.Column="3" Content="Save" Command="{Binding SaveCommand}"
+                        Background="{StaticResource RxGreenBrush}" Foreground="#000000" FontWeight="Bold"
+                        CornerRadius="6" Padding="22,10" />
+            </Grid>
+
+            <TextBlock Classes="hint" HorizontalAlignment="Center" Margin="0,0,0,16"
+                       Text="“Test registration” registers your node with AllStarLink right now using the values above; nothing is saved until you press Save." />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
