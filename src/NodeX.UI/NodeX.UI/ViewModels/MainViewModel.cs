@@ -347,6 +347,15 @@ public partial class MainViewModel : ViewModelBase
             LogActivity(want ? $"Node {node} added to favorites." : $"Node {node} removed from favorites.");
     }
 
+    /// <summary>Removes a favourite chip (right-click / long-press menu).</summary>
+    [RelayCommand]
+    public async Task RemoveFavoriteAsync(string? node)
+    {
+        if (string.IsNullOrEmpty(node)) return;
+        if (await UpdateFavoriteAsync(node, favorite: false, label: null))
+            LogActivity($"Node {node} removed from favorites.");
+    }
+
     /// <summary>Saves the name typed for the favourite in the connect box (adding it as a favourite if it is not one yet).</summary>
     [RelayCommand]
     public async Task SaveFavoriteLabelAsync()

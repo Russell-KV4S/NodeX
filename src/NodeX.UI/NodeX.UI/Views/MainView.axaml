@@ -662,6 +662,12 @@
                                                     AutomationProperties.Name="{Binding AutomationName}"
                                                     Margin="0,0,6,6" Padding="10,6"
                                                     Background="#21262D" CornerRadius="6" BorderThickness="0">
+                                                <Button.ContextFlyout>
+                                                    <MenuFlyout>
+                                                        <MenuItem Header="Remove from favorites"
+                                                                  Click="OnRemoveFavoriteClick" />
+                                                    </MenuFlyout>
+                                                </Button.ContextFlyout>
                                                 <StackPanel>
                                                     <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
                                                                Foreground="{StaticResource CyanAccentBrush}" />
