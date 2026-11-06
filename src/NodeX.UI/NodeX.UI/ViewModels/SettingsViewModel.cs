@@ -164,10 +164,18 @@ public partial class SettingsViewModel : ViewModelBase
     public async Task LoadAsync()
     {
         var cfg = await _config.LoadAsync();
-        var s = cfg.Settings;
+        FillForm(cfg.Settings, cfg.Password ?? "");
 
+        ShowPassword = false;
+        TransferPassphrase = "";
+        ErrorText = "";
+        StatusText = "";
+    }
+
+    private void FillForm(NodeSettings s, string password)
+    {
         NodeNumber = s.NodeNumber;
-        Password = cfg.Password ?? "";
+        Password = password;
         Callsign = s.Callsign;
         ListenOnly = s.ListenOnly;
         DefaultTargetNode = s.DefaultTargetNode;
@@ -184,10 +192,66 @@ public partial class SettingsViewModel : ViewModelBase
         IdReminderMinutesText = s.IdReminderMinutes.ToString(CultureInfo.InvariantCulture);
         RegistrationUrl = s.RegistrationUrl;
         IaxPortText = s.IaxPort.ToString(CultureInfo.InvariantCulture);
+    }
 
-        ShowPassword = false;
-        ErrorText = "";
+    // ----- move settings to another device -----
+
+    /// <summary>Optional passphrase: with it, the node password travels in the export (encrypted).</summary>
+    [ObservableProperty]
+    public partial string TransferPassphrase { get; set; } = "";
+
+    /// <summary>
+    /// The settings as currently shown on screen, as an export document; null (with <see cref="ErrorText"/> set)
+    /// when the form has problems. Includes the node password only if a passphrase is entered.
+    /// </summary>
+    public string? BuildExport()
+    {
         StatusText = "";
+        if (!TryBuild(out var settings, out var issues))
+        {
+            ErrorText = "Fix these before exporting:" + Environment.NewLine + Format(issues);
+            return null;
+        }
+
+        ErrorText = "";
+        return SettingsTransfer.Export(settings, Password, TransferPassphrase);
+    }
+
+    /// <summary>Tells the user what an export contained, once it has been written or copied.</summary>
+    public void NoteExported(string where)
+    {
+        ErrorText = "";
+        StatusText = string.IsNullOrEmpty(TransferPassphrase)
+            ? $"Settings {where}. The node password was not included; enter it on the other device."
+            : $"Settings {where}, with the node password encrypted by your passphrase.";
+    }
+
+    public void NoteTransferError(string message)
+    {
+        StatusText = "";
+        ErrorText = message;
+    }
+
+    /// <summary>
+    /// Loads an export into the form. Nothing is saved until the user presses Save, so the usual checks apply
+    /// and they can review the values first. A password in the file replaces the one on screen; a file without
+    /// one leaves the current password alone.
+    /// </summary>
+    public bool ApplyImport(string? text)
+    {
+        var result = SettingsTransfer.TryImport(text, TransferPassphrase);
+        if (!result.Success)
+        {
+            NoteTransferError(result.Error ?? "Could not import settings.");
+            return false;
+        }
+
+        FillForm(result.Settings!, result.Password ?? Password);
+        ErrorText = "";
+        StatusText = result.Password != null
+            ? "Imported, including the node password. Review, then press Save."
+            : "Imported. Enter the node password if this device doesn't have it yet, then press Save.";
+        return true;
     }
 
     [RelayCommand]
