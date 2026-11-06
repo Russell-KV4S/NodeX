@@ -748,7 +748,11 @@ public partial class MainViewModel : ViewModelBase
     private void ApplyRegistration()
     {
         IsAslRegistered = _runtime.IsRegistered;
-        AslStatusText = _runtime.IsRegistered ? "ASL Registered" : _runtime.RegistrationStatus;
+        AslStatusText = _runtime.IsRegistered
+            ? _runtime.RegisteredSince is { } since
+                ? $"ASL Registered · {DurationText.Format(DateTimeOffset.UtcNow - since)}"
+                : "ASL Registered"
+            : _runtime.RegistrationStatus;
     }
 
     private void ApplyReconnect(ReconnectStatus status)
@@ -984,7 +988,8 @@ public partial class MainViewModel : ViewModelBase
                 : "-- ms";
         }
 
-        // Round-trip times of the rows change slowly: once a second is plenty.
+        // Once a second is plenty for round-trip times and the "registered for ..." badge.
+        if (_tick % 10 == 0 && _runtime.IsRegistered) ApplyRegistration();
         if (++_tick % 10 == 0 && LinkItems.Count > 0)
         {
             foreach (var c in _runtime.Connections)

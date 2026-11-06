@@ -119,6 +119,27 @@ public class NodeRuntimeTests : IDisposable
     }
 
     [Fact]
+    public async Task RegisteredSince_IsSetOnRegistration_AndNotResetByARefresh()
+    {
+        var (rt, config, _) = Create();
+        await using var _ = rt;
+        Assert.Null(rt.RegisteredSince);
+        await config.SaveAsync(Station, "pw");
+
+        await rt.StartAsync();
+        await WaitUntil(() => rt.IsRegistered);
+
+        var since = rt.RegisteredSince;
+        Assert.NotNull(since);
+        Assert.True(DateTimeOffset.UtcNow - since!.Value < TimeSpan.FromSeconds(10));
+
+        await Task.Delay(50);
+        rt.NotifyResumed();                          // forces another registration heartbeat
+        await Task.Delay(200);
+        Assert.Equal(since, rt.RegisteredSince);     // same run: the start did not move
+    }
+
+    [Fact]
     public async Task SavingSettingsWhileRunning_StartsRegistration()
     {
         var (rt, config, _) = Create();

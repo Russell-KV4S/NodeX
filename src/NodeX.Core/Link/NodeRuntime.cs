@@ -77,6 +77,12 @@ public sealed class NodeRuntime : IAsyncDisposable
     public string RegistrationStatus { get; private set; } = "Not registered";
     public IPAddress? PerceivedAddress { get; private set; }
 
+    /// <summary>
+    /// When the current unbroken run of successful registration began (UTC), or null when not registered. The
+    /// periodic ~60 s refresh does not reset it; a lapse, a changed registration setting or a restart does.
+    /// </summary>
+    public DateTimeOffset? RegisteredSince { get; private set; }
+
     /// <summary>Raised (on any thread) whenever registration status changes.</summary>
     public event Action? RegistrationChanged;
 
@@ -298,6 +304,9 @@ public sealed class NodeRuntime : IAsyncDisposable
 
     private void SetRegistration(bool registered, string status, IPAddress? address)
     {
+        if (!registered) RegisteredSince = null;
+        else if (!IsRegistered) RegisteredSince = DateTimeOffset.UtcNow;   // false -> true; refreshes keep the start
+
         IsRegistered = registered;
         RegistrationStatus = status;
         PerceivedAddress = address;
