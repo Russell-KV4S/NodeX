@@ -52,6 +52,16 @@ public sealed class NodeResolution
     /// </summary>
     public Func<IPEndPoint, CancellationToken, Task<bool>>? PortProbe { get; set; } = IaxPokeAsync;
 
+    /// <summary>Looks up the port in AllStarLink's DNS SRV/TXT records (null disables it).</summary>
+    public Func<string, CancellationToken, Task<int?>>? DnsPort { get; set; } = DnsPortLookup.LookupAsync;
+
+    private async Task<int?> SafeDnsPortAsync(string node, CancellationToken ct)
+    {
+        try { return await DnsPort!(node, ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch { return null; }
+    }
+
     /// <summary>How long the default probe waits for a reply.</summary>
     public static TimeSpan ProbeTimeout { get; set; } = TimeSpan.FromMilliseconds(1500);
 
@@ -159,11 +169,20 @@ public sealed class NodeResolution
                         // listens: node 45192 is listed on 4579 but only answers on 4569 (the port its AllStarLink
                         // DNS record gives, and the one DVSwitch Mobile uses). If the listed port is not the
                         // standard one and does not answer an IAX POKE, try the standard port.
+                        // The fallback is the port AllStarLink's DNS (SRV/TXT) gives, else 4569.
                         if (port != Iax2Protocol.DefaultPort && PortProbe != null
                             && !await PortProbe(endpoint, cancellationToken))
                         {
-                            var standard = new IPEndPoint(ip, Iax2Protocol.DefaultPort);
-                            if (await PortProbe(standard, cancellationToken)) endpoint = standard;
+                            var candidates = new List<int>();
+                            int? dnsPort = DnsPort != null ? await SafeDnsPortAsync(nodeNumber, cancellationToken) : null;
+                            if (dnsPort is int d && d != port) candidates.Add(d);
+                            if (!candidates.Contains(Iax2Protocol.DefaultPort)) candidates.Add(Iax2Protocol.DefaultPort);
+
+                            foreach (int c in candidates)
+                            {
+                                var alt = new IPEndPoint(ip, c);
+                                if (await PortProbe(alt, cancellationToken)) { endpoint = alt; break; }
+                            }
                         }
 
                         var info = new NodeInfo(nodeNumber, callsign, endpoint, desc, _utcNow());
@@ -192,7 +211,9 @@ public sealed class NodeResolution
                            ?? (addresses.Length > 0 ? addresses[0] : null);
                 if (ipv4 != null)
                 {
-                    var endpoint = new IPEndPoint(ipv4, Iax2Protocol.DefaultPort);
+                    int dnsPort = (DnsPort != null ? await SafeDnsPortAsync(nodeNumber, cancellationToken) : null)
+                                  ?? Iax2Protocol.DefaultPort;
+                    var endpoint = new IPEndPoint(ipv4, dnsPort);
                     var info = new NodeInfo(nodeNumber, string.Empty, endpoint, "DNS Fallback", _utcNow());
                     _cache[nodeNumber] = (info, _utcNow().Add(CacheTtl));
                     return info;

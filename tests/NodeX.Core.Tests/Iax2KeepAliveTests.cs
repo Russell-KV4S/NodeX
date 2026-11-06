@@ -45,6 +45,29 @@ public class Iax2KeepAliveTests
     }
 
     [Fact]
+    public async Task SendsNewKeyText_OnceAfterAccept()
+    {
+        using var remote = new FakeIaxRemote();
+        using var session = await remote.ConnectSessionAsync(TimeSpan.FromSeconds(30),
+            configure: s => s.LinkListInterval = TimeSpan.Zero);
+
+        var f = await remote.WaitForFrameAsync(x => x.FrameType == FrameType.Text);
+        Assert.Equal("!NEWKEY1!", System.Text.Encoding.UTF8.GetString(f.Payload).TrimEnd('\0'));
+        Assert.Equal(0, f.Payload[^1]);
+    }
+
+    [Fact]
+    public async Task NewKeyText_CanBeDisabled()
+    {
+        using var remote = new FakeIaxRemote();
+        using var session = await remote.ConnectSessionAsync(TimeSpan.FromSeconds(30),
+            configure: s => { s.LinkListInterval = TimeSpan.Zero; s.SendNewKeyOnAccept = false; });
+
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            remote.WaitForFrameAsync(x => x.FrameType == FrameType.Text, 400));
+    }
+
+    [Fact]
     public async Task SendsPingAtInterval_AndPongYieldsRtt_LinkStaysUp()
     {
         using var remote = new FakeIaxRemote();

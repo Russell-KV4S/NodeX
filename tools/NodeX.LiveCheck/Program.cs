@@ -74,6 +74,7 @@ static async Task<int> ResolveAsync(string node)
         catch (Exception ex) { Console.WriteLine("  -> " + ex.Message); }
     }
 
+    Console.WriteLine($"DnsPortLookup (SRV/TXT, raw UDP DNS): {(await DnsPortLookup.LookupAsync(node) is int dp ? dp.ToString() : "none")}");
     Console.WriteLine("NodeResolution (production code path):");
     var info = await new NodeResolution().ResolveNodeAsync(node);
     Console.WriteLine(info == null ? "  -> null (could not resolve)" : $"  -> {info.EndPoint} callsign='{info.Callsign}' desc='{info.Description}'");
@@ -100,12 +101,13 @@ static async Task<int> LinkAsync(string[] a)
 
     string? ipArg = null, tracePath = null, dtmf = null;
     int listen = 20, key = 0, mic = 0;
-    bool newKey = false, linkList = false;
+    bool newKey = false, linkList = false, noNewKey = false;
     for (int i = 2; i < a.Length; i++)
     {
         switch (a[i])
         {
             case "--newkey": newKey = true; break;
+            case "--nonewkey": noNewKey = true; break;
             case "--linklist": linkList = true; break;
             case "--ip": ipArg = a[++i]; break;
             case "--listen": listen = int.Parse(a[++i]); break;
@@ -143,7 +145,8 @@ static async Task<int> LinkAsync(string[] a)
     {
         Username = "radio",
         LocalNodeNumber = node,
-        RemoteNodeNumber = target
+        RemoteNodeNumber = target,
+        SendNewKeyOnAccept = !noNewKey
     };
     session.PacketTrace += (outbound, bytes) => Log((outbound ? "TX " : "RX ") + Decode(bytes.Span));
     session.StateChanged += s => Log($"STATE {s}");

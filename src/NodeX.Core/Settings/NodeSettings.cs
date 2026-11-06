@@ -39,6 +39,12 @@ public sealed record NodeSettings
     /// <summary>Register with AllStarLink automatically when the app starts.</summary>
     public bool RegisterOnStartup { get; init; } = true;
 
+    /// <summary>
+    /// Also register with classic IAX2 REGREQ over UDP every 60 s (in addition to HTTPS). Off by default: the
+    /// registry then records this app's UDP source port for the node instead of <see cref="IaxPort"/>.
+    /// </summary>
+    public bool UdpRegistration { get; init; }
+
     /// <summary>Re-dial automatically when an established link is lost or the network changes.</summary>
     public bool AutoReconnect { get; init; } = true;
 

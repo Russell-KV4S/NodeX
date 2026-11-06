@@ -41,7 +41,7 @@ public class NodeResolutionTests
     {
         var http = new StubHandler(respond);
         var dns = new DnsRecorder();
-        var r = new NodeResolution(new HttpClient(http), dns.Resolve, clock) { PortProbe = null };   // no real UDP in tests
+        var r = new NodeResolution(new HttpClient(http), dns.Resolve, clock) { PortProbe = null, DnsPort = null };   // no real UDP/DNS in tests
         return (r, http, dns);
     }
 
@@ -57,6 +57,77 @@ public class NodeResolutionTests
 
         Assert.Equal(new IPEndPoint(IPAddress.Parse("203.0.113.9"), 4569), info!.EndPoint);
         Assert.Equal(new[] { 4579, 4569 }, probed);
+    }
+
+    [Fact]
+    public async Task ListedPortThatIsSilent_TriesTheDnsPortBefore4569()
+    {
+        var (r, _, _) = Create(_ => Json("""{"node":{"ipaddr":"203.0.113.9","port":4579,"callsign":"X"}}"""));
+        var probed = new List<int>();
+        r.DnsPort = (_, _) => Task.FromResult<int?>(4598);
+        r.PortProbe = (ep, _) => { probed.Add(ep.Port); return Task.FromResult(ep.Port == 4598); };
+
+        var info = await r.ResolveNodeAsync("45192");
+
+        Assert.Equal(4598, info!.EndPoint.Port);
+        Assert.Equal(new[] { 4579, 4598 }, probed);
+    }
+
+    [Fact]
+    public async Task DnsPortLookupThrowing_StillFallsBackTo4569()
+    {
+        var (r, _, _) = Create(_ => Json("""{"node":{"ipaddr":"203.0.113.9","port":4579,"callsign":"X"}}"""));
+        r.DnsPort = (_, _) => throw new InvalidOperationException("dns down");
+        r.PortProbe = (ep, _) => Task.FromResult(ep.Port == 4569);
+
+        var info = await r.ResolveNodeAsync("45192");
+
+        Assert.Equal(4569, info!.EndPoint.Port);
+    }
+
+    [Fact]
+    public async Task DnsFallback_UsesThePortFromDns()
+    {
+        var (r, _, dns) = Create(_ => NotFound());
+        dns.Answers["2000.nodes.allstarlink.org"] = [IPAddress.Parse("198.51.100.20")];
+        r.DnsPort = (_, _) => Task.FromResult<int?>(4598);
+
+        var info = await r.ResolveNodeAsync("2000");
+
+        Assert.Equal(4598, info!.EndPoint.Port);
+    }
+
+    private static byte[] DnsReply(ushort type, byte[] rdata)
+    {
+        var m = new List<byte> { 0x12, 0x34, 0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0 };
+        m.AddRange(DnsPortLookup.BuildQuery("x.test", type)[12..]);          // question
+        m.AddRange(new byte[] { 0xC0, 0x0C, (byte)(type >> 8), (byte)type, 0, 1, 0, 0, 0, 60 });
+        m.Add((byte)(rdata.Length >> 8)); m.Add((byte)rdata.Length);
+        m.AddRange(rdata);
+        return m.ToArray();
+    }
+
+    [Fact]
+    public void DnsParser_ReadsSrvPort()
+    {
+        // priority 10, weight 10, port 4598, target "a" (root-terminated)
+        byte[] rdata = [0, 10, 0, 10, 0x11, 0xF6, 1, (byte)'a', 0];
+        Assert.Equal(4598, DnsPortLookup.ParsePort(DnsReply(33, rdata), 33));
+    }
+
+    [Fact]
+    public void DnsParser_ReadsTxtPort_FromSeparateStrings()
+    {
+        var rd = new List<byte>();
+        foreach (var s in new[] { "NN=45192", "IP=1.2.3.4", "PT=4598" }) { rd.Add((byte)s.Length); rd.AddRange(Encoding.ASCII.GetBytes(s)); }
+        Assert.Equal(4598, DnsPortLookup.ParsePort(DnsReply(16, rd.ToArray()), 16));
+    }
+
+    [Fact]
+    public void DnsParser_NoPortOrGarbage_ReturnsNull()
+    {
+        Assert.Null(DnsPortLookup.ParsePort(DnsReply(16, [3, (byte)'a', (byte)'=', (byte)'b']), 16));
+        Assert.Null(DnsPortLookup.ParsePort([1, 2, 3], 16));
     }
 
     [Fact]

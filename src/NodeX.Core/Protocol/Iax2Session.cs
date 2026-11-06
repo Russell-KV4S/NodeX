@@ -75,6 +75,13 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
     /// </summary>
     public TimeSpan LinkListInterval { get; set; } = TimeSpan.FromSeconds(10);
     private Task? _linkListLoopTask;
+
+    /// <summary>
+    /// Send the app_rpt "!NEWKEY1!" text frame as soon as the call is accepted (what real nodes and DVSwitch do).
+    /// Set before <see cref="ConnectAsync"/>.
+    /// </summary>
+    public bool SendNewKeyOnAccept { get; set; } = true;
+    private bool _newKeySent;
     private bool _voiceFormatAnnounced;
     private uint _lastVoiceTimestamp;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -170,6 +177,7 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         _iSeqno = 0;
         _callToken = null;
         _remoteCallNumber = 0;
+        _newKeySent = false;
         DisconnectReason = Iax2DisconnectReason.None;
         _retransmit.Clear();
         Volatile.Write(ref _unansweredKeepAlives, 0);
@@ -674,6 +682,12 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
 
             case Iax2Protocol.IaxControlSubclass.Accept:
                 SetState(Iax2SessionState.Connected);
+                // Answer the app_rpt "new key" handshake straight away, as a real node does.
+                if (SendNewKeyOnAccept && !_newKeySent)
+                {
+                    _newKeySent = true;
+                    await SendTextAsync("!NEWKEY1!");
+                }
                 break;
 
             case Iax2Protocol.IaxControlSubclass.AuthReq:

@@ -269,6 +269,17 @@ public sealed class NodeRuntime : IAsyncDisposable
                 _registration = _registrationFactory(cfg.ToRegistrationConfig());
                 _registration.RegistrationStatusChanged += OnRegistrationStatus;
                 await _registration.StartAsync(cancellationToken);
+
+                if (cfg.Settings.UdpRegistration)
+                {
+                    _udpRegistrar = new Iax2Registrar(cfg.Settings.NodeNumber, cfg.Password ?? "");
+                    _udpRegistrar.RegistrationStatusChanged += (ok, msg) =>
+                    {
+                        if (ok != _udpRegistered) Notice?.Invoke(msg);
+                        _udpRegistered = ok;
+                    };
+                    await _udpRegistrar.StartAsync(cancellationToken);
+                }
             }
             else
             {
@@ -286,10 +297,19 @@ public sealed class NodeRuntime : IAsyncDisposable
         a.Settings.NodeNumber == b.Settings.NodeNumber
         && a.Password == b.Password
         && a.Settings.IaxPort == b.Settings.IaxPort
-        && a.Settings.RegistrationUrl == b.Settings.RegistrationUrl;
+        && a.Settings.RegistrationUrl == b.Settings.RegistrationUrl
+        && a.Settings.UdpRegistration == b.Settings.UdpRegistration;
+
+    private Iax2Registrar? _udpRegistrar;
+    private bool _udpRegistered;
 
     private async Task StopRegistrationAsync()
     {
+        var udp = _udpRegistrar;
+        _udpRegistrar = null;
+        _udpRegistered = false;
+        if (udp != null) await udp.DisposeAsync();
+
         var old = _registration;
         _registration = null;
         if (old == null) return;
