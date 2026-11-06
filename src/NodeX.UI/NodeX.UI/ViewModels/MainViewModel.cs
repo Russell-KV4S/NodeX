@@ -874,6 +874,17 @@ public partial class MainViewModel : ViewModelBase
         RefreshHero(conns);
     }
 
+    /// <summary>Reconnect status with a live countdown ("in 42 s") while a retry is waiting.</summary>
+    private static string ReconnectText(NodeConnection c)
+    {
+        var r = c.Reconnect;
+        if (r.RetryAt is not { } at) return r.Message;
+        double left = (at - DateTimeOffset.UtcNow).TotalSeconds;
+        return left > 0
+            ? $"Reconnecting to node {c.Node} in {Math.Ceiling(left):0} s (attempt {r.Attempt})."
+            : $"Reconnecting to node {c.Node} (attempt {r.Attempt})…";
+    }
+
     /// <summary>The hero card shows the transmit node (the one you are talking to) and a hint about the others.</summary>
     private void RefreshHero(IReadOnlyList<NodeConnection> conns)
     {
@@ -901,7 +912,7 @@ public partial class MainViewModel : ViewModelBase
         ConnectionStateBadgeText = item.StatusText;
         ConnectedNodeDisplay = $"Node {tx.Node}";
 
-        string details = tx.Reconnect.Active && !item.IsConnected ? tx.Reconnect.Message
+        string details = tx.Reconnect.Active && !item.IsConnected ? ReconnectText(tx)
             : tx.Info == null ? "Resolving…"
             : string.IsNullOrWhiteSpace(tx.Info.Callsign)
                 ? $"{tx.Info.Description} ({tx.Info.EndPoint.Address})"
@@ -1053,6 +1064,7 @@ public partial class MainViewModel : ViewModelBase
 
         // Once a second is plenty for round-trip times and the "registered for ..." badge.
         if (_tick % 10 == 0 && _runtime.IsRegistered) ApplyRegistration();
+        if (_tick % 10 == 0 && IsReconnecting) RefreshHero(_runtime.Connections);
         if (++_tick % 10 == 0 && LinkItems.Count > 0)
         {
             foreach (var c in _runtime.Connections)

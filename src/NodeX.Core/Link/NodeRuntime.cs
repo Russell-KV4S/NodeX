@@ -798,7 +798,8 @@ public sealed class NodeRuntime : IAsyncDisposable
                 if (delay > TimeSpan.Zero)
                 {
                     PublishReconnect(c, new(true, attempt + 1, delay,
-                        $"Reconnecting to node {target} in {Math.Ceiling(delay.TotalSeconds):0} s (attempt {attempt + 1})."));
+                        $"Reconnecting to node {target} in {Math.Ceiling(delay.TotalSeconds):0} s (attempt {attempt + 1}).",
+                        DateTimeOffset.UtcNow + delay));
                     await WaitAsync(delay, ct);      // a network change cuts the wait short
                 }
 

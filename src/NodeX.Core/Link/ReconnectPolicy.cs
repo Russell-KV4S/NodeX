@@ -44,7 +44,8 @@ public sealed record ReconnectPolicy
 /// <param name="Attempt">1-based number of the current or upcoming attempt.</param>
 /// <param name="NextAttemptIn">Delay before the next attempt, or null when an attempt is running or waiting on the network.</param>
 /// <param name="Message">Human-readable status.</param>
-public readonly record struct ReconnectStatus(bool Active, int Attempt, TimeSpan? NextAttemptIn, string Message)
+/// <param name="RetryAt">When the next attempt starts (UTC), so a display can count down; null when not waiting.</param>
+public readonly record struct ReconnectStatus(bool Active, int Attempt, TimeSpan? NextAttemptIn, string Message, DateTimeOffset? RetryAt = null)
 {
     public static ReconnectStatus Inactive => new(false, 0, null, "");
 }
