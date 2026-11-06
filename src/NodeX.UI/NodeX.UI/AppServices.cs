@@ -53,6 +53,12 @@ public static class AppServices
     /// </summary>
     public static Func<bool>? BackHandler { get; set; }
 
+    /// <summary>
+    /// Set by a head that can switch the audio output (Android): true = loudspeaker, false = phone earpiece (or a
+    /// connected headset). Returns whether the switch worked. Null where the platform has one output.
+    /// </summary>
+    public static Func<bool, bool>? SpeakerphoneSetter { get; set; }
+
     /// <summary>The phone button mapped to push-to-talk; the platform head feeds key events to it.</summary>
     public static HardwarePttMapper HardwarePtt { get; } = new();
 

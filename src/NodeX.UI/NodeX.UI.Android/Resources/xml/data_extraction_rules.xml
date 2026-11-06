@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ equivalent of backup_rules.xml: cloud backup and device-to-device transfer both carry only settings.json. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="file" path=".local/share/NodeX/settings.json" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path=".local/share/NodeX/settings.json" />
+    </device-transfer>
+</data-extraction-rules>

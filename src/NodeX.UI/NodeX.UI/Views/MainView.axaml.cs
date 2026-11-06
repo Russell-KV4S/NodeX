@@ -1,6 +1,8 @@
+using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using NodeX.UI.ViewModels;
@@ -47,6 +49,24 @@ public partial class MainView : UserControl
                 : HeaderMode.Wide);
             ApplyLayout(e.NewSize.Width < NarrowBreakpoint, isShort);
         };
+    }
+
+    /// <summary>Copies the whole event log (oldest line first) to the system clipboard.</summary>
+    private async void OnCopyLogClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm) return;
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard == null) return;
+
+        try
+        {
+            await clipboard.SetTextAsync(vm.GetLogText());
+            vm.NoteLogCopied();
+        }
+        catch (Exception)
+        {
+            // Clipboard can be unavailable (locked by another app); nothing useful to show.
+        }
     }
 
     private void OnPttPointerPressed(object? sender, PointerPressedEventArgs e)

@@ -212,7 +212,7 @@
         <Border Grid.Row="3" Background="{StaticResource HeaderBackgroundBrush}"
                 BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="16,10">
             <TextBlock Classes="hint" HorizontalAlignment="Center" MaxWidth="720"
-                       Text="Results come from the public AllStarLink node list. “Use” puts the node in the connect box; it does not connect. ★ saves a favorite." />
+                       Text="Results come from the public AllStarLink node list. “Use” connects to the node right away. ★ saves a favorite." />
         </Border>
     </Grid>
 </UserControl>

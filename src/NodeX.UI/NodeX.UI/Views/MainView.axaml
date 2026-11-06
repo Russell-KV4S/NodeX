@@ -306,6 +306,13 @@
                                              Foreground="{StaticResource RxGreenBrush}" Background="#1F2937" />
                                 <TextBlock Grid.Column="2" Text="{Binding RxAudioLevel, StringFormat='{}{0:P0}'}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
                             </Grid>
+                            <!-- Phone earpiece / loudspeaker (Android only) -->
+                            <Button IsVisible="{Binding CanSwitchSpeaker}" Command="{Binding ToggleSpeakerCommand}"
+                                    AutomationProperties.Name="Switch between phone and speaker audio"
+                                    Content="{Binding SpeakerButtonText}"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                    Background="#1F2937" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1"
+                                    CornerRadius="8" Padding="12,6" FontSize="13" FontWeight="SemiBold" />
                         </StackPanel>
                     </Border>
 
@@ -420,8 +427,30 @@
                                 🔍 Find a node…
                             </Button>
 
+                            <!-- Favorite whatever is typed above: star toggles it, the name is optional -->
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                                <Button Grid.Column="0" Content="{Binding TargetFavoriteGlyph}" FontSize="20"
+                                        AutomationProperties.Name="{Binding TargetFavoriteName}"
+                                        Command="{Binding ToggleTargetFavoriteCommand}"
+                                        MinWidth="44" MinHeight="40" Padding="0" CornerRadius="6"
+                                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                        Foreground="{StaticResource AmberAccentBrush}" />
+                                <TextBox Grid.Column="1" AutomationProperties.Name="Favorite name"
+                                         Text="{Binding FavoriteLabelInput}" MaxLength="40"
+                                         PlaceholderText="Name, e.g. East Coast Reflector"
+                                         CornerRadius="6" VerticalContentAlignment="Center">
+                                    <TextBox.KeyBindings>
+                                        <KeyBinding Gesture="Enter" Command="{Binding SaveFavoriteLabelCommand}" />
+                                    </TextBox.KeyBindings>
+                                </TextBox>
+                                <Button Grid.Column="2" Content="Save" Command="{Binding SaveFavoriteLabelCommand}"
+                                        AutomationProperties.Name="Save favorite name"
+                                        MinHeight="40" Padding="12,6" CornerRadius="6" FontWeight="SemiBold"
+                                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+                            </Grid>
+
                             <StackPanel Spacing="6" IsVisible="{Binding HasFavorites}">
-                                <TextBlock Text="Quick Recall" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="Favorites (tap to connect)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
                                 <ItemsControl ItemsSource="{Binding FavoriteNodes}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
@@ -429,13 +458,19 @@
                                         </ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Button Content="{Binding}"
-                                                    Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).SelectFavoriteNodeCommand}"
-                                                    CommandParameter="{Binding}"
-                                                    Margin="0,0,6,6" Padding="10,6" FontSize="12"
-                                                    Background="#21262D" Foreground="{StaticResource CyanAccentBrush}"
-                                                    CornerRadius="4" BorderThickness="0" />
+                                        <DataTemplate x:DataType="vm:FavoriteItem">
+                                            <Button Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).SelectFavoriteNodeCommand}"
+                                                    CommandParameter="{Binding Node}"
+                                                    AutomationProperties.Name="{Binding AutomationName}"
+                                                    Margin="0,0,6,6" Padding="10,6"
+                                                    Background="#21262D" CornerRadius="6" BorderThickness="0">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
+                                                               Foreground="{StaticResource CyanAccentBrush}" />
+                                                    <TextBlock Text="{Binding Node}" FontSize="11" IsVisible="{Binding HasLabel}"
+                                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                                </StackPanel>
+                                            </Button>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
@@ -479,9 +514,15 @@
                         <Grid RowDefinitions="Auto,*">
                             <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
                                 <TextBlock Grid.Column="0" Text="Event Log" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" />
-                                <Button Grid.Column="1" Content="Clear" Command="{Binding ClearLogCommand}"
-                                        Background="Transparent" BorderThickness="0" FontSize="11"
-                                        Foreground="{StaticResource CyanAccentBrush}" Padding="4,0" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                                    <Button x:Name="CopyLogButton" Content="Copy" Click="OnCopyLogClick"
+                                            AutomationProperties.Name="Copy event log to clipboard"
+                                            Background="Transparent" BorderThickness="0" FontSize="11"
+                                            Foreground="{StaticResource CyanAccentBrush}" Padding="8,0" />
+                                    <Button Content="Clear" Command="{Binding ClearLogCommand}"
+                                            Background="Transparent" BorderThickness="0" FontSize="11"
+                                            Foreground="{StaticResource CyanAccentBrush}" Padding="8,0" />
+                                </StackPanel>
                             </Grid>
 
                             <ScrollViewer Grid.Row="1">

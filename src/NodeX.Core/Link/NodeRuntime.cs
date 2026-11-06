@@ -367,6 +367,12 @@ public sealed class NodeRuntime : IAsyncDisposable
             var reason = link.DisconnectReason;
             string node = link.Target.NodeNumber;
 
+            // Say how long it had been up: "lost after 4 min" (network/sleep) reads very differently from
+            // "hung up after 0:20" (the far node dropped us). Goes into the copyable event log.
+            string up = link.WasConnected
+                ? $" after {(int)link.ConnectedDuration.TotalMinutes} min {link.ConnectedDuration.Seconds:00} s up"
+                : "";
+
             // The remote accepted the call and hung up almost at once. Verified live: this is what an
             // ASL3 node does while its own node list does not contain this node yet (e.g. right after
             // registering or after the address changed). It resolves itself within minutes, so retry
@@ -410,7 +416,7 @@ public sealed class NodeRuntime : IAsyncDisposable
             if (recoverable)
             {
                 await EndLinkAsync(link, transient: true);
-                Notice?.Invoke($"Link to node {node} lost.");
+                Notice?.Invoke($"Link to node {node} lost{up} (no reply to keep-alives).");
                 StartReconnect(immediate: false);
                 return;
             }
@@ -421,7 +427,7 @@ public sealed class NodeRuntime : IAsyncDisposable
                     ErrorOccurred?.Invoke($"No response from node {node}.");
                     break;
                 case Iax2DisconnectReason.LinkLost:
-                    ErrorOccurred?.Invoke($"Link to node {node} lost.");
+                    ErrorOccurred?.Invoke($"Link to node {node} lost{up}.");
                     break;
                 case Iax2DisconnectReason.RemoteRejected:
                     ErrorOccurred?.Invoke($"Node {node} rejected the connection.");
@@ -430,7 +436,7 @@ public sealed class NodeRuntime : IAsyncDisposable
                     ErrorOccurred?.Invoke($"Node {node} is busy.");
                     break;
                 case Iax2DisconnectReason.RemoteHangup:
-                    Notice?.Invoke($"Node {node} disconnected.");
+                    Notice?.Invoke($"Node {node} disconnected{up}: the far node hung up, so NodeX is not reconnecting.");
                     break;
             }
 

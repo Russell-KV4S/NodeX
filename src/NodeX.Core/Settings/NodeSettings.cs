@@ -27,6 +27,9 @@ public sealed record NodeSettings
     /// <summary>Quick-connect node numbers.</summary>
     public List<string> FavoriteNodes { get; init; } = [];
 
+    /// <summary>Friendly names for favourites, keyed by node number (e.g. "27339" → "East Coast Reflector").</summary>
+    public Dictionary<string, string> FavoriteLabels { get; init; } = [];
+
     /// <summary>Registry endpoint; change only for a test registry.</summary>
     public string RegistrationUrl { get; init; } = AslRegistrationService.DefaultRegistrationUrl;
 

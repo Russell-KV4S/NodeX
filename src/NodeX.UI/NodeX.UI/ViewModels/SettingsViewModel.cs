@@ -158,6 +158,8 @@ public partial class SettingsViewModel : ViewModelBase
     /// <summary>Raised when the user dismisses the screen without saving.</summary>
     public event Action? Cancelled;
 
+    private Dictionary<string, string> _favoriteLabels = [];
+
     /// <summary>Fills the form from the saved configuration.</summary>
     public async Task LoadAsync()
     {
@@ -170,6 +172,7 @@ public partial class SettingsViewModel : ViewModelBase
         ListenOnly = s.ListenOnly;
         DefaultTargetNode = s.DefaultTargetNode;
         FavoritesText = string.Join(", ", s.FavoriteNodes);
+        _favoriteLabels = new Dictionary<string, string>(s.FavoriteLabels);
         RegisterOnStartup = s.RegisterOnStartup;
         AutoReconnect = s.AutoReconnect;
         TogglePtt = s.TogglePtt;
@@ -293,6 +296,7 @@ public partial class SettingsViewModel : ViewModelBase
             FavoriteNodes = FavoritesText
                 .Split([',', ' ', ';', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToList(),
+            FavoriteLabels = _favoriteLabels,   // names are edited on the main screen; Normalize drops any for removed favourites
             RegistrationUrl = RegistrationUrl,
             IaxPort = port,
             RegisterOnStartup = RegisterOnStartup,

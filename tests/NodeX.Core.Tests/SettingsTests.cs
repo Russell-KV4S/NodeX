@@ -130,6 +130,30 @@ public class NodeSettingsValidatorTests
         Assert.Equal("W1AW", n.Callsign);
         Assert.Equal(["1999", "27339"], n.FavoriteNodes);
     }
+
+    [Fact]
+    public void Normalize_KeepsLabelsOnlyForFavorites_TrimmedAndCapped()
+    {
+        var n = NodeSettingsValidator.Normalize(new NodeSettings
+        {
+            FavoriteNodes = ["27339", "1999"],
+            FavoriteLabels = new()
+            {
+                ["27339"] = "  East Coast Reflector ",
+                ["1999"] = "   ",                                  // blank: dropped
+                ["555"] = "Not a favorite",                        // not a favorite: dropped
+                ["2000"] = new string('x', 100)                    // not a favorite either
+            }
+        });
+        Assert.Equal(new Dictionary<string, string> { ["27339"] = "East Coast Reflector" }, n.FavoriteLabels);
+
+        var long40 = NodeSettingsValidator.Normalize(new NodeSettings
+        {
+            FavoriteNodes = ["1999"],
+            FavoriteLabels = new() { ["1999"] = new string('y', 100) }
+        });
+        Assert.Equal(NodeSettingsValidator.MaxFavoriteLabelLength, long40.FavoriteLabels["1999"].Length);
+    }
 }
 
 public class SettingsStoreTests : IDisposable

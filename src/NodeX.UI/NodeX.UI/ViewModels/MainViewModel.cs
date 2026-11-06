@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -10,6 +11,17 @@ using NodeX.Core.Audio;
 using NodeX.Core.Settings;
 
 namespace NodeX.UI.ViewModels;
+
+/// <summary>A saved favourite: the node number and its friendly name (empty when none was given).</summary>
+public sealed record FavoriteItem(string Node, string Label)
+{
+    public bool HasLabel => Label.Length > 0;
+
+    /// <summary>Main line of the quick-recall button: the name, or the number when there is no name.</summary>
+    public string Title => HasLabel ? Label : Node;
+
+    public string AutomationName => HasLabel ? $"Connect to {Label}, node {Node}" : $"Connect to node {Node}";
+}
 
 /// <summary>
 /// Main console. All real work is delegated to <see cref="NodeRuntime"/> (registration, the active
@@ -92,7 +104,24 @@ public partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>Adds or removes a favourite and saves it; false when it could not be saved.</summary>
-    private async Task<bool> SetFavoriteAsync(string node, bool favorite)
+    private Task<bool> SetFavoriteAsync(string node, bool favorite) =>
+        UpdateFavoriteAsync(node, favorite, favorite ? SuggestLabel(node) : null);
+
+    /// <summary>A starting name for a node chosen from "Find a node": its frequency/name, else its callsign.</summary>
+    private string? SuggestLabel(string node)
+    {
+        var hit = Search.Results.FirstOrDefault(r => r.NodeNumber == node)?.Node;
+        if (hit == null) return null;
+        string text = hit.Description.Trim();
+        if (text.Length == 0) text = hit.Callsign.Trim();
+        return text.Length == 0 ? null : text;
+    }
+
+    /// <summary>
+    /// Adds, removes or renames a favourite. <paramref name="label"/> replaces the stored name when non-empty; an
+    /// empty or null label keeps the name already saved.
+    /// </summary>
+    private async Task<bool> UpdateFavoriteAsync(string node, bool favorite, string? label)
     {
         var cfg = _runtime.Config;
         if (!cfg.IsComplete || cfg.Password == null)
@@ -101,12 +130,23 @@ public partial class MainViewModel : ViewModelBase
             return false;
         }
 
-        var list = cfg.Settings.FavoriteNodes.Where(n => n != node).ToList();
-        if (favorite) list.Add(node);
+        var list = cfg.Settings.FavoriteNodes.ToList();
+        var labels = new Dictionary<string, string>(cfg.Settings.FavoriteLabels);
+        if (favorite)
+        {
+            if (!list.Contains(node)) list.Add(node);
+            if (!string.IsNullOrWhiteSpace(label)) labels[node] = label.Trim();
+        }
+        else
+        {
+            list.Remove(node);
+            labels.Remove(node);
+        }
 
         try
         {
-            var result = await _runtime.ConfigService.SaveAsync(cfg.Settings with { FavoriteNodes = list }, cfg.Password);
+            var result = await _runtime.ConfigService.SaveAsync(
+                cfg.Settings with { FavoriteNodes = list, FavoriteLabels = labels }, cfg.Password);
             return result.Success;
         }
         catch (Exception ex)
@@ -215,8 +255,92 @@ public partial class MainViewModel : ViewModelBase
 
     // --- Telemetry & Recent Lists ---
     public ObservableCollection<string> ActivityLog { get; } = [];
-    public ObservableCollection<string> FavoriteNodes { get; } = [];
+    public ObservableCollection<FavoriteItem> FavoriteNodes { get; } = [];
     public bool HasFavorites => FavoriteNodes.Count > 0;
+
+    // --- Favourite the node typed in the connect box ---
+
+    /// <summary>True when the node in the connect box is saved as a favourite.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TargetFavoriteGlyph), nameof(TargetFavoriteName))]
+    public partial bool TargetIsFavorite { get; set; }
+
+    /// <summary>The friendly name being edited for the favourite in the connect box.</summary>
+    [ObservableProperty]
+    public partial string FavoriteLabelInput { get; set; } = "";
+
+    public string TargetFavoriteGlyph => TargetIsFavorite ? "★" : "☆";
+    public string TargetFavoriteName => TargetIsFavorite ? "Remove this node from favorites" : "Add this node to favorites";
+
+    private bool TargetIsValid => NodeSettingsValidator.IsValidNodeNumber(TargetNodeInput?.Trim());
+
+    partial void OnTargetNodeInputChanged(string value) => RefreshTargetFavorite();
+
+    private void RefreshTargetFavorite()
+    {
+        string node = TargetNodeInput?.Trim() ?? "";
+        var item = FavoriteNodes.FirstOrDefault(f => f.Node == node);
+        TargetIsFavorite = item != null;
+        FavoriteLabelInput = item?.Label ?? "";
+    }
+
+    [RelayCommand]
+    public async Task ToggleTargetFavoriteAsync()
+    {
+        string node = TargetNodeInput?.Trim() ?? "";
+        if (!NodeSettingsValidator.IsValidNodeNumber(node))
+        {
+            LogActivity("[ERROR] Enter a valid node number (3 to 7 digits) to favorite it.");
+            return;
+        }
+
+        bool want = !TargetIsFavorite;
+        if (await UpdateFavoriteAsync(node, want, want ? FavoriteLabelInput : null))
+            LogActivity(want ? $"Node {node} added to favorites." : $"Node {node} removed from favorites.");
+    }
+
+    /// <summary>Saves the name typed for the favourite in the connect box (adding it as a favourite if it is not one yet).</summary>
+    [RelayCommand]
+    public async Task SaveFavoriteLabelAsync()
+    {
+        string node = TargetNodeInput?.Trim() ?? "";
+        if (!NodeSettingsValidator.IsValidNodeNumber(node)) return;
+        if (await UpdateFavoriteAsync(node, favorite: true, FavoriteLabelInput))
+            LogActivity($"Saved favorite {node}{(FavoriteLabelInput.Trim().Length > 0 ? $" as \"{FavoriteLabelInput.Trim()}\"" : "")}.");
+    }
+
+    // --- Audio route (phone earpiece / speaker), where the platform can switch it ---
+
+    public bool CanSwitchSpeaker => AppServices.SpeakerphoneSetter != null;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SpeakerButtonText))]
+    public partial bool IsSpeakerOn { get; set; }
+
+    public string SpeakerButtonText => IsSpeakerOn ? "🔊 Speaker — tap for phone" : "📞 Phone — tap for speaker";
+
+    [RelayCommand]
+    public void ToggleSpeaker()
+    {
+        var setter = AppServices.SpeakerphoneSetter;
+        if (setter == null) return;
+
+        bool want = !IsSpeakerOn;
+        if (setter(want))
+        {
+            IsSpeakerOn = want;
+            LogActivity(want ? "Audio: loudspeaker." : "Audio: phone earpiece / headset.");
+        }
+        else
+        {
+            LogActivity("[ERROR] Could not switch the audio output.");
+        }
+    }
+
+    /// <summary>The event log as plain text, oldest line first (for the clipboard).</summary>
+    public string GetLogText() => string.Join(Environment.NewLine, ActivityLog.Reverse());
+
+    public void NoteLogCopied() => LogActivity($"Event log copied ({ActivityLog.Count} lines).");
 
     /// <summary>Keys of the DTMF pad in display order (3 columns).</summary>
     public string[] DtmfKeys { get; } = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
@@ -268,13 +392,13 @@ public partial class MainViewModel : ViewModelBase
 
         Search = new NodeSearchViewModel(
             directory ?? AppServices.Directory,
-            () => FavoriteNodes,
+            () => FavoriteNodes.Select(f => f.Node).ToList(),
             SetFavoriteAsync);
         Search.Closed += () => IsSearchOpen = false;
         Search.NodeChosen += node =>
         {
-            TargetNodeInput = node;
             IsSearchOpen = false;
+            _ = ConnectToAsync(node);   // "Use" dials straight away
         };
 
         Settings = new SettingsViewModel(runtime.ConfigService);
@@ -288,6 +412,8 @@ public partial class MainViewModel : ViewModelBase
         runtime.ReconnectChanged += status => OnUi(() => ApplyReconnect(status));
         runtime.ConfigService.Changed += cfg => OnUi(() => ApplyConfig(cfg));
         runtime.Transmit.Changed += () => OnUi(RefreshTransmit);
+        // The OS audio route is reset when nothing is linked any more, so the button must say "phone" again.
+        runtime.LinkActiveChanged += (active, _) => { if (!active) OnUi(() => IsSpeakerOn = false); };
 
         ApplyConfig(runtime.Config);
         ApplyRegistration();
@@ -362,6 +488,18 @@ public partial class MainViewModel : ViewModelBase
     {
         await Settings.LoadAsync();
         IsSettingsOpen = true;
+    }
+
+    /// <summary>Puts <paramref name="node"/> in the connect box and dials it (favourite tapped, or "Use" in Find a node).</summary>
+    private async Task ConnectToAsync(string node)
+    {
+        TargetNodeInput = node;
+        if (IsConnected && ConnectedNodeDisplay == $"Node {node}")
+        {
+            LogActivity($"Already connected to node {node}.");
+            return;
+        }
+        await ConnectNodeAsync();
     }
 
     [RelayCommand]
@@ -499,7 +637,10 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    public void SelectFavoriteNode(string node) => TargetNodeInput = node;
+    public async Task SelectFavoriteNodeAsync(string node)
+    {
+        if (!string.IsNullOrEmpty(node)) await ConnectToAsync(node);
+    }
 
     [RelayCommand]
     public void ClearLog() => ActivityLog.Clear();
@@ -522,12 +663,14 @@ public partial class MainViewModel : ViewModelBase
         RefreshTransmit();
 
         FavoriteNodes.Clear();
-        foreach (string node in s.FavoriteNodes) FavoriteNodes.Add(node);
+        foreach (string node in s.FavoriteNodes)
+            FavoriteNodes.Add(new FavoriteItem(node, s.FavoriteLabels.TryGetValue(node, out var label) ? label : ""));
         OnPropertyChanged(nameof(HasFavorites));
         if (!IsTransmitting) TotCounterText = FormatTot(TimeSpan.Zero, TotLimit);
 
         if (string.IsNullOrWhiteSpace(TargetNodeInput) && s.DefaultTargetNode.Length > 0)
             TargetNodeInput = s.DefaultTargetNode;
+        RefreshTargetFavorite();
 
         AppServices.HardwarePtt.MappedKey = s.HardwarePttKey;
 

@@ -36,6 +36,7 @@ public class MainActivity : AvaloniaMainActivity
         };
         AppServices.MicrophonePermissionRequester = RequestMicrophoneOrOpenSettings;
         AppServices.ExitHandler = () => AndroidAppExit.Finish(this);
+        AppServices.SpeakerphoneSetter = speaker => AndroidAudioRoute.SetSpeaker(this, speaker);
         RequestRuntimePermissions();
         UpdateMicrophoneState();
     }

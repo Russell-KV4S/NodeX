@@ -44,8 +44,26 @@ public static partial class NodeSettingsValidator
             .Select(n => (n ?? "").Trim())
             .Where(n => n.Length > 0)
             .Distinct()
-            .ToList()
+            .ToList(),
+        FavoriteLabels = CleanLabels(s)
     };
+
+    public const int MaxFavoriteLabelLength = 40;
+
+    /// <summary>Keeps only non-empty labels for nodes that are still favourites, trimmed and length-capped.</summary>
+    private static Dictionary<string, string> CleanLabels(NodeSettings s)
+    {
+        var favorites = (s.FavoriteNodes ?? []).Select(n => (n ?? "").Trim()).ToHashSet();
+        var result = new Dictionary<string, string>();
+        foreach (var (node, label) in s.FavoriteLabels ?? [])
+        {
+            string key = (node ?? "").Trim();
+            string text = (label ?? "").Trim();
+            if (text.Length > MaxFavoriteLabelLength) text = text[..MaxFavoriteLabelLength].TrimEnd();
+            if (text.Length > 0 && favorites.Contains(key)) result[key] = text;
+        }
+        return result;
+    }
 
     /// <summary>Returns every problem found; an empty list means the configuration is usable.</summary>
     public static IReadOnlyList<SettingsIssue> Validate(NodeSettings settings, string? password)

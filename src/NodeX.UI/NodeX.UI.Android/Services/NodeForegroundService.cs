@@ -146,6 +146,7 @@ public sealed class NodeForegroundService : Service
             // Idle: registration is a small HTTPS request each minute; no reason to hold the CPU or Wi-Fi awake.
             _keeper.StopBluetoothSco();
             _keeper.Release();
+            AndroidAudioRoute.Reset(this);   // loudspeaker choice only lasts while linked
         }
 
         IsRunning = true;
