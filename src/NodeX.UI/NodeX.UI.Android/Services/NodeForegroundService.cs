@@ -221,7 +221,7 @@ public sealed class NodeForegroundService : Service
         var builder = new NotificationCompat.Builder(this, ChannelId)
             .SetContentTitle(state.IsLinked ? "NodeX connected" : "NodeX is running")!
             .SetContentText(state.Summary)!
-            .SetSmallIcon(global::Android.Resource.Drawable.IcMediaPlay)!
+            .SetSmallIcon(Resource.Drawable.ic_stat_nodex)!
             .SetOngoing(true)!
             .SetCategory(Notification.CategoryService)!
             .SetContentIntent(pending)!;

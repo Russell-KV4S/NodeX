@@ -16,12 +16,6 @@
   <Import Project="$(MSBuildThisFileDirectory)..\..\..\keystore\signing.props" Condition="Exists('$(MSBuildThisFileDirectory)..\..\..\keystore\signing.props') And '$(Configuration)' == 'Release'" />
 
   <ItemGroup>
-    <AndroidResource Include="Icon.png">
-      <Link>Resources\drawable\Icon.png</Link>
-    </AndroidResource>
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Avalonia.Android" />
     <PackageReference Include="Xamarin.AndroidX.Core.SplashScreen" />
   </ItemGroup>

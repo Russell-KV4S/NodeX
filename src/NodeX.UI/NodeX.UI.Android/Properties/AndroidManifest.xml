@@ -28,7 +28,7 @@
 	<uses-feature android:name="android.hardware.microphone" android:required="true" />
 	<uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
-	<application android:label="NodeX" android:icon="@drawable/Icon"
+	<application android:label="NodeX" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"
 		android:allowBackup="true"
 		android:fullBackupContent="@xml/backup_rules"
 		android:dataExtractionRules="@xml/data_extraction_rules" />

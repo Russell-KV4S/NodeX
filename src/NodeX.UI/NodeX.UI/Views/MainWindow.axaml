@@ -9,7 +9,7 @@
         MinWidth="340" MinHeight="480"
         WindowStartupLocation="CenterScreen"
         x:Class="NodeX.UI.Views.MainWindow"
-        Icon="/Assets/avalonia-logo.ico"
+        Icon="/Assets/nodex.ico"
         Title="NodeX — AllStarLink Console (Asterisk-Free)"
         Background="{StaticResource ConsoleBackgroundBrush}">
         <views:MainView />

@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -171,10 +171,7 @@
 
                 <!-- Branding -->
                 <StackPanel x:Name="BrandPanel" Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                    <Border Width="32" Height="32" CornerRadius="6" Background="{StaticResource CyanAccentBrush}">
-                        <TextBlock Text="NX" FontWeight="Bold" FontSize="16" Foreground="#000000"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    <Image Source="avares://NodeX.UI/Assets/nodex-mark.png" Width="36" Height="36" RenderOptions.BitmapInterpolationMode="HighQuality" />
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="NodeX" FontSize="18" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" />
                         <TextBlock x:Name="BrandTagline" Text="AllStarLink Radioless Node" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
