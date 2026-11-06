@@ -40,7 +40,7 @@ Design stance: **outbound-linking only.** Carrier-grade NAT blocks unsolicited i
 | `NodeRuntime` (registration, link, **auto-reconnect, network handoff**) | Implemented | Tests with fake node + fake network |
 | Desktop head (Windows) | Runs; NAudio `WaveIn`/`WaveOut` audio; mic and speaker **verified** via `LiveCheck` (the full GUI app has not been used for an on-air QSO) | Launched and screenshot-checked; live audio checks |
 | Desktop head (Linux/macOS) | Compiles; **runs silently** (no audio backend) | — |
-| Android head | Compiles/builds; **never run on a device** | Build only |
+| Android head | Builds; **shipped to Play internal testing (§3.5, 2026-11-05) and installed on the owner's phone**; on-device behaviour not yet recorded here | Build; Play internal test |
 | iOS head | Compiles/builds; **never run on a device** | Build only |
 | Bluetooth PTT (BLE GATT, SCO audio, media key, Learn wizard) | **Not implemented** (interface + packet parser only) | Parser tests |
 | Responsive/phone layout | Implemented (single-column phone layout with docked PTT bar below 720 px or below 520 px height; two-column desktop above). **Verified only by resizing the Windows app (340–1100 px wide, 860×420 landscape), not on a real phone** | Screenshots at 340 / 410 / 780 / 1100 px and 1050×760, 800×760, 420×860, 860×420 |
@@ -124,6 +124,15 @@ dotnet build src/NodeX.UI/NodeX.UI.Android          # Android head
 dotnet build src/NodeX.UI/NodeX.UI.iOS              # iOS head (compile check on Windows)
 ```
 In Visual Studio set **`NodeX.UI.Desktop`** as the startup project. The settings file lives at `%LOCALAPPDATA%\NodeX\settings.json` (created only after the first successful Save).
+
+### 3.5 Android release to Google Play (internal testing)
+- **Identity:** `ApplicationId` = **`com.kv4s.nodex`** (permanent once uploaded; the foreground service and its intent actions use the same prefix). Play Console app **NodeX** under the developer account **RT App Works**; the app is free (a free app cannot later become paid). Donations, if ever added, would need a policy check first (Play Billing tip jar vs external link is unconfirmed).
+- **Format and signing:** Release builds produce an **`.aab`** (Debug stays `.apk`). `NodeX.UI.Android.csproj` imports **`keystore/signing.props`** for Release; `keystore/` is **gitignored** and holds `nodex-upload.keystore` (alias `nodex-upload`, ~27-year validity, upload key under Play App Signing) plus the passwords in `signing.props`. **Back the folder up; it is the only copy.** Never commit it.
+- **Build:** bump **`ApplicationVersion`** (versionCode, must increase every upload) and `ApplicationDisplayVersion` in the csproj, then `dotnet publish src/NodeX.UI/NodeX.UI.Android -c Release`. Output: `%LOCALAPPDATA%\NodeX\build\bin\NodeX.UI.Android\Release\net10.0-android\com.kv4s.nodex-Signed.aab` (~45 MB). Copy it to `keystore/nodex-<ver>-code<N>.aab` and check with `jarsigner -verify`.
+- **Upload is manual:** the Play Console file picker cannot be driven by an agent (the browser upload tool caps files at 10 MB). The owner uploads the `.aab` under Testing → Internal testing → Create new release; an agent can fill the release name and notes (each `<en-US>` tag must be on its own line) and publish.
+- **Testers:** email list **NodeX testers** (owner only, saved as the track's list). The shared **Honey and Blush testers** list belongs to another app and must not be ticked here. Opt-in link: `https://play.google.com/apps/internaltest/4699734114435882711`. The desktop store page says "Not Found" for a test-only app; install on the phone. The first release took a while to appear.
+- **Releases so far:** 1.0 (code 1) and **1.1 (code 2)**, 2026-11-05 (listen-only, required callsign, Find-a-node, stay-registered + Exit, phone-button PTT, Toggle PTT). Play's two warnings (no deobfuscation file, no native debug symbols) are harmless: minification is off.
+- **Still needed before any wider track:** privacy policy URL, data-safety form, content rating, target audience, store listing, and **foreground-service declarations** (microphone, media playback, connected device, special use) with justifications. A newer personal developer account may also need a closed test (about 12 testers for 14 days) before production.
 
 ---
 
@@ -397,6 +406,7 @@ The dated results of testing against real nodes and hardware (registration, link
 - **Stay registered in the background + Exit (2026-11-06):** `NodeRuntime.Background` (`BackgroundState`: Needed / LinkedNode / Registered) is true whenever settings are complete and "register on startup" is on, or a link is active, until `ExitAsync()`. Android runs `NodeForegroundService` for as long as it is true (idle = `specialUse`, linked = `mediaPlayback|connectedDevice` + `microphone` only if the mic is allowed — which also fixes the service never starting for listen-only users); the service follows the runtime itself so the notification, type and locks change without new service starts. Idle holds no wake/Wi-Fi lock. IP changes while idle re-register immediately (existing network monitor), and returning to the foreground after >30 s calls `NotifyResumed()`. Back = `MoveTaskToBack` (or closes a panel); **Menu → Exit NodeX**, the notification's Exit action, and swiping the task from Recents all run `ExitAsync()` then end the process. iOS: no Exit item; **idle background registration is NOT implemented** (see Appendix).
 - **Phone-button PTT and US state/city filters (2026-11-06):** see §4.8. 425 tests.
 - **Permissions, callsign, node search (2026-11-06):** `TransmitPolicy` (listen-only / mic denied disables PTT, listening still works); callsign required unless Listen only; Android requests/re-checks `RECORD_AUDIO` and offers "Allow microphone"; `NodeDirectory` + "Find a node" screen; open mic only while keyed now on desktop too; registration no longer restarts on unrelated setting changes.
+- **Google Play internal testing (2026-11-05):** app ID set to `com.kv4s.nodex`, Release builds emit a signed `.aab`, upload keystore created (gitignored), releases 1.0 (code 1) and 1.1 (code 2) published to internal testing and installed on the owner's phone; see §3.5.
 - **Repo & docs (2026-11-05):** private GitHub repo created; live results moved to `docs/LIVE_VALIDATION.md`; this spec reconciled with them (stale "never tested" statements removed); §17 added.
 
 ---
