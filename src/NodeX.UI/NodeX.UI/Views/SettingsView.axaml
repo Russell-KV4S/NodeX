@@ -109,7 +109,7 @@
                 <StackPanel Spacing="14">
                     <TextBlock Classes="sectionTitle" Text="Push-to-talk and audio" />
 
-                    <CheckBox Content="Latching PTT (tap to talk, tap again to stop)" IsChecked="{Binding TogglePtt}" />
+                    <CheckBox Content="Toggle PTT (tap to talk, tap again to stop)" IsChecked="{Binding TogglePtt}" />
 
                     <!-- A phone button as PTT (Android) -->
                     <StackPanel IsVisible="{Binding HardwareKeysSupported}">
@@ -124,7 +124,7 @@
                                     IsEnabled="{Binding HasHardwareKey}" MinHeight="44" Padding="12,0" CornerRadius="6" />
                         </Grid>
                         <TextBlock Classes="hint"
-                                   Text="Press “Choose button”, then press a volume key or a headset button. It then works like the on-screen PTT: hold to talk, or tap to start and tap again to stop if latching is on. It works while NodeX is on screen; a volume key used this way no longer changes the volume. Save to keep it." />
+                                   Text="Press “Choose button”, then press a volume key or a headset button. It then works like the on-screen PTT: hold to talk, or tap to start and tap again to stop if Toggle PTT is on. It works while NodeX is on screen; a volume key used this way no longer changes the volume. Save to keep it." />
                     </StackPanel>
 
                     <CheckBox Content="Clean up my voice (rumble filter, automatic level, limiter)" IsChecked="{Binding MicProcessing}" />

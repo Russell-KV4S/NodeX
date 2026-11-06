@@ -22,7 +22,7 @@ public enum PttMode
 {
     /// <summary>Transmit while holding; release to unkey.</summary>
     Momentary,
-    /// <summary>Press once to key/latch; press again to unkey.</summary>
+    /// <summary>Tap once to start transmitting; tap again to stop.</summary>
     Toggle
 }
 

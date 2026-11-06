@@ -57,12 +57,12 @@ public sealed record NodeSettings
     /// <summary>Transmit time-out timer in seconds.</summary>
     public int TimeOutTimerSeconds { get; init; } = 180;
 
-    /// <summary>Latching (toggle) PTT instead of press-and-hold.</summary>
+    /// <summary>Toggle PTT (tap to start, tap again to stop) instead of press-and-hold.</summary>
     public bool TogglePtt { get; init; }
 
     /// <summary>
     /// Key code of a phone button (volume key, headset button...) used as push-to-talk; 0 = none. It follows
-    /// <see cref="TogglePtt"/>: hold-to-talk, or press once to start and again to stop.
+    /// <see cref="TogglePtt"/>: hold-to-talk, or tap once to start and again to stop.
     /// </summary>
     public int HardwarePttKey { get; init; }
 
