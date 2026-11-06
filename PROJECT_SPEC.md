@@ -40,7 +40,7 @@ Design stance: **outbound-linking only.** Carrier-grade NAT blocks unsolicited i
 | `NodeRuntime` (registration, link, **auto-reconnect, network handoff**) | Implemented | Tests with fake node + fake network |
 | Desktop head (Windows) | Runs; NAudio `WaveIn`/`WaveOut` audio; mic and speaker **verified** via `LiveCheck` (the full GUI app has not been used for an on-air QSO) | Launched and screenshot-checked; live audio checks |
 | Desktop head (Linux/macOS) | Compiles; **runs silently** (no audio backend) | — |
-| Android head | Builds; **shipped to Play internal testing (§3.5, 2026-11-05) and installed on the owner's phone**; on-device behaviour not yet recorded here | Build; Play internal test |
+| Android head | Builds; **shipped to Play internal testing (§3.5, 2026-11-05) and installed on the owner's phone; owner reported 1.1 "worked great" (2026-11-06, general verdict only; specifics such as screen-off background audio, Bluetooth and handoff are not itemised and remain §13 item 7)** | Build; Play internal test |
 | iOS head | Compiles/builds; **never run on a device** | Build only |
 | Bluetooth PTT (BLE GATT, SCO audio, media key, Learn wizard) | **Not implemented** (interface + packet parser only) | Parser tests |
 | Responsive/phone layout | Implemented (single-column phone layout with docked PTT bar below 720 px or below 520 px height; two-column desktop above). **Verified only by resizing the Windows app (340–1100 px wide, 860×420 landscape), not on a real phone** | Screenshots at 340 / 410 / 780 / 1100 px and 1050×760, 800×760, 420×860, 860×420 |
