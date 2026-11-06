@@ -598,7 +598,7 @@ public sealed class NodeRuntime : IAsyncDisposable
                     var delay = BackoffDelay(n);
                     await EndLinkAsync(c, link, transient: true);
                     Notice?.Invoke(
-                        $"Node {node} hung up straight after accepting; it may not know this node yet. " +
+                        $"Node {node} hung up straight after accepting; it probably doesn't know this node yet (a busy hub can take 10 minutes or more). " +
                         $"Retrying in {Math.Ceiling(delay.TotalSeconds):0} s (retry {n} of {_policy.EarlyHangupMaxRetries}).");
                     StartReconnect(c, immediate: false, initialDelay: delay, attemptOffset: n - 1);
                     return;
@@ -606,7 +606,7 @@ public sealed class NodeRuntime : IAsyncDisposable
 
                 ErrorOccurred?.Invoke(
                     $"Node {node} keeps hanging up right after accepting the link. It probably does not " +
-                    "recognise this node yet (its node list refreshes every few minutes after registering). Try again shortly.");
+                    "recognise this node yet (its node list can take many minutes to refresh after registering). Try again later.");
                 Volatile.Write(ref c.EarlyHangups, 0);
                 c.Wanted = false;
                 await EndLinkAsync(c, link, transient: false);

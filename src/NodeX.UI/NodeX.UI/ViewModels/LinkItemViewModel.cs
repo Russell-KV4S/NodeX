@@ -16,19 +16,29 @@ public sealed partial class LinkItemViewModel : ObservableObject
     private readonly Action<string> _selectTransmit;
     private readonly Action<string> _toggleMute;
     private readonly Action<string> _disconnect;
+    private readonly Func<string, bool> _isFavorite;
+    private readonly Action<string> _toggleFavorite;
+    private readonly Action<string, string> _saveLabel;
+    private string _shownLabel = "";
 
     public LinkItemViewModel(
         string node,
         Func<string, string> labelFor,
         Action<string> selectTransmit,
         Action<string> toggleMute,
-        Action<string> disconnect)
+        Action<string> disconnect,
+        Func<string, bool>? isFavorite = null,
+        Action<string>? toggleFavorite = null,
+        Action<string, string>? saveLabel = null)
     {
         Node = node;
         _labelFor = labelFor;
         _selectTransmit = selectTransmit;
         _toggleMute = toggleMute;
         _disconnect = disconnect;
+        _isFavorite = isFavorite ?? (_ => false);
+        _toggleFavorite = toggleFavorite ?? (_ => { });
+        _saveLabel = saveLabel ?? ((_, _) => { });
         Title = $"Node {node}";
     }
 
@@ -74,11 +84,42 @@ public sealed partial class LinkItemViewModel : ObservableObject
 
     public string DisconnectAutomationName => $"Disconnect node {Node}";
 
+    // --- Favourite this node (star on the card; the pencil opens a small rename box) ---
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FavoriteGlyph), nameof(FavoriteAutomationName))]
+    public partial bool IsFavorite { get; set; }
+
+    /// <summary>The name being edited in the rename flyout.</summary>
+    [ObservableProperty]
+    public partial string LabelInput { get; set; } = "";
+
+    public string FavoriteGlyph => IsFavorite ? "★" : "☆";
+
+    public string FavoriteAutomationName =>
+        IsFavorite ? $"Remove node {Node} from favorites" : $"Add node {Node} to favorites";
+
+    public string RenameAutomationName => $"Rename favorite {Node}";
+
+    // --- Compact chip shown in the always-visible top bar ---
+
+    /// <summary>"27339 · East Coast HUB1" or just the number.</summary>
+    [ObservableProperty]
+    public partial string ChipTitle { get; set; } = "";
+
+    /// <summary>Short state: TX, listen, muted, connecting, reconnecting (n).</summary>
+    [ObservableProperty]
+    public partial string ChipStatus { get; set; } = "";
+
     /// <summary>Copies the connection's current state. Call on the UI thread.</summary>
     public void Refresh(NodeConnection c)
     {
         string label = _labelFor(Node);
         Title = label.Length > 0 ? $"{Node} · {label}" : $"Node {Node}";
+        ChipTitle = label.Length > 0 ? $"{Node} · {label}" : Node;
+
+        IsFavorite = _isFavorite(Node);
+        if (label != _shownLabel) { _shownLabel = label; LabelInput = label; }
 
         var info = c.Info;
         Details = info == null ? "" :
@@ -96,6 +137,12 @@ public sealed partial class LinkItemViewModel : ObservableObject
         IsMuted = c.Muted;
         if (!IsConnected) IsReceiving = false;
         RefreshRtt(c);
+
+        ChipStatus = !IsConnected
+            ? (c.Reconnect.Active ? $"reconnecting ({c.Reconnect.Attempt})" : "connecting…")
+            : IsTransmitTarget ? "TX"
+            : IsMuted ? "muted"
+            : "listen";
     }
 
     /// <summary>Badge text for a call state.</summary>
@@ -124,4 +171,10 @@ public sealed partial class LinkItemViewModel : ObservableObject
 
     [RelayCommand]
     public void Disconnect() => _disconnect(Node);
+
+    [RelayCommand]
+    public void ToggleFavorite() => _toggleFavorite(Node);
+
+    [RelayCommand]
+    public void SaveLabel() => _saveLabel(Node, LabelInput);
 }

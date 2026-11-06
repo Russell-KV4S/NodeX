@@ -257,27 +257,17 @@ public partial class MainView : UserControl
 
     private void ApplyConnectLayout(bool narrow)
     {
-        if (narrow)
-        {
-            // Node box on its own row, then two equal full-width buttons.
-            ConnectGrid.ColumnDefinitions = ColumnDefinitions.Parse("*");
-            ConnectGrid.RowDefinitions = RowDefinitions.Parse("Auto,Auto");
-            Place(TargetBox, row: 0, column: 0, columnSpan: 1);
-            Place(ConnectButtons, row: 1, column: 0, columnSpan: 1);
-            TargetBox.Margin = new Thickness(0, 0, 0, 8);
-            ConnectButtons.ColumnDefinitions = ColumnDefinitions.Parse("*,*");
-            ConnectButtons.HorizontalAlignment = HorizontalAlignment.Stretch;
-        }
-        else
-        {
-            ConnectGrid.ColumnDefinitions = ColumnDefinitions.Parse("*,Auto");
-            ConnectGrid.RowDefinitions = RowDefinitions.Parse("Auto");
-            Place(TargetBox, row: 0, column: 0, columnSpan: 1);
-            Place(ConnectButtons, row: 0, column: 1, columnSpan: 1);
-            TargetBox.Margin = new Thickness(0, 0, 8, 0);
-            ConnectButtons.ColumnDefinitions = ColumnDefinitions.Parse("Auto,Auto");
-            ConnectButtons.HorizontalAlignment = HorizontalAlignment.Left;
-        }
+        // Same stacked layout at every width (the card is only ~360 px wide even on desktop, so one row
+        // left the node box too cramped): star + node box on the first row, then two equal full-width buttons.
+        ConnectGrid.ColumnDefinitions = ColumnDefinitions.Parse("Auto,*");
+        ConnectGrid.RowDefinitions = RowDefinitions.Parse("Auto,Auto");
+        Place(TargetFavButtons, row: 0, column: 0, columnSpan: 1);
+        Place(TargetBox, row: 0, column: 1, columnSpan: 1);
+        Place(ConnectButtons, row: 1, column: 0, columnSpan: 2);
+        TargetFavButtons.Margin = new Thickness(0, 0, 8, 8);
+        TargetBox.Margin = new Thickness(0, 0, 0, 8);
+        ConnectButtons.ColumnDefinitions = ColumnDefinitions.Parse("*,*");
+        ConnectButtons.HorizontalAlignment = HorizontalAlignment.Stretch;
     }
 
     private static void Place(Control control, int row, int column, int columnSpan)

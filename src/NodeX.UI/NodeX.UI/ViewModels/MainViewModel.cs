@@ -332,7 +332,18 @@ public partial class MainViewModel : ViewModelBase
         }
 
         bool want = !TargetIsFavorite;
-        if (await UpdateFavoriteAsync(node, want, want ? FavoriteLabelInput : null))
+        string? label = null;
+        if (want)
+        {
+            label = FavoriteLabelInput;
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                var info = _runtime.Connections.FirstOrDefault(c => c.Node == node)?.Info;
+                label = SuggestLabel(node) ?? (info == null ? null
+                    : info.Description.Trim().Length > 0 ? info.Description.Trim() : info.Callsign.Trim());
+            }
+        }
+        if (await UpdateFavoriteAsync(node, want, label))
             LogActivity(want ? $"Node {node} added to favorites." : $"Node {node} removed from favorites.");
     }
 
@@ -761,6 +772,29 @@ public partial class MainViewModel : ViewModelBase
         RefreshLinks();
     }
 
+    private bool IsFavoriteNode(string node) => FavoriteNodes.Any(f => f.Node == node);
+
+    /// <summary>Star on a linked-node card. A new favourite is named after what the node reported about itself.</summary>
+    private async void ToggleFavoriteNode(string node)
+    {
+        bool want = !IsFavoriteNode(node);
+        string? label = null;
+        if (want && _runtime.Connections.FirstOrDefault(c => c.Node == node)?.Info is { } info)
+        {
+            label = info.Description.Trim();
+            if (label.Length == 0) label = info.Callsign.Trim();
+        }
+        if (await UpdateFavoriteAsync(node, want, label))
+            LogActivity(want ? $"Node {node} added to favorites." : $"Node {node} removed from favorites.");
+    }
+
+    /// <summary>Rename box on a linked-node card; an empty name keeps the saved one.</summary>
+    private async void SaveFavoriteNodeLabel(string node, string label)
+    {
+        if (await UpdateFavoriteAsync(node, favorite: true, label))
+            LogActivity($"Saved favorite {node}{(label.Trim().Length > 0 ? $" as \"{label.Trim()}\"" : "")}.");
+    }
+
     private string LabelFor(string node) =>
         _runtime.Config.Settings.FavoriteLabels.TryGetValue(node, out var label) ? label : "";
 
@@ -790,7 +824,8 @@ public partial class MainViewModel : ViewModelBase
 
             if (at < 0)
                 LinkItems.Insert(Math.Min(i, LinkItems.Count),
-                    new LinkItemViewModel(c.Node, LabelFor, SelectTransmitNode, ToggleMuteNode, DisconnectOne));
+                    new LinkItemViewModel(c.Node, LabelFor, SelectTransmitNode, ToggleMuteNode, DisconnectOne,
+                        IsFavoriteNode, ToggleFavoriteNode, SaveFavoriteNodeLabel));
             else if (at != i)
                 LinkItems.Move(at, i);
 

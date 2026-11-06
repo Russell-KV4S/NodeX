@@ -33,9 +33,10 @@ public sealed record ReconnectPolicy
 
     /// <summary>
     /// How many times an early hangup is retried (back-off from <see cref="InitialDelay"/> up to
-    /// <see cref="MaxDelay"/>; 10 retries is about six minutes with the defaults) before telling the user.
+    /// <see cref="MaxDelay"/>; 30 retries is about 28 minutes with the defaults) before telling the user.
+    /// Raised from 10 after a busy hub (27339) took the full ~6 minutes and only just accepted on retry 10.
     /// </summary>
-    public int EarlyHangupMaxRetries { get; init; } = 10;
+    public int EarlyHangupMaxRetries { get; init; } = 30;
 }
 
 /// <summary>What the auto-reconnect machinery is doing right now, for display.</summary>

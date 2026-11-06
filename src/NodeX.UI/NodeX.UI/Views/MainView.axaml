@@ -112,6 +112,22 @@
             <Setter Property="CornerRadius" Value="10" />
             <Setter Property="Padding" Value="12" />
         </Style>
+        <!-- Top-bar link chips: amber while connecting/reconnecting, green once up (text states it too) -->
+        <Style Selector="Border.linkChip">
+            <Setter Property="Background" Value="#2A2410" />
+            <Setter Property="BorderBrush" Value="{StaticResource AmberAccentBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Border.linkChip.up">
+            <Setter Property="Background" Value="#0F2A22" />
+            <Setter Property="BorderBrush" Value="{StaticResource RxGreenBrush}" />
+        </Style>
+        <Style Selector="Ellipse.chipDot">
+            <Setter Property="Fill" Value="{StaticResource AmberAccentBrush}" />
+        </Style>
+        <Style Selector="Ellipse.chipDot.up">
+            <Setter Property="Fill" Value="{StaticResource RxGreenBrush}" />
+        </Style>
         <Style Selector="Border.linkRow.tx">
             <Setter Property="BorderBrush" Value="{StaticResource TxRedBrush}" />
             <Setter Property="BorderThickness" Value="4,1,1,1" />
@@ -150,6 +166,7 @@
                 BorderBrush="{StaticResource CardBorderBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="16,12">
+          <StackPanel Spacing="8">
             <Grid x:Name="HeaderGrid" ColumnDefinitions="Auto,*,Auto,Auto" RowDefinitions="Auto">
 
                 <!-- Branding -->
@@ -212,6 +229,38 @@
                     </Button.Flyout>
                 </Button>
             </Grid>
+
+            <!-- Links strip: always visible, so scrolling to the log never hides what you are connected to -->
+            <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
+                <TextBlock Text="{Binding LinkCountText, StringFormat='LINKED {0}'}" IsVisible="{Binding HasLinks}"
+                           FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"
+                           Foreground="{StaticResource TextSecondaryBrush}" />
+                <TextBlock Text="Not linked to any node" IsVisible="{Binding !HasLinks}"
+                           FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"
+                           Foreground="{StaticResource TextMutedBrush}" />
+                <ItemsControl ItemsSource="{Binding LinkItems}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:LinkItemViewModel">
+                            <Border Classes="linkChip" Classes.up="{Binding IsConnected}"
+                                    Margin="0,0,6,4" CornerRadius="12" Padding="9,3">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Ellipse Classes="chipDot" Classes.up="{Binding IsConnected}" Width="8" Height="8" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding ChipTitle}" FontSize="12" FontWeight="Bold"
+                                               Foreground="{StaticResource TextPrimaryBrush}" />
+                                    <TextBlock Text="{Binding ChipStatus}" FontSize="11"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </WrapPanel>
+          </StackPanel>
         </Border>
 
         <!-- MAIN BODY CONTENT -->
@@ -452,16 +501,46 @@
                                                         </StackPanel>
                                                     </StackPanel>
                                                     <!-- Text pill, so "audio is arriving from this node" is not colour-only -->
-                                                    <Border Grid.Column="1" IsVisible="{Binding IsReceiving}" VerticalAlignment="Top"
-                                                            CornerRadius="12" Padding="8,4" Background="#1A10B981"
-                                                            BorderBrush="{StaticResource RxGreenBrush}" BorderThickness="1">
-                                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                                            <Ellipse Width="8" Height="8" Fill="{StaticResource RxGreenBrush}" VerticalAlignment="Center" />
-                                                            <TextBlock Text="Receiving" FontSize="11" FontWeight="Bold"
-                                                                       AutomationProperties.LiveSetting="Polite"
-                                                                       Foreground="{StaticResource RxGreenBrush}" />
-                                                        </StackPanel>
-                                                    </Border>
+                                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Top">
+                                                        <Border IsVisible="{Binding IsReceiving}" VerticalAlignment="Center"
+                                                                CornerRadius="12" Padding="8,4" Background="#1A10B981"
+                                                                BorderBrush="{StaticResource RxGreenBrush}" BorderThickness="1">
+                                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                <Ellipse Width="8" Height="8" Fill="{StaticResource RxGreenBrush}" VerticalAlignment="Center" />
+                                                                <TextBlock Text="Receiving" FontSize="11" FontWeight="Bold"
+                                                                           AutomationProperties.LiveSetting="Polite"
+                                                                           Foreground="{StaticResource RxGreenBrush}" />
+                                                            </StackPanel>
+                                                        </Border>
+                                                        <!-- Favourite this node: star toggles, pencil (favourites only) renames -->
+                                                        <Button Content="✎" FontSize="14" IsVisible="{Binding IsFavorite}"
+                                                                AutomationProperties.Name="{Binding RenameAutomationName}"
+                                                                MinWidth="36" MinHeight="36" Padding="0" CornerRadius="6"
+                                                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                                                            <Button.Flyout>
+                                                                <Flyout Placement="BottomEdgeAlignedRight">
+                                                                    <StackPanel Spacing="8" Width="240">
+                                                                        <TextBlock Text="Favorite name" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                                        <TextBox AutomationProperties.Name="Favorite name"
+                                                                                 Text="{Binding LabelInput}" MaxLength="40"
+                                                                                 PlaceholderText="e.g. East Coast Reflector">
+                                                                            <TextBox.KeyBindings>
+                                                                                <KeyBinding Gesture="Enter" Command="{Binding SaveLabelCommand}" />
+                                                                            </TextBox.KeyBindings>
+                                                                        </TextBox>
+                                                                        <Button Content="Save" Command="{Binding SaveLabelCommand}"
+                                                                                HorizontalAlignment="Right" Padding="14,6" CornerRadius="6" FontWeight="SemiBold" />
+                                                                    </StackPanel>
+                                                                </Flyout>
+                                                            </Button.Flyout>
+                                                        </Button>
+                                                        <Button Content="{Binding FavoriteGlyph}" FontSize="20"
+                                                                Command="{Binding ToggleFavoriteCommand}"
+                                                                AutomationProperties.Name="{Binding FavoriteAutomationName}"
+                                                                MinWidth="40" MinHeight="36" Padding="0" CornerRadius="6"
+                                                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                                                Foreground="{StaticResource AmberAccentBrush}" />
+                                                    </StackPanel>
                                                 </Grid>
 
                                                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
@@ -510,12 +589,42 @@
                                        IsVisible="{Binding HasLinks}" FontSize="11" TextWrapping="Wrap"
                                        Foreground="{StaticResource TextSecondaryBrush}" />
 
-                            <Grid x:Name="ConnectGrid" ColumnDefinitions="*,Auto" RowDefinitions="Auto">
-                                <TextBox x:Name="TargetBox" AutomationProperties.Name="Node number to connect to" Grid.Column="0" Text="{Binding TargetNodeInput}"
+                            <Grid x:Name="ConnectGrid" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto">
+                                <!-- Star saves the number typed in the box; the pencil (favourites only) renames it -->
+                                <StackPanel x:Name="TargetFavButtons" Grid.Column="0" Orientation="Horizontal" Spacing="4" Margin="0,0,8,0">
+                                    <Button Content="{Binding TargetFavoriteGlyph}" FontSize="20"
+                                            AutomationProperties.Name="{Binding TargetFavoriteName}"
+                                            Command="{Binding ToggleTargetFavoriteCommand}"
+                                            MinWidth="44" MinHeight="40" Padding="0" CornerRadius="6"
+                                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                            Foreground="{StaticResource AmberAccentBrush}" />
+                                    <Button Content="✎" FontSize="16" IsVisible="{Binding TargetIsFavorite}"
+                                            AutomationProperties.Name="Rename this favorite"
+                                            MinWidth="36" MinHeight="40" Padding="0" CornerRadius="6"
+                                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                                        <Button.Flyout>
+                                            <Flyout Placement="BottomEdgeAlignedLeft">
+                                                <StackPanel Spacing="8" Width="260">
+                                                    <TextBlock Text="Favorite name" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    <TextBox AutomationProperties.Name="Favorite name"
+                                                             Text="{Binding FavoriteLabelInput}" MaxLength="40"
+                                                             PlaceholderText="e.g. East Coast Reflector">
+                                                        <TextBox.KeyBindings>
+                                                            <KeyBinding Gesture="Enter" Command="{Binding SaveFavoriteLabelCommand}" />
+                                                        </TextBox.KeyBindings>
+                                                    </TextBox>
+                                                    <Button Content="Save" Command="{Binding SaveFavoriteLabelCommand}"
+                                                            HorizontalAlignment="Right" Padding="14,6" CornerRadius="6" FontWeight="SemiBold" />
+                                                </StackPanel>
+                                            </Flyout>
+                                        </Button.Flyout>
+                                    </Button>
+                                </StackPanel>
+                                <TextBox x:Name="TargetBox" AutomationProperties.Name="Node number to connect to" Grid.Column="1" Text="{Binding TargetNodeInput}"
                                          PlaceholderText="e.g. 27339" Margin="0,0,8,0"
                                          FontSize="15" FontWeight="SemiBold"
                                          CornerRadius="6" VerticalContentAlignment="Center" />
-                                <Grid x:Name="ConnectButtons" Grid.Column="1" ColumnDefinitions="Auto,Auto" ColumnSpacing="6">
+                                <Grid x:Name="ConnectButtons" Grid.Column="2" ColumnDefinitions="Auto,Auto" ColumnSpacing="6">
                                     <Button Grid.Column="0" Command="{Binding ConnectNodeCommand}"
                                             IsEnabled="{Binding CanConnect}"
                                             Background="{StaticResource RxGreenBrush}"
@@ -538,28 +647,6 @@
                                     HorizontalAlignment="Left" Padding="12,8" CornerRadius="6" FontSize="13">
                                 🔍 Find a node…
                             </Button>
-
-                            <!-- Favorite whatever is typed above: star toggles it, the name is optional -->
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
-                                <Button Grid.Column="0" Content="{Binding TargetFavoriteGlyph}" FontSize="20"
-                                        AutomationProperties.Name="{Binding TargetFavoriteName}"
-                                        Command="{Binding ToggleTargetFavoriteCommand}"
-                                        MinWidth="44" MinHeight="40" Padding="0" CornerRadius="6"
-                                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                                        Foreground="{StaticResource AmberAccentBrush}" />
-                                <TextBox Grid.Column="1" AutomationProperties.Name="Favorite name"
-                                         Text="{Binding FavoriteLabelInput}" MaxLength="40"
-                                         PlaceholderText="Name, e.g. East Coast Reflector"
-                                         CornerRadius="6" VerticalContentAlignment="Center">
-                                    <TextBox.KeyBindings>
-                                        <KeyBinding Gesture="Enter" Command="{Binding SaveFavoriteLabelCommand}" />
-                                    </TextBox.KeyBindings>
-                                </TextBox>
-                                <Button Grid.Column="2" Content="Save" Command="{Binding SaveFavoriteLabelCommand}"
-                                        AutomationProperties.Name="Save favorite name"
-                                        MinHeight="40" Padding="12,6" CornerRadius="6" FontWeight="SemiBold"
-                                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
-                            </Grid>
 
                             <StackPanel Spacing="6" IsVisible="{Binding HasFavorites}">
                                 <TextBlock Text="Favorites (tap to connect)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
