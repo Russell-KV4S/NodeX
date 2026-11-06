@@ -191,7 +191,7 @@ public class IdReminderTests
     [InlineData(61, false)]
     public void IdReminderMinutes_Range(int minutes, bool valid)
     {
-        var s = new NodeSettings { NodeNumber = "55553", IdReminderMinutes = minutes };
+        var s = new NodeSettings { NodeNumber = "55553", Callsign = "W1AW", IdReminderMinutes = minutes };
         Assert.Equal(valid, NodeSettingsValidator.Validate(s, "pw").Count == 0);
     }
 
@@ -212,7 +212,7 @@ public class IdReminderTests
             var config = new NodeConfigService(new JsonFileSettingsStore(path), new InMemorySecretStore());
             var vm = new SettingsViewModel(config)
             {
-                NodeNumber = "55553", Password = "pw", IdReminderEnabled = true, IdReminderMinutesText = "15"
+                NodeNumber = "55553", Callsign = "W1AW", Password = "pw", IdReminderEnabled = true, IdReminderMinutesText = "15"
             };
             await vm.SaveCommand.ExecuteAsync(null);
             Assert.False(vm.HasError);

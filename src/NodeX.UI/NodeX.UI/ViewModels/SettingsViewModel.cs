@@ -41,6 +41,13 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial string Callsign { get; set; } = "";
 
+    /// <summary>For people without a callsign: connect and listen, PTT is turned off.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CallsignLabel))]
+    public partial bool ListenOnly { get; set; }
+
+    public string CallsignLabel => ListenOnly ? "Callsign (optional)" : "Callsign (required to transmit)";
+
     // ----- connecting -----
 
     [ObservableProperty]
@@ -119,6 +126,7 @@ public partial class SettingsViewModel : ViewModelBase
         NodeNumber = s.NodeNumber;
         Password = cfg.Password ?? "";
         Callsign = s.Callsign;
+        ListenOnly = s.ListenOnly;
         DefaultTargetNode = s.DefaultTargetNode;
         FavoritesText = string.Join(", ", s.FavoriteNodes);
         RegisterOnStartup = s.RegisterOnStartup;
@@ -237,6 +245,7 @@ public partial class SettingsViewModel : ViewModelBase
         {
             NodeNumber = NodeNumber,
             Callsign = Callsign,
+            ListenOnly = ListenOnly,
             DefaultTargetNode = DefaultTargetNode,
             FavoriteNodes = FavoritesText
                 .Split([',', ' ', ';', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

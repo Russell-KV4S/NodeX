@@ -32,6 +32,15 @@ public static class AppServices
         }
     }
 
+    /// <summary>
+    /// Set by a platform head that can ask the OS for microphone access (Android): shows the system prompt, or
+    /// opens the app's permission settings if the prompt was permanently declined. Null where not applicable.
+    /// </summary>
+    public static Action? MicrophonePermissionRequester { get; set; }
+
+    /// <summary>Searches the public AllStarLink node list (one shared instance: it caches and paces requests).</summary>
+    public static NodeDirectory Directory { get; } = new();
+
     /// <summary>True once a platform head has supplied real services.</summary>
     public static bool IsInitialized { get; private set; }
 

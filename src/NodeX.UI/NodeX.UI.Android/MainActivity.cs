@@ -18,16 +18,51 @@ public class MainActivity : AvaloniaMainActivity
 {
     private const int PermissionRequestCode = 1001;
 
+    private bool _micPermanentlyDenied;
+
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
+        AppServices.MicrophonePermissionRequester = RequestMicrophoneOrOpenSettings;
         RequestRuntimePermissions();
+        UpdateMicrophoneState();
     }
 
     protected override void OnResume()
     {
         base.OnResume();
+        UpdateMicrophoneState();   // the user may have granted it in system settings meanwhile
         MaybeAskBatteryExemption();
+    }
+
+    public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Permission[] grantResults)
+    {
+        base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        // Denied with no further prompt allowed ("Don't ask again"): only system settings can fix it.
+        _micPermanentlyDenied = CheckSelfPermission(global::Android.Manifest.Permission.RecordAudio) != Permission.Granted
+                                && !ShouldShowRequestPermissionRationale(global::Android.Manifest.Permission.RecordAudio);
+        UpdateMicrophoneState();
+    }
+
+    /// <summary>Without the microphone the node still connects and listens; only transmit is turned off.</summary>
+    private void UpdateMicrophoneState() =>
+        AppServices.Runtime.Transmit.MicrophoneAllowed =
+            CheckSelfPermission(global::Android.Manifest.Permission.RecordAudio) == Permission.Granted;
+
+    private void RequestMicrophoneOrOpenSettings()
+    {
+        if (_micPermanentlyDenied)
+        {
+            var intent = new global::Android.Content.Intent(
+                global::Android.Provider.Settings.ActionApplicationDetailsSettings,
+                global::Android.Net.Uri.FromParts("package", PackageName, null));
+            StartActivity(intent);
+        }
+        else
+        {
+            RequestPermissions([global::Android.Manifest.Permission.RecordAudio], PermissionRequestCode);
+        }
     }
 
     /// <summary>

@@ -82,6 +82,12 @@
             <Setter Property="Background" Value="{StaticResource TxRedBrush}" />
             <Setter Property="BorderBrush" Value="#FF8080" />
         </Style>
+        <!-- Transmit off: clearly inert, never red -->
+        <Style Selector="Button#PttButton:disabled Border#PttFace">
+            <Setter Property="Background" Value="#161A22" />
+            <Setter Property="BorderBrush" Value="#2B3340" />
+            <Setter Property="Opacity" Value="0.75" />
+        </Style>
         <Style Selector="Button#PttButton:pointerover Border#PttFace.keyed">
             <Setter Property="Background" Value="{StaticResource TxRedBrush}" />
             <Setter Property="BorderBrush" Value="#FF8080" />
@@ -302,6 +308,7 @@
                                     Width="260" Height="140" Padding="0"
                                     CornerRadius="20" BorderThickness="0" Background="Transparent"
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                                    IsEnabled="{Binding CanTransmit}"
                                     Command="{Binding TogglePttClickCommand}">
                                 <Button.Resources>
                                     <!-- Neutralise the theme's own hover/press fills; the visible face is PttFace -->
@@ -315,15 +322,31 @@
                                 <Border x:Name="PttFace" CornerRadius="20" BorderThickness="3"
                                         Classes.keyed="{Binding IsTransmitting}">
                                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="4">
-                                        <TextBlock x:Name="PttCaption" Text="MIC" FontSize="13" FontWeight="SemiBold"
+                                        <TextBlock x:Name="PttCaption" Text="{Binding PttCaption}" FontSize="13" FontWeight="SemiBold"
                                                    Foreground="#9CA3AF" HorizontalAlignment="Center" />
-                                        <TextBlock Text="PUSH TO TALK" FontSize="20" FontWeight="Black"
+                                        <TextBlock Text="{Binding PttHeadline}" FontSize="20" FontWeight="Black"
                                                    Foreground="#FFFFFF" HorizontalAlignment="Center" />
                                         <TextBlock Text="{Binding TxDurationDisplay}" FontSize="16" FontWeight="Bold"
                                                    Foreground="#FFE4E6" HorizontalAlignment="Center" />
                                     </StackPanel>
                                 </Border>
                             </Button>
+
+                            <!-- Shown when transmitting is off (listen only, or microphone access denied). Listening still works. -->
+                            <Border x:Name="TxBlockedBanner" IsVisible="{Binding IsTransmitBlocked}"
+                                    Background="#2B2110" BorderBrush="{StaticResource AmberAccentBrush}" BorderThickness="1"
+                                    CornerRadius="8" Padding="12,8">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="{Binding TransmitBlockedText}" TextWrapping="Wrap" FontSize="12"
+                                               Foreground="#FCD34D" AutomationProperties.LiveSetting="Polite" />
+                                    <Button Content="Allow microphone" Command="{Binding FixMicrophoneCommand}"
+                                            IsVisible="{Binding CanFixMicrophone}" HorizontalAlignment="Left"
+                                            Padding="12,6" CornerRadius="6" FontSize="12" />
+                                    <Button Content="Add callsign" Command="{Binding AddCallsignCommand}"
+                                            IsVisible="{Binding CanAddCallsign}" HorizontalAlignment="Left"
+                                            Padding="12,6" CornerRadius="6" FontSize="12" />
+                                </StackPanel>
+                            </Border>
 
                             <StackPanel x:Name="PttInfo" Spacing="8" Width="300">
                                 <Grid ColumnDefinitions="*,Auto">
@@ -382,6 +405,11 @@
                                     </Button>
                                 </Grid>
                             </Grid>
+
+                            <Button Command="{Binding OpenSearchCommand}" AutomationProperties.Name="Find a node"
+                                    HorizontalAlignment="Left" Padding="12,8" CornerRadius="6" FontSize="13">
+                                🔍 Find a node…
+                            </Button>
 
                             <StackPanel Spacing="6" IsVisible="{Binding HasFavorites}">
                                 <TextBlock Text="Quick Recall" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
@@ -469,6 +497,12 @@
                 Background="{StaticResource HeaderBackgroundBrush}"
                 BorderBrush="{StaticResource CardBorderBrush}"
                 BorderThickness="0,1,0,0" Padding="12,10" />
+
+        <!-- FIND A NODE OVERLAY -->
+        <Border Grid.RowSpan="3" IsVisible="{Binding IsSearchOpen}"
+                Background="{StaticResource ConsoleBackgroundBrush}">
+            <views:NodeSearchView DataContext="{Binding Search}" />
+        </Border>
 
         <!-- SETTINGS OVERLAY (full screen so it works on phones as well as desktop) -->
         <Border Grid.RowSpan="3" IsVisible="{Binding IsSettingsOpen}"

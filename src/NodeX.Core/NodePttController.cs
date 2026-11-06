@@ -61,6 +61,28 @@ public sealed class NodePttController : IAsyncDisposable, IDisposable
     public event Action? TimeOutTimerExceeded;
     public event Action<string>? WarningLogged;
 
+    /// <summary>
+    /// When set, keying is refused (and an active key is released) while <see cref="TransmitPolicy.CanTransmit"/>
+    /// is false, for example in listen-only mode or without microphone permission. Unkeying is never blocked.
+    /// </summary>
+    public TransmitPolicy? Policy
+    {
+        get => _policy;
+        init
+        {
+            _policy = value;
+            if (value != null) value.Changed += OnPolicyChanged;
+        }
+    }
+
+    private readonly TransmitPolicy? _policy;
+
+    private void OnPolicyChanged()
+    {
+        if (_policy is { CanTransmit: false } && IsPttActive)
+            _ = Task.Run(() => SetPttStateAsync(false, PttSource.External));
+    }
+
     public NodePttController(Iax2Session session, IBluetoothPttService? bluetoothPttService = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
@@ -117,6 +139,12 @@ public sealed class NodePttController : IAsyncDisposable, IDisposable
     public async Task SetPttStateAsync(bool key, PttSource source)
     {
         bool stateChanged = false;
+
+        if (key && _policy is { CanTransmit: false })
+        {
+            WarningLogged?.Invoke($"Not transmitting. {_policy.Reason}");
+            return;
+        }
 
         lock (_stateLock)
         {
@@ -219,6 +247,8 @@ public sealed class NodePttController : IAsyncDisposable, IDisposable
     {
         if (_isDisposed) return;
         _isDisposed = true;
+
+        if (_policy != null) _policy.Changed -= OnPolicyChanged;
 
         if (_bluetoothPttService != null)
         {

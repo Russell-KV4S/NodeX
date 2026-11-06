@@ -44,6 +44,44 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsBleConnected { get; set; }
 
+    // --- Find-a-node overlay ---
+    public NodeSearchViewModel Search { get; }
+
+    [ObservableProperty]
+    public partial bool IsSearchOpen { get; set; }
+
+    [RelayCommand]
+    public void OpenSearch()
+    {
+        IsSearchOpen = true;
+        Search.Opened();
+    }
+
+    /// <summary>Adds or removes a favourite and saves it; false when it could not be saved.</summary>
+    private async Task<bool> SetFavoriteAsync(string node, bool favorite)
+    {
+        var cfg = _runtime.Config;
+        if (!cfg.IsComplete || cfg.Password == null)
+        {
+            LogActivity("[ERROR] Finish your Settings before saving favorites.");
+            return false;
+        }
+
+        var list = cfg.Settings.FavoriteNodes.Where(n => n != node).ToList();
+        if (favorite) list.Add(node);
+
+        try
+        {
+            var result = await _runtime.ConfigService.SaveAsync(cfg.Settings with { FavoriteNodes = list }, cfg.Password);
+            return result.Success;
+        }
+        catch (Exception ex)
+        {
+            LogActivity($"[ERROR] Could not save favorites: {ex.Message}");
+            return false;
+        }
+    }
+
     // --- Settings overlay ---
     public SettingsViewModel Settings { get; }
 
@@ -84,6 +122,37 @@ public partial class MainViewModel : ViewModelBase
 
     public bool CanConnect => SessionState == Iax2SessionState.Disconnected && !IsReconnecting;
     public bool CanDisconnect => SessionState != Iax2SessionState.Disconnected || IsReconnecting;
+
+    // --- Transmit permission: listen-only or microphone denied. Listening always works. ---
+    public bool CanTransmit => _runtime.Transmit.CanTransmit;
+    public bool IsTransmitBlocked => !CanTransmit;
+    public string TransmitBlockedText => _runtime.Transmit.Reason;
+    public string PttHeadline => CanTransmit ? "PUSH TO TALK" : "LISTEN ONLY";
+    public string PttCaption => _runtime.Transmit.Block == TransmitBlock.MicrophoneDenied ? "MIC OFF" : CanTransmit ? "MIC" : "NO TX";
+
+    /// <summary>True when the OS denied the microphone and the platform can show its permission prompt.</summary>
+    public bool CanFixMicrophone =>
+        _runtime.Transmit.Block == TransmitBlock.MicrophoneDenied && AppServices.MicrophonePermissionRequester != null;
+
+    /// <summary>True when transmitting is off only because no callsign has been entered.</summary>
+    public bool CanAddCallsign => _runtime.Transmit.Block == TransmitBlock.ListenOnly;
+
+    private void RefreshTransmit()
+    {
+        OnPropertyChanged(nameof(CanTransmit));
+        OnPropertyChanged(nameof(IsTransmitBlocked));
+        OnPropertyChanged(nameof(TransmitBlockedText));
+        OnPropertyChanged(nameof(PttHeadline));
+        OnPropertyChanged(nameof(PttCaption));
+        OnPropertyChanged(nameof(CanFixMicrophone));
+        OnPropertyChanged(nameof(CanAddCallsign));
+    }
+
+    [RelayCommand]
+    public void FixMicrophone() => AppServices.MicrophonePermissionRequester?.Invoke();
+
+    [RelayCommand]
+    public async Task AddCallsignAsync() => await OpenSettingsAsync();
 
     // --- Radio Activity & PTT Properties ---
     [ObservableProperty]
@@ -157,10 +226,21 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Uses the application-wide runtime (see <see cref="AppServices"/>).</summary>
     public MainViewModel() : this(AppServices.Runtime) { }
 
-    public MainViewModel(NodeRuntime runtime)
+    public MainViewModel(NodeRuntime runtime, NodeDirectory? directory = null)
     {
         _runtime = runtime;
         _idReminder.DueChanged += OnIdReminderDueChanged;
+
+        Search = new NodeSearchViewModel(
+            directory ?? AppServices.Directory,
+            () => FavoriteNodes,
+            SetFavoriteAsync);
+        Search.Closed += () => IsSearchOpen = false;
+        Search.NodeChosen += node =>
+        {
+            TargetNodeInput = node;
+            IsSearchOpen = false;
+        };
 
         Settings = new SettingsViewModel(runtime.ConfigService);
         Settings.Saved += OnSettingsSaved;
@@ -172,6 +252,7 @@ public partial class MainViewModel : ViewModelBase
         runtime.Notice += msg => LogActivity(msg);
         runtime.ReconnectChanged += status => OnUi(() => ApplyReconnect(status));
         runtime.ConfigService.Changed += cfg => OnUi(() => ApplyConfig(cfg));
+        runtime.Transmit.Changed += () => OnUi(RefreshTransmit);
 
         ApplyConfig(runtime.Config);
         ApplyRegistration();
@@ -212,7 +293,7 @@ public partial class MainViewModel : ViewModelBase
 
             if (!_runtime.Config.IsComplete)
             {
-                LogActivity("Welcome to NodeX. Enter your node number and password in Settings to get started.");
+                LogActivity("Welcome to NodeX. Enter your node number, node password and callsign in Settings to get started (no callsign? choose Listen only).");
                 await OpenSettingsAsync();
             }
             else
@@ -240,7 +321,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (!_runtime.Config.IsComplete)
         {
-            LogActivity("[ERROR] Enter your node number and password in Settings before connecting.");
+            LogActivity("[ERROR] Finish your Settings (node number, password, and callsign or Listen only) before connecting.");
             await OpenSettingsAsync();
             return;
         }
@@ -380,7 +461,9 @@ public partial class MainViewModel : ViewModelBase
         var s = cfg.Settings;
         _idReminder.Configure(s.IdReminderEnabled, TimeSpan.FromMinutes(s.IdReminderMinutes));
         LocalNodeNumber = s.NodeNumber.Length > 0 ? s.NodeNumber : NotSet;
-        LocalCallsign = s.Callsign.Length > 0 ? s.Callsign : "NO CALLSIGN";
+        LocalCallsign = s.Callsign.Length > 0 ? s.Callsign : s.ListenOnly ? "LISTEN ONLY" : "NO CALLSIGN";
+        _runtime.Transmit.ListenOnly = s.ListenOnly;   // also set by the runtime; keeps the screen right if this runs first
+        RefreshTransmit();
 
         FavoriteNodes.Clear();
         foreach (string node in s.FavoriteNodes) FavoriteNodes.Add(node);

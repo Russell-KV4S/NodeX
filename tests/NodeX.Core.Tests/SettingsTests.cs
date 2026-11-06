@@ -14,8 +14,31 @@ public class NodeSettingsValidatorTests
     public void Defaults_AreValidExceptNodeAndPassword()
     {
         var issues = NodeSettingsValidator.Validate(new NodeSettings(), null);
-        Assert.Equal([NodeSettingsValidator.Fields.NodeNumber, NodeSettingsValidator.Fields.Password],
+        Assert.Equal(
+            [NodeSettingsValidator.Fields.NodeNumber, NodeSettingsValidator.Fields.Password, NodeSettingsValidator.Fields.Callsign],
             issues.Select(i => i.Field).ToArray());
+
+        // Choosing "listen only" removes the callsign requirement.
+        var listenOnly = NodeSettingsValidator.Validate(new NodeSettings { ListenOnly = true }, null);
+        Assert.Equal([NodeSettingsValidator.Fields.NodeNumber, NodeSettingsValidator.Fields.Password],
+            listenOnly.Select(i => i.Field).ToArray());
+    }
+
+    [Fact]
+    public void Callsign_IsRequired_UnlessListenOnly()
+    {
+        Assert.Contains(NodeSettingsValidator.Validate(Good with { Callsign = "" }, "pw"),
+            i => i.Field == NodeSettingsValidator.Fields.Callsign);
+        Assert.Contains(NodeSettingsValidator.Validate(Good with { Callsign = "   " }, "pw"),
+            i => i.Field == NodeSettingsValidator.Fields.Callsign);
+        Assert.Empty(NodeSettingsValidator.Validate(Good with { Callsign = "", ListenOnly = true }, "pw"));
+    }
+
+    [Fact]
+    public void Callsign_IfGiven_IsStillChecked_EvenWhenListenOnly()
+    {
+        Assert.Contains(NodeSettingsValidator.Validate(Good with { Callsign = "W1 AW", ListenOnly = true }, "pw"),
+            i => i.Field == NodeSettingsValidator.Fields.Callsign);
     }
 
     [Theory]
@@ -43,7 +66,6 @@ public class NodeSettingsValidatorTests
     }
 
     [Theory]
-    [InlineData("", true)]
     [InlineData("W1AW", true)]
     [InlineData("w1aw/p", true)]
     [InlineData("W1 AW", false)]
@@ -234,7 +256,7 @@ public class NodeConfigServiceTests : IDisposable
         var result = await svc.SaveAsync(new NodeSettings { NodeNumber = "x" }, "");
 
         Assert.False(result.Success);
-        Assert.Equal(2, result.Issues.Count);
+        Assert.Equal(3, result.Issues.Count);   // node number, password, and no callsign (not listen-only)
         Assert.False(File.Exists(_path));
         Assert.Null(await _secrets.GetAsync(SecretKeys.NodePassword));
     }
@@ -246,7 +268,7 @@ public class NodeConfigServiceTests : IDisposable
         NodeConfig? seen = null;
         svc.Changed += c => seen = c;
 
-        await svc.SaveAsync(new NodeSettings { NodeNumber = "55553" }, "pw");
+        await svc.SaveAsync(new NodeSettings { NodeNumber = "55553", Callsign = "W1AW" }, "pw");
 
         Assert.NotNull(seen);
         Assert.Equal("pw", seen!.Password);
@@ -258,7 +280,7 @@ public class NodeConfigServiceTests : IDisposable
     public async Task ClearPassword_RemovesOnlyTheSecret()
     {
         var svc = Create();
-        await svc.SaveAsync(new NodeSettings { NodeNumber = "55553" }, "pw");
+        await svc.SaveAsync(new NodeSettings { NodeNumber = "55553", Callsign = "W1AW" }, "pw");
 
         await svc.ClearPasswordAsync();
 
@@ -279,7 +301,7 @@ public class NodeConfigServiceTests : IDisposable
     public async Task SecretStoreFailure_DoesNotWriteSettings()
     {
         var svc = new NodeConfigService(new JsonFileSettingsStore(_path), new FailingSecretStore());
-        await Assert.ThrowsAsync<IOException>(() => svc.SaveAsync(new NodeSettings { NodeNumber = "55553" }, "pw"));
+        await Assert.ThrowsAsync<IOException>(() => svc.SaveAsync(new NodeSettings { NodeNumber = "55553", Callsign = "W1AW" }, "pw"));
         Assert.False(File.Exists(_path));
     }
 }

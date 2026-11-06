@@ -63,7 +63,9 @@ public static partial class NodeSettingsValidator
         else if (password.Length > MaxPasswordLength)
             issues.Add(new(Fields.Password, $"Password is too long (maximum {MaxPasswordLength} characters)."));
 
-        if (s.Callsign.Length > 0 && !CallsignPattern().IsMatch(s.Callsign))
+        if (s.Callsign.Length == 0 && !s.ListenOnly)
+            issues.Add(new(Fields.Callsign, "Enter your callsign, or choose 'Listen only' if you don't have one."));
+        else if (s.Callsign.Length > 0 && !CallsignPattern().IsMatch(s.Callsign))
             issues.Add(new(Fields.Callsign, "Callsign may contain only letters, digits and one '/'."));
 
         if (s.DefaultTargetNode.Length > 0 && !NodeNumberPattern().IsMatch(s.DefaultTargetNode))

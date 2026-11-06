@@ -68,8 +68,11 @@
                     </StackPanel>
 
                     <StackPanel>
-                        <TextBlock Classes="label" Text="Callsign (optional)" />
+                        <TextBlock Classes="label" Text="{Binding CallsignLabel}" />
                         <TextBox AutomationProperties.Name="Callsign" Text="{Binding Callsign}" PlaceholderText="e.g. W1AW" MaxLength="14" />
+                        <CheckBox Content="I don't have a callsign: listen only" IsChecked="{Binding ListenOnly}" Margin="0,8,0,0" />
+                        <TextBlock Classes="hint"
+                                   Text="Transmitting needs an amateur radio licence. NodeX does not check your callsign, so you are responsible for using it correctly. In listen-only mode you can still connect to any node and hear it, but the push-to-talk button is turned off." />
                     </StackPanel>
 
                     <CheckBox Content="Register with AllStarLink when the app starts" IsChecked="{Binding RegisterOnStartup}" />

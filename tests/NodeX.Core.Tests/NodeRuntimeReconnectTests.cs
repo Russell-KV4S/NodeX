@@ -329,7 +329,7 @@ public class NodeRuntimeReconnectTests : IDisposable
     [Fact]
     public async Task AutoReconnectDisabled_DoesNotRedial()
     {
-        await using var rt = await CreateAsync(new NodeSettings { NodeNumber = "55553", AutoReconnect = false });
+        await using var rt = await CreateAsync(new NodeSettings { NodeNumber = "55553", Callsign = "W1AW", AutoReconnect = false });
         var errors = Collect<string>(add => rt.ErrorOccurred += add);
         ushort first = await ConnectAndAcceptAsync(rt);
 

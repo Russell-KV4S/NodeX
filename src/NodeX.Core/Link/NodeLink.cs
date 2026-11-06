@@ -26,7 +26,8 @@ public sealed class NodeLink : IAsyncDisposable
         NodeInfo target,
         IAudioDeviceService device,
         NodeAudioEngineOptions? baseAudioOptions = null,
-        Action<Iax2Session>? configureSession = null)
+        Action<Iax2Session>? configureSession = null,
+        TransmitPolicy? transmitPolicy = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(target);
@@ -45,7 +46,8 @@ public sealed class NodeLink : IAsyncDisposable
         Ptt = new NodePttController(Session)
         {
             Mode = settings.TogglePtt ? PttMode.Toggle : PttMode.Momentary,
-            TimeOutTimerLimit = TimeSpan.FromSeconds(settings.TimeOutTimerSeconds)
+            TimeOutTimerLimit = TimeSpan.FromSeconds(settings.TimeOutTimerSeconds),
+            Policy = transmitPolicy
         };
 
         Audio = new NodeAudioEngine(Session, device, (baseAudioOptions ?? new NodeAudioEngineOptions()) with

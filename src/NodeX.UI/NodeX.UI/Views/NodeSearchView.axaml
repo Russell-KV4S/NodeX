@@ -1,0 +1,200 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:NodeX.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="800"
+             x:Class="NodeX.UI.Views.NodeSearchView"
+             x:DataType="vm:NodeSearchViewModel"
+             Background="{StaticResource ConsoleBackgroundBrush}">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style Selector="Button.chip">
+            <Setter Property="Background" Value="{StaticResource CardBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Margin" Value="0,0,6,6" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.iconbtn">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="MinWidth" Value="44" />
+            <Setter Property="MinHeight" Value="44" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+        <!-- HEADER -->
+        <Border Grid.Row="0" Background="{StaticResource HeaderBackgroundBrush}"
+                BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,0,0,1" Padding="8,6">
+            <Grid ColumnDefinitions="Auto,*">
+                <Button Grid.Column="0" Classes="iconbtn" Command="{Binding CloseCommand}"
+                        AutomationProperties.Name="Back" Content="←" FontSize="20" />
+                <TextBlock Grid.Column="1" Text="Find a node" FontSize="18" FontWeight="Bold"
+                           Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="4,0,0,0" />
+            </Grid>
+        </Border>
+
+        <!-- SEARCH + FILTERS -->
+        <StackPanel Grid.Row="1" Margin="16,12,16,0" Spacing="8" MaxWidth="720">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBox x:Name="SearchBox" Grid.ColumnSpan="2" Text="{Binding SearchText}"
+                         AutomationProperties.Name="Search nodes"
+                         PlaceholderText="Node number, callsign, city or name" FontSize="15" MinHeight="48"
+                         VerticalContentAlignment="Center" CornerRadius="10" Padding="12,0,52,0" />
+                <Button Grid.Column="1" Classes="iconbtn" Content="✕" Command="{Binding ClearSearchCommand}"
+                        AutomationProperties.Name="Clear search" IsVisible="{Binding HasSearchText}"
+                        Margin="0,0,2,0" />
+            </Grid>
+
+            <!-- One-tap countries -->
+            <ItemsControl ItemsSource="{Binding CountryChoices}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <Button Classes="chip" Content="{Binding}"
+                                Command="{Binding $parent[UserControl].((vm:NodeSearchViewModel)DataContext).PickCountryCommand}"
+                                CommandParameter="{Binding}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Grid ColumnDefinitions="*,Auto">
+                <Button Grid.Column="0" Classes="chip" HorizontalAlignment="Left" Command="{Binding ToggleFiltersCommand}"
+                        AutomationProperties.Name="More filters">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="More filters" />
+                        <TextBlock Text="{Binding ActiveFilterCount, StringFormat='({0})'}" IsVisible="{Binding HasActiveFilters}"
+                                   Foreground="{StaticResource RxGreenBrush}" FontWeight="Bold" />
+                    </StackPanel>
+                </Button>
+                <ComboBox Grid.Column="1" ItemsSource="{Binding SortChoices}" SelectedItem="{Binding SelectedSort}"
+                          AutomationProperties.Name="Sort results" MinHeight="36" MinWidth="150" Margin="0,0,0,6" />
+            </Grid>
+
+            <Border IsVisible="{Binding FiltersOpen}" Background="{StaticResource CardBackgroundBrush}"
+                    BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+                <StackPanel Spacing="10">
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="Country" />
+                        <TextBox AutomationProperties.Name="Country filter" Text="{Binding Country}" PlaceholderText="e.g. Canada" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="Frequency or name" />
+                        <TextBox AutomationProperties.Name="Frequency or name filter" Text="{Binding FrequencyOrName}" PlaceholderText="e.g. 146.52 or Hub" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="Callsign" />
+                        <TextBox AutomationProperties.Name="Callsign filter" Text="{Binding Callsign}" PlaceholderText="e.g. W1AW" />
+                    </StackPanel>
+                    <Button Content="Clear filters" Command="{Binding ClearFiltersCommand}" HorizontalAlignment="Left"
+                            IsVisible="{Binding HasActiveFilters}" Padding="12,6" CornerRadius="6" />
+                </StackPanel>
+            </Border>
+
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding CountText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                           VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite" />
+                <ProgressBar Grid.Column="1" IsIndeterminate="True" IsVisible="{Binding IsBusy}" Width="80" Height="4" />
+            </Grid>
+        </StackPanel>
+
+        <!-- RESULTS -->
+        <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" Margin="0,4,0,0">
+            <StackPanel Margin="16,4,16,12" Spacing="8" MaxWidth="720">
+
+                <Border IsVisible="{Binding HasError}" Background="#2A1215" BorderBrush="{StaticResource TxRedBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="12">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{Binding ErrorText}" Foreground="#FCA5A5" TextWrapping="Wrap" FontSize="12"
+                                   AutomationProperties.LiveSetting="Assertive" />
+                        <Button Content="Try again" Command="{Binding RetryCommand}" HorizontalAlignment="Left"
+                                Padding="12,6" CornerRadius="6" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock IsVisible="{Binding ShowEmpty}" Text="{Binding EmptyText}" Classes="hint" FontSize="13"
+                           HorizontalAlignment="Center" Margin="0,16" />
+
+                <ItemsControl ItemsSource="{Binding Results}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><StackPanel Spacing="8" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:NodeResultItem">
+                            <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                                    BorderThickness="1" CornerRadius="12" Padding="12">
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                    <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding NodeNumber}" FontSize="18" FontWeight="Bold"
+                                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                                            <TextBlock Text="{Binding Callsign}" FontSize="13" VerticalAlignment="Bottom"
+                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Title}" FontSize="13" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                                        <TextBlock Text="{Binding Place}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                        <StackPanel Orientation="Horizontal" Spacing="5" HorizontalAlignment="Right">
+                                            <Ellipse Width="8" Height="8" Fill="{StaticResource RxGreenBrush}" VerticalAlignment="Center"
+                                                     IsVisible="{Binding IsActive}" />
+                                            <TextBlock Text="{Binding ActivityText}" FontSize="11"
+                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                        </StackPanel>
+                                        <Button Content="Use" FontWeight="Bold" MinHeight="44" MinWidth="64"
+                                                Background="{StaticResource RxGreenBrush}" Foreground="#000000"
+                                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                                CornerRadius="8" AutomationProperties.Name="{Binding UseName}"
+                                                Command="{Binding $parent[UserControl].((vm:NodeSearchViewModel)DataContext).UseCommand}"
+                                                CommandParameter="{Binding}" />
+                                    </StackPanel>
+
+                                    <Button Grid.Column="2" Classes="iconbtn" FontSize="20"
+                                            Content="{Binding FavoriteGlyph}"
+                                            AutomationProperties.Name="{Binding FavoriteName}"
+                                            Command="{Binding $parent[UserControl].((vm:NodeSearchViewModel)DataContext).ToggleFavoriteCommand}"
+                                            CommandParameter="{Binding}" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Button Content="Show more" Command="{Binding LoadMoreCommand}" IsVisible="{Binding HasMore}"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" MinHeight="44" CornerRadius="10" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- FOOTER -->
+        <Border Grid.Row="3" Background="{StaticResource HeaderBackgroundBrush}"
+                BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="16,10">
+            <TextBlock Classes="hint" HorizontalAlignment="Center" MaxWidth="720"
+                       Text="Results come from the public AllStarLink node list. “Use” puts the node in the connect box; it does not connect. ★ saves a favorite." />
+        </Border>
+    </Grid>
+</UserControl>

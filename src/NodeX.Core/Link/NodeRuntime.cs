@@ -63,6 +63,12 @@ public sealed class NodeRuntime : IAsyncDisposable
 
     public NodeConfigService ConfigService { get; }
 
+    /// <summary>
+    /// Whether this app may transmit. Listening always works. <see cref="TransmitPolicy.ListenOnly"/> follows the
+    /// saved settings; platform heads set <see cref="TransmitPolicy.MicrophoneAllowed"/>.
+    /// </summary>
+    public TransmitPolicy Transmit { get; } = new();
+
     /// <summary>Latest loaded or saved configuration (including the password, in memory only).</summary>
     public NodeConfig Config { get; private set; }
 
@@ -129,7 +135,16 @@ public sealed class NodeRuntime : IAsyncDisposable
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            var previous = Config;
             Config = cfg;
+            Transmit.ListenOnly = cfg.Settings.ListenOnly;
+
+            // Changing something unrelated to registration (a favourite, the PTT mode...) must not drop and
+            // redo the registration.
+            if (_registration != null && cfg.IsComplete && cfg.Settings.RegisterOnStartup
+                && SameRegistration(previous, cfg))
+                return;
+
             await StopRegistrationAsync();
 
             if (cfg.IsComplete && cfg.Settings.RegisterOnStartup)
@@ -148,6 +163,12 @@ public sealed class NodeRuntime : IAsyncDisposable
             _gate.Release();
         }
     }
+
+    private static bool SameRegistration(NodeConfig a, NodeConfig b) =>
+        a.Settings.NodeNumber == b.Settings.NodeNumber
+        && a.Password == b.Password
+        && a.Settings.IaxPort == b.Settings.IaxPort
+        && a.Settings.RegistrationUrl == b.Settings.RegistrationUrl;
 
     private async Task StopRegistrationAsync()
     {
@@ -232,7 +253,7 @@ public sealed class NodeRuntime : IAsyncDisposable
         var info = await _resolver.ResolveNodeAsync(target, cancellationToken);
         if (info == null) return null;
 
-        var link = new NodeLink(Config.Settings, info, _audioFactory(), _audioOptions, _configureSession);
+        var link = new NodeLink(Config.Settings, info, _audioFactory(), _audioOptions, _configureSession, Transmit);
         link.Error += m => ErrorOccurred?.Invoke(m);
         link.Session.StateChanged += state => OnLinkState(link, state);
 
