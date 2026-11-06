@@ -35,5 +35,7 @@ sealed class Program
             new ProtectedFileSecretStore(),
             () => OperatingSystem.IsWindows()
                 ? new NAudioDeviceService()
-                : new NullAudioDeviceService());
+                : new NullAudioDeviceService(),
+            // Privacy: open the microphone only while keyed (+3 s hold-off), not for the whole connection.
+            new NodeX.Core.Audio.NodeAudioEngineOptions { OpenMicOnlyWhileKeyed = true });
 }
