@@ -206,4 +206,41 @@ public class NodeSearchViewModelTests
         await WaitUntil(() => stub.Bodies.Count == 2);
         Assert.Contains("order[0][column]=2&", stub.Bodies[^1]);
     }
+
+    [Fact]
+    public async Task StatePicker_SearchesBothSpellings_AndShowsTheBestEffortNote()
+    {
+        var (vm, stub, _) = Create(body => Json(Page(1, Row("2001", "K5ABC", "x", "United States"))));
+        vm.Opened();
+        await WaitUntil(() => vm.Results.Count == 1);
+
+        vm.SelectedState = vm.StateChoices.First(c => c.Code == "TX");
+        await WaitUntil(() => vm.HasNote);
+
+        Assert.Equal(1, vm.ActiveFilterCount);
+        Assert.Contains("Texas", vm.Note);
+        Assert.Contains(stub.Bodies, b => b.Contains("columns[5][search][value]=TX&"));
+        Assert.Contains(stub.Bodies, b => b.Contains("columns[5][search][value]=Texas&"));
+        Assert.True(vm.FiltersOpen);                       // the picker opens the filter panel so the choice is visible
+    }
+
+    [Fact]
+    public async Task City_GoesToTheLocationColumn_AndClearFiltersResetsStateAndCity()
+    {
+        var (vm, stub, _) = Create();
+        vm.Opened();
+        await WaitUntil(() => vm.Results.Count == 2);
+
+        vm.City = "Austin";
+        await WaitUntil(() => stub.Bodies.Count == 2);
+        Assert.Contains("columns[5][search][value]=Austin", stub.Bodies[^1]);
+
+        vm.SelectedState = vm.StateChoices.First(c => c.Code == "TX");
+        Assert.Equal(2, vm.ActiveFilterCount);
+
+        vm.ClearFiltersCommand.Execute(null);
+        Assert.Equal(0, vm.ActiveFilterCount);
+        Assert.Equal("", vm.SelectedState.Code);
+        Assert.Equal("", vm.City);
+    }
 }

@@ -17,6 +17,12 @@ public sealed record SortChoice(string Label, NodeSort Sort, bool Descending)
     public override string ToString() => Label;
 }
 
+/// <summary>A choice in the State picker; an empty code means "any state".</summary>
+public sealed record StateChoice(string Code, string Label)
+{
+    public override string ToString() => Label;
+}
+
 /// <summary>One node in the results list.</summary>
 public partial class NodeResultItem : ObservableObject
 {
@@ -77,6 +83,7 @@ public partial class NodeSearchViewModel : ViewModelBase
         _favorites = favorites;
         _setFavorite = setFavorite;
         _selectedSort = SortChoices[0];
+        _selectedState = StateChoices[0];
     }
 
     /// <summary>Wait this long after the last keystroke before asking the server.</summary>
@@ -104,6 +111,25 @@ public partial class NodeSearchViewModel : ViewModelBase
         }
     }
 
+    /// <summary>"Any state" followed by the 50 states and DC.</summary>
+    public StateChoice[] StateChoices { get; } =
+        [new("", "Any state"), .. UsStates.All.Select(s => new StateChoice(s.Code, $"{s.Name} ({s.Code})"))];
+
+    private StateChoice _selectedState = null!;
+
+    public StateChoice SelectedState
+    {
+        get => _selectedState;
+        set
+        {
+            if (value == null || !SetProperty(ref _selectedState, value)) return;
+            OnPropertyChanged(nameof(ActiveFilterCount));
+            OnPropertyChanged(nameof(HasActiveFilters));
+            if (value.Code.Length > 0 && FiltersOpen == false) FiltersOpen = true;
+            ScheduleSearch(immediate: true);
+        }
+    }
+
     public ObservableCollection<NodeResultItem> Results { get; } = [];
 
     [ObservableProperty]
@@ -115,6 +141,18 @@ public partial class NodeSearchViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters))]
     public partial string Country { get; set; } = "";
+
+    /// <summary>City or town, matched against the node's free-text location.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters))]
+    public partial string City { get; set; } = "";
+
+    /// <summary>A caution about these results (for example that state matching is best effort); empty when none.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNote))]
+    public partial string Note { get; set; } = "";
+
+    public bool HasNote => Note.Length > 0;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters))]
@@ -150,7 +188,8 @@ public partial class NodeSearchViewModel : ViewModelBase
     public bool ShowEmpty => EmptyText.Length > 0;
 
     public int ActiveFilterCount =>
-        (Country.Trim().Length > 0 ? 1 : 0) + (FrequencyOrName.Trim().Length > 0 ? 1 : 0) + (Callsign.Trim().Length > 0 ? 1 : 0);
+        (Country.Trim().Length > 0 ? 1 : 0) + (FrequencyOrName.Trim().Length > 0 ? 1 : 0) + (Callsign.Trim().Length > 0 ? 1 : 0)
+        + (City.Trim().Length > 0 ? 1 : 0) + (SelectedState.Code.Length > 0 ? 1 : 0);
 
     public bool HasActiveFilters => ActiveFilterCount > 0;
 
@@ -164,6 +203,7 @@ public partial class NodeSearchViewModel : ViewModelBase
     partial void OnCountryChanged(string value) => ScheduleSearch();
     partial void OnFrequencyOrNameChanged(string value) => ScheduleSearch();
     partial void OnCallsignChanged(string value) => ScheduleSearch();
+    partial void OnCityChanged(string value) => ScheduleSearch();
 
     /// <summary>Called when the screen opens: refreshes the favourite stars and loads the first page once.</summary>
     public void Opened()
@@ -181,6 +221,8 @@ public partial class NodeSearchViewModel : ViewModelBase
     {
         Text = SearchText ?? "",
         Country = Country.Trim(),
+        State = SelectedState.Code,
+        Location = City.Trim(),
         Description = FrequencyOrName.Trim(),
         Callsign = Callsign.Trim(),
         Sort = SelectedSort.Sort,
@@ -226,6 +268,7 @@ public partial class NodeSearchViewModel : ViewModelBase
                 if (have.Add(n.NodeNumber)) Results.Add(new NodeResultItem(n, favs.Contains(n.NodeNumber)));
 
             HasMore = page.HasMore && page.Nodes.Count > 0;
+            Note = page.Note;
             CountText = query.IsUnfiltered
                 ? $"{page.Matching.ToString("N0", CultureInfo.CurrentCulture)} nodes"
                 : $"{page.Matching.ToString("N0", CultureInfo.CurrentCulture)} of {page.Listed.ToString("N0", CultureInfo.CurrentCulture)} nodes";
@@ -259,6 +302,8 @@ public partial class NodeSearchViewModel : ViewModelBase
     [RelayCommand]
     private void ClearFilters()
     {
+        SelectedState = StateChoices[0];
+        City = "";
         Country = "";
         FrequencyOrName = "";
         Callsign = "";

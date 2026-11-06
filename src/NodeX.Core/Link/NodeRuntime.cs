@@ -38,6 +38,7 @@ public sealed class NodeRuntime : IAsyncDisposable
     private string? _activeNode;
     private bool _started;
     private bool _disposed;
+    private volatile bool _exited;
 
     public NodeRuntime(
         NodeConfigService configService,
@@ -108,6 +109,64 @@ public sealed class NodeRuntime : IAsyncDisposable
     /// <summary>Raised for informational events worth logging, such as "Reconnected to node 2000".</summary>
     public event Action<string>? Notice;
 
+    // ----- background presence -----
+
+    /// <summary>
+    /// What the OS must keep alive right now (see <see cref="BackgroundState"/>). Platform heads start or stop their
+    /// background execution (Android foreground service) from this, so a configured node stays registered with
+    /// AllStarLink while idle, and everything stops after <see cref="ExitAsync"/>.
+    /// </summary>
+    public BackgroundState Background { get; private set; } = new(false, null, false, "Not registered");
+
+    /// <summary>Raised (on any thread) when <see cref="Background"/> changes.</summary>
+    public event Action<BackgroundState>? BackgroundChanged;
+
+    /// <summary>True after <see cref="ExitAsync"/>: nothing runs and nothing restarts.</summary>
+    public bool HasExited => _exited;
+
+    private void PublishBackground()
+    {
+        BackgroundState next;
+        lock (_activeLock)
+        {
+            bool wantRegistered = Config.IsComplete && Config.Settings.RegisterOnStartup;
+            bool needed = !_exited && (_active || wantRegistered);
+            next = new BackgroundState(needed, _active ? _activeNode : null, IsRegistered, RegistrationStatus);
+            if (next == Background) return;
+            Background = next;
+        }
+        BackgroundChanged?.Invoke(next);
+    }
+
+    /// <summary>
+    /// The app came back to the foreground (or the OS woke it): re-register now rather than at the next 60 s
+    /// beat, and re-check the network. After a long suspension the registry entry may have lapsed.
+    /// </summary>
+    public void NotifyResumed()
+    {
+        if (_exited || !_started) return;
+        OnNetworkChanged();
+        _ = Task.Run(async () =>
+        {
+            try { await RefreshRegistrationAsync(); }
+            catch (Exception) { /* the periodic beat will retry */ }
+        });
+    }
+
+    /// <summary>
+    /// "Exit NodeX": hangs up, stops registering and stops reacting to anything. After this the platform head
+    /// should end the process. Registration is not withdrawn explicitly (ASL has no documented call for it); the
+    /// registry entry simply stops being refreshed.
+    /// </summary>
+    public async Task ExitAsync()
+    {
+        if (_exited) return;
+        _exited = true;
+
+        await DisposeAsync();
+        PublishBackground();
+    }
+
     // =====================================================================================
     // Startup, configuration, registration
     // =====================================================================================
@@ -132,9 +191,11 @@ public sealed class NodeRuntime : IAsyncDisposable
     /// <summary>Adopts a configuration and (re)starts registration to match it.</summary>
     public async Task ApplyConfigAsync(NodeConfig cfg, CancellationToken cancellationToken = default)
     {
+        if (_exited) return;
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            if (_exited) return;
             var previous = Config;
             Config = cfg;
             Transmit.ListenOnly = cfg.Settings.ListenOnly;
@@ -161,6 +222,7 @@ public sealed class NodeRuntime : IAsyncDisposable
         finally
         {
             _gate.Release();
+            PublishBackground();   // completeness / "register on startup" may have changed
         }
     }
 
@@ -190,6 +252,7 @@ public sealed class NodeRuntime : IAsyncDisposable
         RegistrationStatus = status;
         PerceivedAddress = address;
         RegistrationChanged?.Invoke();
+        PublishBackground();
     }
 
     /// <summary>Registers right now (outside the normal cycle), e.g. after the network changed.</summary>
@@ -407,6 +470,7 @@ public sealed class NodeRuntime : IAsyncDisposable
             _activeNode = active ? node : null;
         }
         LinkActiveChanged?.Invoke(active, active ? node : null);
+        PublishBackground();
     }
 
     // =====================================================================================

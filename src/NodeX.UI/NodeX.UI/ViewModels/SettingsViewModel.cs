@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using NodeX.Core;
@@ -68,6 +69,46 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool TogglePtt { get; set; }
 
+    // ----- hardware PTT button (a phone key) -----
+
+    public bool HardwareKeysSupported => AppServices.HardwareKeysSupported;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HardwareKeyText), nameof(HasHardwareKey))]
+    public partial int HardwarePttKey { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HardwareKeyText))]
+    public partial bool IsLearningKey { get; set; }
+
+    public bool HasHardwareKey => HardwarePttKey != 0;
+
+    public string HardwareKeyText => IsLearningKey
+        ? "Press the button you want to use…"
+        : AppServices.NameKey(HardwarePttKey);
+
+    [RelayCommand]
+    private void LearnHardwareKey()
+    {
+        var mapper = AppServices.HardwarePtt;
+        mapper.KeyLearned -= OnKeyLearned;
+        mapper.LearningChanged -= OnLearningChanged;
+        mapper.KeyLearned += OnKeyLearned;
+        mapper.LearningChanged += OnLearningChanged;
+        mapper.BeginLearn();
+    }
+
+    [RelayCommand]
+    private void ClearHardwareKey()
+    {
+        AppServices.HardwarePtt.CancelLearn();
+        HardwarePttKey = 0;
+    }
+
+    private void OnKeyLearned(int code) => Dispatcher.UIThread.Post(() => HardwarePttKey = code);
+
+    private void OnLearningChanged() => Dispatcher.UIThread.Post(() => IsLearningKey = AppServices.HardwarePtt.IsLearning);
+
     [ObservableProperty]
     public partial string TimeOutSecondsText { get; set; } = "180";
 
@@ -132,6 +173,7 @@ public partial class SettingsViewModel : ViewModelBase
         RegisterOnStartup = s.RegisterOnStartup;
         AutoReconnect = s.AutoReconnect;
         TogglePtt = s.TogglePtt;
+        HardwarePttKey = s.HardwarePttKey;
         TimeOutSecondsText = s.TimeOutTimerSeconds.ToString(CultureInfo.InvariantCulture);
         MicGain = s.MicGain;
         MicProcessing = s.MicProcessing;
@@ -182,6 +224,7 @@ public partial class SettingsViewModel : ViewModelBase
     [RelayCommand]
     private void Cancel()
     {
+        AppServices.HardwarePtt.CancelLearn();
         ErrorText = "";
         StatusText = "";
         Cancelled?.Invoke();
@@ -258,6 +301,7 @@ public partial class SettingsViewModel : ViewModelBase
             MicProcessing = MicProcessing,
             TimeOutTimerSeconds = timeout,
             TogglePtt = TogglePtt,
+            HardwarePttKey = HardwarePttKey,
             IdReminderEnabled = IdReminderEnabled,
             IdReminderMinutes = idMinutes
         };

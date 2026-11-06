@@ -32,21 +32,13 @@ namespace NodeX.UI.Android
                 new NodeX.Core.Audio.NodeAudioEngineOptions { OpenMicOnlyWhileKeyed = true },
                 networkMonitor: new AndroidNetworkMonitor(this));
 
-            // Keep the process, CPU and Wi-Fi awake (foreground service, wake lock, Bluetooth SCO)
-            // exactly while a link is up.
-            AppServices.Runtime.LinkActiveChanged += (active, node) =>
+            // Keep the process alive while NodeX has work: a configured node stays registered (and follows IP
+            // changes) even when nothing is linked; while linked the service also holds the CPU/Wi-Fi locks and
+            // Bluetooth routing. It stops only after "Exit NodeX" (the service updates itself in between).
+            AppServices.Runtime.BackgroundChanged += state =>
             {
-                if (!active)
-                {
-                    NodeForegroundService.Stop(this);
-                    return;
-                }
-
-                // A microphone foreground service may only start once RECORD_AUDIO is granted.
-                if (CheckSelfPermission(global::Android.Manifest.Permission.RecordAudio) == Permission.Granted)
-                {
-                    NodeForegroundService.Start(this, node);
-                }
+                if (state.Needed) NodeForegroundService.EnsureStarted(this);
+                else NodeForegroundService.Stop(this);
             };
         }
     }

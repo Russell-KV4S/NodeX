@@ -38,6 +38,33 @@ public static class AppServices
     /// </summary>
     public static Action? MicrophonePermissionRequester { get; set; }
 
+    /// <summary>
+    /// How a head ends the process after <see cref="NodeRuntime.ExitAsync"/> (Android: finish the task and kill the
+    /// process). Null on desktop, where the app lifetime is shut down instead.
+    /// </summary>
+    public static Action? ExitHandler { get; set; }
+
+    /// <summary>False where an app may not quit itself (iOS): the "Exit" menu item is hidden there.</summary>
+    public static bool CanExit { get; set; } = true;
+
+    /// <summary>
+    /// Asks the UI to handle the Back button: returns true if it closed something (a full-screen panel). When it
+    /// returns false the platform head moves the app to the background instead of quitting.
+    /// </summary>
+    public static Func<bool>? BackHandler { get; set; }
+
+    /// <summary>The phone button mapped to push-to-talk; the platform head feeds key events to it.</summary>
+    public static HardwarePttMapper HardwarePtt { get; } = new();
+
+    /// <summary>True where a head can deliver hardware key events (Android), so Settings offers the mapping.</summary>
+    public static bool HardwareKeysSupported { get; set; }
+
+    /// <summary>Turns a key code into a readable name; set by the head. Falls back to "Key n".</summary>
+    public static Func<int, string>? HardwareKeyNamer { get; set; }
+
+    public static string NameKey(int code) =>
+        code == 0 ? "Not set" : HardwareKeyNamer?.Invoke(code) ?? $"Key {code}";
+
     /// <summary>Searches the public AllStarLink node list (one shared instance: it caches and paces requests).</summary>
     public static NodeDirectory Directory { get; } = new();
 

@@ -61,6 +61,12 @@ public sealed record NodeSettings
     public bool TogglePtt { get; init; }
 
     /// <summary>
+    /// Key code of a phone button (volume key, headset button...) used as push-to-talk; 0 = none. It follows
+    /// <see cref="TogglePtt"/>: hold-to-talk, or press once to start and again to stop.
+    /// </summary>
+    public int HardwarePttKey { get; init; }
+
+    /// <summary>
     /// Show a reminder to identify (by voice) while linked. Off by default. Nothing is ever transmitted
     /// automatically; the reminder only prompts the user.
     /// </summary>

@@ -111,6 +111,22 @@
 
                     <CheckBox Content="Latching PTT (tap to talk, tap again to stop)" IsChecked="{Binding TogglePtt}" />
 
+                    <!-- A phone button as PTT (Android) -->
+                    <StackPanel IsVisible="{Binding HardwareKeysSupported}">
+                        <TextBlock Classes="label" Text="Phone button for push-to-talk" />
+                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Text="{Binding HardwareKeyText}" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Polite" />
+                            <Button Grid.Column="1" Content="Choose button" Command="{Binding LearnHardwareKeyCommand}"
+                                    MinHeight="44" Padding="12,0" CornerRadius="6" />
+                            <Button Grid.Column="2" Content="Clear" Command="{Binding ClearHardwareKeyCommand}"
+                                    IsEnabled="{Binding HasHardwareKey}" MinHeight="44" Padding="12,0" CornerRadius="6" />
+                        </Grid>
+                        <TextBlock Classes="hint"
+                                   Text="Press “Choose button”, then press a volume key or a headset button. It then works like the on-screen PTT: hold to talk, or tap to start and tap again to stop if latching is on. It works while NodeX is on screen; a volume key used this way no longer changes the volume. Save to keep it." />
+                    </StackPanel>
+
                     <CheckBox Content="Clean up my voice (rumble filter, automatic level, limiter)" IsChecked="{Binding MicProcessing}" />
 
                     <StackPanel>

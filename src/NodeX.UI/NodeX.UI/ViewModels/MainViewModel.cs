@@ -24,6 +24,7 @@ public partial class MainViewModel : ViewModelBase
     private DispatcherTimer? _timer;
     private volatile float _micMeter;   // written on audio threads, applied by the UI timer
     private volatile float _rxMeter;
+    private DateTime? _backgroundedAt;
 
     // --- Station & Header Properties ---
     [ObservableProperty]
@@ -43,6 +44,39 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial bool IsBleConnected { get; set; }
+
+    // --- Exit and Back ---
+    public bool CanExit => AppServices.CanExit;
+
+    /// <summary>Raised on the UI thread after everything has been stopped; the app shell ends the process.</summary>
+    public event Action? ExitRequested;
+
+    /// <summary>"Exit NodeX": hang up, stop registering, stop all background work, then close the app.</summary>
+    [RelayCommand]
+    public async Task ExitAsync()
+    {
+        LogActivity("Exiting NodeX…");
+        try
+        {
+            await _runtime.ExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        catch (Exception ex)
+        {
+            LogActivity($"[ERROR] Exit: {ex.Message}");
+        }
+        OnUi(() => ExitRequested?.Invoke());
+    }
+
+    /// <summary>
+    /// Back button: closes the top full-screen panel if one is open and returns true; otherwise returns false so
+    /// the head can leave the app running in the background (Back is not Exit).
+    /// </summary>
+    public bool CloseTopOverlay()
+    {
+        if (IsSearchOpen) { IsSearchOpen = false; return true; }
+        if (IsSettingsOpen) { IsSettingsOpen = false; return true; }
+        return false;
+    }
 
     // --- Find-a-node overlay ---
     public NodeSearchViewModel Search { get; }
@@ -230,6 +264,7 @@ public partial class MainViewModel : ViewModelBase
     {
         _runtime = runtime;
         _idReminder.DueChanged += OnIdReminderDueChanged;
+        AppServices.HardwarePtt.Pressed += OnHardwarePtt;
 
         Search = new NodeSearchViewModel(
             directory ?? AppServices.Directory,
@@ -264,6 +299,19 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     public void SetForeground(bool foreground)
     {
+        if (foreground)
+        {
+            // Coming back after a while: the OS may have throttled us, so re-register now instead of waiting
+            // for the next beat (a lapsed registration costs minutes before nodes will accept our link).
+            if (_backgroundedAt is { } since && DateTime.UtcNow - since > TimeSpan.FromSeconds(30))
+                _runtime.NotifyResumed();
+            _backgroundedAt = null;
+        }
+        else
+        {
+            _backgroundedAt ??= DateTime.UtcNow;
+        }
+
         if (_timer == null) return;
         if (foreground)
         {
@@ -387,6 +435,14 @@ public partial class MainViewModel : ViewModelBase
         if (IsToggleMode && _link != null) await _link.Ptt.HandleUiPttAsync(true);
     }
 
+    /// <summary>A mapped phone button went down or up (Android volume key, headset button...).</summary>
+    private void OnHardwarePtt(bool pressed)
+    {
+        var link = _link;
+        if (link == null) return;
+        _ = link.Ptt.HandleButtonAsync(pressed, PttSource.MediaKey);
+    }
+
     [RelayCommand]
     public void TogglePttMode()
     {
@@ -472,6 +528,8 @@ public partial class MainViewModel : ViewModelBase
 
         if (string.IsNullOrWhiteSpace(TargetNodeInput) && s.DefaultTargetNode.Length > 0)
             TargetNodeInput = s.DefaultTargetNode;
+
+        AppServices.HardwarePtt.MappedKey = s.HardwarePttKey;
 
         if (_link == null)
         {

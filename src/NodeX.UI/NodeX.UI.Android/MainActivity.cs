@@ -20,10 +20,22 @@ public class MainActivity : AvaloniaMainActivity
 
     private bool _micPermanentlyDenied;
 
+    /// <summary>The visible activity, so "Exit NodeX" can close it.</summary>
+    public static MainActivity? Current { get; private set; }
+
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
+        Current = this;
+        AppServices.HardwareKeysSupported = true;
+        AppServices.HardwareKeyNamer = code =>
+        {
+            string name = global::Android.Views.KeyEvent.KeyCodeToString((global::Android.Views.Keycode)code) ?? "";
+            name = name.Replace("KEYCODE_", "").Replace('_', ' ').ToLowerInvariant();
+            return name.Length == 0 ? $"Key {code}" : char.ToUpperInvariant(name[0]) + name[1..];
+        };
         AppServices.MicrophonePermissionRequester = RequestMicrophoneOrOpenSettings;
+        AppServices.ExitHandler = () => AndroidAppExit.Finish(this);
         RequestRuntimePermissions();
         UpdateMicrophoneState();
     }
@@ -33,6 +45,39 @@ public class MainActivity : AvaloniaMainActivity
         base.OnResume();
         UpdateMicrophoneState();   // the user may have granted it in system settings meanwhile
         MaybeAskBatteryExemption();
+    }
+
+    /// <summary>
+    /// Back closes an open panel, otherwise it only hides the app: NodeX keeps running (and stays registered) in the
+    /// background. Quitting is the explicit "Exit NodeX" menu item.
+    /// </summary>
+#pragma warning disable CA1422 // OnBackPressed is the portable route; predictive back is not enabled
+    public override void OnBackPressed()
+    {
+        if (AppServices.BackHandler?.Invoke() == true) return;
+        MoveTaskToBack(true);
+    }
+#pragma warning restore CA1422
+
+    /// <summary>
+    /// Offers every key to the PTT mapper first: the mapped phone button (or the key being learned) is consumed here,
+    /// everything else goes on as normal. Only works while this screen is in front.
+    /// </summary>
+    public override bool DispatchKeyEvent(global::Android.Views.KeyEvent? e)
+    {
+        if (e != null)
+        {
+            bool down = e.Action == global::Android.Views.KeyEventActions.Down;
+            bool up = e.Action == global::Android.Views.KeyEventActions.Up;
+            if ((down || up) && AppServices.HardwarePtt.OnKey((int)e.KeyCode, down, e.RepeatCount > 0)) return true;
+        }
+        return base.DispatchKeyEvent(e);
+    }
+
+    protected override void OnDestroy()
+    {
+        if (ReferenceEquals(Current, this)) Current = null;
+        base.OnDestroy();
     }
 
     public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Permission[] grantResults)

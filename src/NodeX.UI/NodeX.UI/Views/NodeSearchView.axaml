@@ -96,6 +96,19 @@
             <Border IsVisible="{Binding FiltersOpen}" Background="{StaticResource CardBackgroundBrush}"
                     BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
                 <StackPanel Spacing="10">
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Classes="label" Text="US state" />
+                            <ComboBox ItemsSource="{Binding StateChoices}" SelectedItem="{Binding SelectedState}"
+                                      AutomationProperties.Name="US state filter" HorizontalAlignment="Stretch" MinHeight="40" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Classes="label" Text="City or town" />
+                            <TextBox AutomationProperties.Name="City filter" Text="{Binding City}" PlaceholderText="e.g. Austin" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Classes="hint"
+                               Text="AllStarLink's list has one free-text location per node, so state and city are matched against that text. It has no county." />
                     <StackPanel>
                         <TextBlock Classes="label" Text="Country" />
                         <TextBox AutomationProperties.Name="Country filter" Text="{Binding Country}" PlaceholderText="e.g. Canada" />
@@ -111,6 +124,11 @@
                     <Button Content="Clear filters" Command="{Binding ClearFiltersCommand}" HorizontalAlignment="Left"
                             IsVisible="{Binding HasActiveFilters}" Padding="12,6" CornerRadius="6" />
                 </StackPanel>
+            </Border>
+
+            <Border IsVisible="{Binding HasNote}" Background="#2B2110" BorderBrush="{StaticResource AmberAccentBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="10,6">
+                <TextBlock Text="{Binding Note}" TextWrapping="Wrap" FontSize="11" Foreground="#FCD34D" />
             </Border>
 
             <Grid ColumnDefinitions="*,Auto">

@@ -30,6 +30,9 @@ public partial class AppDelegate : AvaloniaAppDelegate<App>
         // not be recreated for every link.
         var session = new IosAudioSessionManager();
 
+        // iOS apps do not quit themselves (the user swipes them away), so there is no "Exit NodeX" item.
+        AppServices.CanExit = false;
+
         AppServices.Initialize(
             new IosKeychainSecretStore(),
             () => new IosAudioDeviceService(session),

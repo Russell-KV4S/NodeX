@@ -115,6 +115,22 @@ public sealed class NodePttController : IAsyncDisposable, IDisposable
     }
 
     /// <summary>
+    /// Handles a physical button (a mapped phone key, a headset or Bluetooth button): follows the PTT mode, so in
+    /// Momentary it keys while held and in Toggle each press flips the state (the release is ignored).
+    /// </summary>
+    public async Task HandleButtonAsync(bool pressed, PttSource source)
+    {
+        if (Mode == PttMode.Toggle)
+        {
+            if (pressed) await SetPttStateAsync(!IsPttActive, source);
+        }
+        else
+        {
+            await SetPttStateAsync(pressed, source);
+        }
+    }
+
+    /// <summary>
     /// Handles media key press (e.g. headset Play/Pause button) typically toggling PTT.
     /// </summary>
     public async Task HandleMediaKeyPttAsync()
@@ -192,17 +208,7 @@ public sealed class NodePttController : IAsyncDisposable, IDisposable
         {
             try
             {
-                if (Mode == PttMode.Toggle)
-                {
-                    if (pressed)
-                    {
-                        await SetPttStateAsync(!IsPttActive, PttSource.BluetoothBle);
-                    }
-                }
-                else
-                {
-                    await SetPttStateAsync(pressed, PttSource.BluetoothBle);
-                }
+                await HandleButtonAsync(pressed, PttSource.BluetoothBle);
             }
             catch (Exception ex)
             {

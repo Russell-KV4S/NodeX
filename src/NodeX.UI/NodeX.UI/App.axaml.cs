@@ -22,6 +22,12 @@ public partial class App : Application
         // One view model for the whole app session; platform heads have already supplied their
         // secure storage and audio backend through AppServices.Initialize.
         var viewModel = new MainViewModel();
+        AppServices.BackHandler = viewModel.CloseTopOverlay;
+        viewModel.ExitRequested += () =>
+        {
+            if (AppServices.ExitHandler is { } exit) exit();
+            else if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime d) d.Shutdown();
+        };
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {

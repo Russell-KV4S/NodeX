@@ -449,4 +449,102 @@ public class NodeRuntimeReconnectTests : IDisposable
         Assert.Equal(0, await NewCallsWithinAsync(first, 400));
         lock (activity) Assert.Equal((false, (string?)null), activity[^1]);
     }
+
+    // ----- background presence: stay registered while idle, stop only on Exit -----
+
+    [Fact]
+    public async Task ConfiguredNode_IsKeptAliveInTheBackground_WhileIdle()
+    {
+        await using var rt = await CreateAsync();
+        await Wait.UntilAsync(() => rt.Background.Registered);
+
+        Assert.True(rt.Background.Needed);
+        Assert.Null(rt.Background.LinkedNode);
+        Assert.Contains("Ready to connect", rt.Background.Summary);
+    }
+
+    [Fact]
+    public async Task Disconnecting_LeavesTheNodeRegisteredAndBackgroundOn()
+    {
+        await using var rt = await CreateAsync();
+        var states = new List<BackgroundState>();
+        rt.BackgroundChanged += states.Add;
+
+        await ConnectAndAcceptAsync(rt);
+        Assert.Equal("2000", rt.Background.LinkedNode);
+        Assert.Contains("Linked to node 2000", rt.Background.Summary);
+
+        await rt.DisconnectAsync();
+        Assert.Null(rt.Background.LinkedNode);
+        Assert.True(rt.Background.Needed);          // still registered and kept alive
+        Assert.All(states, st => Assert.True(st.Needed));
+    }
+
+    [Fact]
+    public async Task IpChange_WhileIdle_ReRegistersImmediately()
+    {
+        await using var rt = await CreateAsync();
+        await Wait.UntilAsync(() => rt.Background.Registered);
+        int before = Volatile.Read(ref _registryRequests);
+
+        _net.Switch("cell=100.64.0.7");
+        await Wait.UntilAsync(() => Volatile.Read(ref _registryRequests) > before);
+        Assert.Null(rt.Link);                        // nothing was linked; it only refreshed the registration
+    }
+
+    [Fact]
+    public async Task Resume_ReRegistersNow()
+    {
+        await using var rt = await CreateAsync();
+        await Wait.UntilAsync(() => rt.Background.Registered);
+        int before = Volatile.Read(ref _registryRequests);
+
+        rt.NotifyResumed();
+        await Wait.UntilAsync(() => Volatile.Read(ref _registryRequests) > before);
+    }
+
+    [Fact]
+    public async Task Exit_StopsEverything_AndNothingRestarts()
+    {
+        var rt = await CreateAsync();
+        await Wait.UntilAsync(() => rt.Background.Registered);
+        await ConnectAndAcceptAsync(rt);
+        var states = new List<BackgroundState>();
+        rt.BackgroundChanged += states.Add;
+
+        await rt.ExitAsync();
+
+        Assert.True(rt.HasExited);
+        Assert.False(rt.Background.Needed);
+        Assert.Null(rt.Link);
+        Assert.False(states[^1].Needed);
+
+        int after = Volatile.Read(ref _registryRequests);
+        _net.Switch("wifi=10.9.9.9");                // a later network change must not wake anything
+        await rt.ApplyConfigAsync(rt.Config);        // nor a later config change
+        await Task.Delay(300);
+        Assert.Equal(after, Volatile.Read(ref _registryRequests));
+        Assert.False(rt.Background.Needed);
+    }
+
+    [Fact]
+    public async Task NotConfigured_NeedsNoBackgroundExecution()
+    {
+        await using var rt = await CreateAsync(new NodeSettings());   // invalid, so nothing is saved
+        Assert.False(rt.Background.Needed);
+    }
+
+    [Fact]
+    public async Task RegistrationOff_NeedsBackground_OnlyWhileLinked()
+    {
+        await using var rt = await CreateAsync(
+            new NodeSettings { NodeNumber = "55553", Callsign = "W1AW", RegisterOnStartup = false });
+        Assert.False(rt.Background.Needed);
+
+        await ConnectAndAcceptAsync(rt);
+        Assert.True(rt.Background.Needed);
+
+        await rt.DisconnectAsync();
+        Assert.False(rt.Background.Needed);
+    }
 }

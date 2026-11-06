@@ -47,6 +47,12 @@ public sealed record NodeSearchQuery
     public string Country { get; init; } = "";
     public string SiteName { get; init; } = "";
 
+    /// <summary>
+    /// Two-letter US state code. Best effort: the list has no state field, so rows are found by the state's
+    /// code or name appearing in the free-text Location (see <see cref="UsStates"/>). Implies the United States.
+    /// </summary>
+    public string State { get; init; } = "";
+
     public NodeSort Sort { get; init; } = NodeSort.NodeNumber;
     public bool Descending { get; init; }
 
@@ -71,7 +77,7 @@ public sealed record NodeSearchQuery
     public bool IsUnfiltered =>
         Interpreted() is var q
         && q.Text.Length == 0 && q.NodeNumber.Length == 0 && q.Callsign.Length == 0 && q.Description.Length == 0
-        && q.Location.Length == 0 && q.Country.Length == 0 && q.SiteName.Length == 0;
+        && q.Location.Length == 0 && q.Country.Length == 0 && q.SiteName.Length == 0 && q.State.Length == 0;
 }
 
 /// <summary>One page of results.</summary>
@@ -79,7 +85,11 @@ public sealed record NodeSearchQuery
 /// <param name="Listed">How many nodes the list holds before filtering.</param>
 public sealed record NodeSearchPage(IReadOnlyList<DirectoryNode> Nodes, int Matching, int Listed, int Start)
 {
-    public bool HasMore => Start + Nodes.Count < Matching;
+    /// <summary>True when more rows can be fetched with a larger <see cref="NodeSearchQuery.Start"/>.</summary>
+    public bool HasMore { get; init; } = Start + Nodes.Count < Matching;
+
+    /// <summary>Something the user should know about these results (for example that they are best effort); may be empty.</summary>
+    public string Note { get; init; } = "";
 }
 
 /// <summary>
@@ -118,6 +128,79 @@ public sealed partial class NodeDirectory
     public async Task<NodeSearchPage> SearchAsync(NodeSearchQuery query, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
+        if (query.State.Trim().Length > 0) return await SearchStateAsync(query.Interpreted(), cancellationToken).ConfigureAwait(false);
+        return await SearchPlainAsync(query, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Rows fetched per request while looking for a state (the server has no state column to filter on).</summary>
+    private const int StatePageRows = 200;
+
+    /// <summary>Most requests one state search may make (two spellings x two pages), to stay polite to the server.</summary>
+    private const int StateMaxPagesPerSpelling = 2;
+
+    /// <summary>
+    /// The list has no state field, so a state is found by asking the server for rows whose Location contains the
+    /// state's code, and again for its full name (or, when a city is given, for that city), then keeping only rows
+    /// whose Location really names the state (<see cref="UsStates.Matches"/>) and merging them. Best effort: owners
+    /// who left the state out of their Location are not found.
+    /// </summary>
+    private async Task<NodeSearchPage> SearchStateAsync(NodeSearchQuery q, CancellationToken ct)
+    {
+        string code = q.State.Trim().ToUpperInvariant();
+        string? name = UsStates.NameOf(code);
+        if (name == null) return new NodeSearchPage([], 0, 0, 0) { Note = $"“{q.State}” is not a US state." };
+
+        string country = q.Country.Length > 0 ? q.Country : "United States";
+        string city = q.Location.Trim();
+        string[] spellings = city.Length > 0 ? [city] : [code, name];
+
+        var found = new Dictionary<string, DirectoryNode>();
+        int listed = 0;
+        bool truncated = false;
+
+        foreach (string spelling in spellings)
+        {
+            for (int pageNo = 0; pageNo < StateMaxPagesPerSpelling; pageNo++)
+            {
+                var page = await SearchPlainAsync(q with
+                {
+                    State = "", Location = spelling, Country = country, Text = q.Text,
+                    Sort = NodeSort.NodeNumber, Descending = false, Start = pageNo * StatePageRows, PageSize = StatePageRows
+                }, ct).ConfigureAwait(false);
+
+                listed = Math.Max(listed, page.Listed);
+                foreach (var n in page.Nodes)
+                    if (UsStates.Matches(n.Location, code)) found.TryAdd(n.NodeNumber, n);
+
+                if (!page.HasMore) break;
+                if (pageNo == StateMaxPagesPerSpelling - 1) truncated = true;
+            }
+        }
+
+        IEnumerable<DirectoryNode> ordered = q.Sort switch
+        {
+            NodeSort.Callsign => found.Values.OrderBy(n => n.Callsign, StringComparer.OrdinalIgnoreCase),
+            NodeSort.Description => found.Values.OrderBy(n => n.Description, StringComparer.OrdinalIgnoreCase),
+            NodeSort.SiteName => found.Values.OrderBy(n => n.SiteName, StringComparer.OrdinalIgnoreCase),
+            _ => found.Values.OrderBy(n => long.TryParse(n.NodeNumber, out long v) ? v : long.MaxValue)
+        };
+        if (q.Descending) ordered = ordered.Reverse();
+
+        var all = ordered.ToList();
+        var slice = all.Skip(q.Start).Take(q.PageSize).ToList();
+        string note = "The node list has no state field, so this finds nodes whose location text names " +
+                      $"{name} ({code}). Nodes whose owner left the state out are not included." +
+                      (truncated ? " Only the first part of a very large match was searched; add a city to narrow it." : "");
+
+        return new NodeSearchPage(slice, all.Count, listed, q.Start)
+        {
+            HasMore = q.Start + slice.Count < all.Count,
+            Note = note
+        };
+    }
+
+    private async Task<NodeSearchPage> SearchPlainAsync(NodeSearchQuery query, CancellationToken cancellationToken)
+    {
         var q = query.Interpreted();
         q = q with { PageSize = Math.Clamp(q.PageSize, 1, 200), Start = Math.Max(0, q.Start) };
 
