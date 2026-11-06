@@ -41,8 +41,58 @@ public class NodeResolutionTests
     {
         var http = new StubHandler(respond);
         var dns = new DnsRecorder();
-        var r = new NodeResolution(new HttpClient(http), dns.Resolve, clock);
+        var r = new NodeResolution(new HttpClient(http), dns.Resolve, clock) { PortProbe = null };   // no real UDP in tests
         return (r, http, dns);
+    }
+
+    [Fact]
+    public async Task ListedPortThatIsSilent_FallsBackToTheStandardPort_WhenItAnswers()
+    {
+        // Verified live 2026-11-06: node 45192 is listed on 4579 but only answers on 4569.
+        var (r, _, _) = Create(_ => Json("""{"node":{"ipaddr":"203.0.113.9","port":4579,"callsign":"W2ECR"}}"""));
+        var probed = new List<int>();
+        r.PortProbe = (ep, _) => { probed.Add(ep.Port); return Task.FromResult(ep.Port == 4569); };
+
+        var info = await r.ResolveNodeAsync("45192");
+
+        Assert.Equal(new IPEndPoint(IPAddress.Parse("203.0.113.9"), 4569), info!.EndPoint);
+        Assert.Equal(new[] { 4579, 4569 }, probed);
+    }
+
+    [Fact]
+    public async Task ListedPortThatAnswers_IsKept_AndStandardPortIsNotProbed()
+    {
+        var (r, _, _) = Create(_ => Json("""{"node":{"ipaddr":"203.0.113.9","port":4579,"callsign":"W2ECR"}}"""));
+        var probed = new List<int>();
+        r.PortProbe = (ep, _) => { probed.Add(ep.Port); return Task.FromResult(true); };
+
+        var info = await r.ResolveNodeAsync("27339");
+
+        Assert.Equal(4579, info!.EndPoint.Port);
+        Assert.Equal(new[] { 4579 }, probed);
+    }
+
+    [Fact]
+    public async Task NeitherPortAnswers_KeepsTheListedPort()
+    {
+        var (r, _, _) = Create(_ => Json("""{"node":{"ipaddr":"203.0.113.9","port":4579,"callsign":"X"}}"""));
+        r.PortProbe = (_, _) => Task.FromResult(false);
+
+        var info = await r.ResolveNodeAsync("1234");
+
+        Assert.Equal(4579, info!.EndPoint.Port);
+    }
+
+    [Fact]
+    public async Task StandardListedPort_IsNotProbed()
+    {
+        var (r, _, _) = Create(_ => Json("""{"node":{"ipaddr":"203.0.113.9","port":4569,"callsign":"X"}}"""));
+        int probes = 0;
+        r.PortProbe = (_, _) => { probes++; return Task.FromResult(false); };
+
+        await r.ResolveNodeAsync("1234");
+
+        Assert.Equal(0, probes);
     }
 
     [Theory]

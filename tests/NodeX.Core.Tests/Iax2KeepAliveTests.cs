@@ -15,6 +15,36 @@ public class Iax2KeepAliveTests
     }
 
     [Fact]
+    public void LinkListInterval_DefaultsToTenSeconds()
+    {
+        using var s = new Iax2Session();
+        Assert.Equal(TimeSpan.FromSeconds(10), s.LinkListInterval);
+    }
+
+    /// <summary>
+    /// Hubs such as 27339 hang up a link that sends no app_rpt link text for ~45 s even though it answers PINGs,
+    /// so a connected session must send the "L " link list on a timer.
+    /// </summary>
+    [Fact]
+    public async Task SendsLinkListText_WhileConnected()
+    {
+        using var remote = new FakeIaxRemote();
+        using var session = await remote.ConnectSessionAsync(
+            TimeSpan.FromSeconds(30), configure: s => s.LinkListInterval = TimeSpan.FromMilliseconds(60));
+
+        int lists = 0;
+        var deadline = DateTime.UtcNow.AddSeconds(3);
+        while (lists < 2 && DateTime.UtcNow < deadline)
+        {
+            var f = await remote.ReceiveFrameAsync(1000);
+            if (f.FrameType == FrameType.Text && System.Text.Encoding.UTF8.GetString(f.Payload).TrimEnd('\0') == "L ")
+                lists++;
+        }
+
+        Assert.Equal(2, lists);
+    }
+
+    [Fact]
     public async Task SendsPingAtInterval_AndPongYieldsRtt_LinkStaysUp()
     {
         using var remote = new FakeIaxRemote();

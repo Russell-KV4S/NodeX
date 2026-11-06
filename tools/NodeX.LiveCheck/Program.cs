@@ -100,10 +100,13 @@ static async Task<int> LinkAsync(string[] a)
 
     string? ipArg = null, tracePath = null, dtmf = null;
     int listen = 20, key = 0, mic = 0;
+    bool newKey = false, linkList = false;
     for (int i = 2; i < a.Length; i++)
     {
         switch (a[i])
         {
+            case "--newkey": newKey = true; break;
+            case "--linklist": linkList = true; break;
             case "--ip": ipArg = a[++i]; break;
             case "--listen": listen = int.Parse(a[++i]); break;
             case "--key": key = int.Parse(a[++i]); break;
@@ -168,6 +171,20 @@ static async Task<int> LinkAsync(string[] a)
         await Task.Delay(100);
     Log($"RESULT after handshake: state={session.State} reason={session.DisconnectReason}");
     if (session.State != Iax2SessionState.Connected) { Summary(session, voiceFrames, tracePath); return 1; }
+
+    // Experiments for hubs that hang up after ~45 s: --newkey answers the hub's !NEWKEY1!, --linklist sends
+    // an app_rpt "L " link-list text frame every 10 s like a real node does.
+    if (newKey) { await session.SendTextAsync("!NEWKEY1!"); Log("sent !NEWKEY1!"); }
+    if (linkList)
+        _ = Task.Run(async () =>
+        {
+            while (session.State == Iax2SessionState.Connected)
+            {
+                await session.SendTextAsync("L ");
+                Log("sent 'L '");
+                await Task.Delay(10_000);
+            }
+        });
 
     if (dtmf != null)
     {

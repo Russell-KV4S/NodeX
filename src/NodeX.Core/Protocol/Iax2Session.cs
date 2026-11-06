@@ -67,6 +67,14 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
 
     /// <summary>Consecutive silent keep-alive intervals before the link is declared dead.</summary>
     public int MaxMissedKeepAlives { get; set; } = 3;
+
+    /// <summary>
+    /// Interval between app_rpt "L " link-list text frames. A real node sends one regularly, and some hubs
+    /// (verified live against 27339, 2026-11-06) hang up a link that sends none for about 45 s even though it
+    /// answers every PING. Zero turns it off. Set before <see cref="ConnectAsync"/>.
+    /// </summary>
+    public TimeSpan LinkListInterval { get; set; } = TimeSpan.FromSeconds(10);
+    private Task? _linkListLoopTask;
     private bool _voiceFormatAnnounced;
     private uint _lastVoiceTimestamp;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -170,8 +178,30 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         _receiveLoopTask = Task.Run(ReceiveLoopAsync);
         _keepAliveLoopTask = Task.Run(KeepAliveLoopAsync);
         _retransmitLoopTask = Task.Run(RetransmitLoopAsync);
+        _linkListLoopTask = LinkListInterval > TimeSpan.Zero ? Task.Run(LinkListLoopAsync) : null;
 
         await SendNewCallAsync(cancellationToken);
+    }
+
+    /// <summary>Sends an empty app_rpt link list ("L ") on a timer while connected (see <see cref="LinkListInterval"/>).</summary>
+    private async Task LinkListLoopAsync()
+    {
+        using var timer = new PeriodicTimer(LinkListInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(_cts.Token))
+            {
+                if (State == Iax2SessionState.Connected) await SendTextAsync("L ");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Session is closing.
+        }
+        catch (Exception ex)
+        {
+            ErrorOccurred?.Invoke($"Link list send failed: {ex.Message}");
+        }
     }
 
     private async Task SendNewCallAsync(CancellationToken cancellationToken)
@@ -352,6 +382,19 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
             (byte)digit,
             ReadOnlyMemory<byte>.Empty,
             _cts.Token);
+    }
+
+    /// <summary>
+    /// Sends an app_rpt link text frame (for example the "L " link list or "!NEWKEY1!"). app_rpt terminates the
+    /// string with a NUL, so this does too.
+    /// </summary>
+    public async Task SendTextAsync(string text)
+    {
+        if (State != Iax2SessionState.Connected) return;
+
+        byte[] bytes = new byte[Encoding.UTF8.GetByteCount(text) + 1];
+        Encoding.UTF8.GetBytes(text, 0, text.Length, bytes, 0);
+        await SendFullFrameAsync(Iax2Protocol.FrameType.Text, 0, bytes, _cts.Token);
     }
 
     private async Task SendFullFrameAsync(
@@ -852,6 +895,7 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         var loopTimeout = TimeSpan.FromSeconds(2);
         if (_receiveLoopTask != null) await Task.WhenAny(_receiveLoopTask, Task.Delay(loopTimeout));
         if (_keepAliveLoopTask != null) await Task.WhenAny(_keepAliveLoopTask, Task.Delay(loopTimeout));
+        if (_linkListLoopTask != null) await Task.WhenAny(_linkListLoopTask, Task.Delay(loopTimeout));
         if (_retransmitLoopTask != null) await Task.WhenAny(_retransmitLoopTask, Task.Delay(loopTimeout));
 
         _socket.Dispose();

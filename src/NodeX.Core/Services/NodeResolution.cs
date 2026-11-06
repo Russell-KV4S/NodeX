@@ -46,6 +46,40 @@ public sealed class NodeResolution
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
 
+    /// <summary>
+    /// Checks whether an IAX endpoint answers (used to pick between a node's listed port and the standard 4569).
+    /// Null disables the check. The default sends an IAX POKE and waits briefly for any reply.
+    /// </summary>
+    public Func<IPEndPoint, CancellationToken, Task<bool>>? PortProbe { get; set; } = IaxPokeAsync;
+
+    /// <summary>How long the default probe waits for a reply.</summary>
+    public static TimeSpan ProbeTimeout { get; set; } = TimeSpan.FromMilliseconds(1500);
+
+    private static async Task<bool> IaxPokeAsync(IPEndPoint endpoint, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var udp = new System.Net.Sockets.UdpClient(endpoint.AddressFamily);
+            byte[] poke = new byte[Iax2Protocol.FullHeaderSize];
+            Iax2Protocol.WriteFullFrame(poke, (ushort)Random.Shared.Next(1, 0x7FFF), 0, 0, 0, 0,
+                Iax2Protocol.FrameType.IaxControl, (byte)Iax2Protocol.IaxControlSubclass.Poke);
+            await udp.SendAsync(poke, endpoint, cancellationToken);
+
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(ProbeTimeout);
+            await udp.ReceiveAsync(timeout.Token);   // any datagram back means something is listening
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>Clears all cached lookups (static overrides are kept).</summary>
     public void ClearCache() => _cache.Clear();
 
@@ -119,7 +153,20 @@ public sealed class NodeResolution
 
                     if (IPAddress.TryParse(ipStr, out var ip))
                     {
-                        var info = new NodeInfo(nodeNumber, callsign, new IPEndPoint(ip, port), desc, _utcNow());
+                        var endpoint = new IPEndPoint(ip, port);
+
+                        // The directory's port is where the node registered from, which is not always where it
+                        // listens: node 45192 is listed on 4579 but only answers on 4569 (the port its AllStarLink
+                        // DNS record gives, and the one DVSwitch Mobile uses). If the listed port is not the
+                        // standard one and does not answer an IAX POKE, try the standard port.
+                        if (port != Iax2Protocol.DefaultPort && PortProbe != null
+                            && !await PortProbe(endpoint, cancellationToken))
+                        {
+                            var standard = new IPEndPoint(ip, Iax2Protocol.DefaultPort);
+                            if (await PortProbe(standard, cancellationToken)) endpoint = standard;
+                        }
+
+                        var info = new NodeInfo(nodeNumber, callsign, endpoint, desc, _utcNow());
                         _cache[nodeNumber] = (info, _utcNow().Add(CacheTtl));
                         return info;
                     }
