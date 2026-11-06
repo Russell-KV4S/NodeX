@@ -42,7 +42,7 @@ Design stance: **outbound-linking only.** Carrier-grade NAT blocks unsolicited i
 | Desktop head (Windows) | Runs; NAudio `WaveIn`/`WaveOut` audio; mic and speaker **verified** via `LiveCheck` (the full GUI app has not been used for an on-air QSO) | Launched and screenshot-checked; live audio checks |
 | Desktop head (Linux/macOS) | Compiles; **runs silently** (no audio backend) | — |
 | Android head | Builds; **shipped to Play internal testing (§3.5, 2026-11-05) and installed on the owner's phone; owner reported 1.1 "worked great" (2026-11-06, general verdict only; specifics such as screen-off background audio, Bluetooth and handoff are not itemised and remain §13 item 7)** | Build; Play internal test |
-| iOS head | Compiles/builds; **never run on a device** | Build only |
+| iOS head | Compiles/builds; **never run on a device**; release prepared but not started, needs paid Apple account + Mac (§3.6, `docs/IOS_RELEASE.md`) | Build only |
 | Bluetooth PTT (BLE GATT, SCO audio, media key, Learn wizard) | **Not implemented** (interface + packet parser only) | Parser tests |
 | Responsive/phone layout | Implemented (single-column phone layout with docked PTT bar below 720 px or below 520 px height; two-column desktop above). **Verified only by resizing the Windows app (340–1100 px wide, 860×420 landscape), not on a real phone** | Screenshots at 340 / 410 / 780 / 1100 px and 1050×760, 800×760, 420×860, 860×420 |
 | Live-node interoperability | **Verified against owner's cloud node 523800 (2026-11-05):** registration, call-token handshake, `radio` login, keep-alive, keying, DTMF `*70`, mic audio TX, re-dial (same IP). **Not verified:** different-IP handoff, TX audio quality by ear, other app_rpt versions | `tools/NodeX.LiveCheck`; log in `docs/LIVE_VALIDATION.md` |
@@ -134,6 +134,9 @@ In Visual Studio set **`NodeX.UI.Desktop`** as the startup project. The settings
 - **Testers:** email list **NodeX testers** (owner only, saved as the track's list). The shared **Honey and Blush testers** list belongs to another app and must not be ticked here. Opt-in link: `https://play.google.com/apps/internaltest/4699734114435882711`. The desktop store page says "Not Found" for a test-only app; install on the phone. The first release took a while to appear.
 - **Releases so far:** 1.0 (code 1) and **1.1 (code 2)**, 2026-11-05 (listen-only, required callsign, Find-a-node, stay-registered + Exit, phone-button PTT, Toggle PTT). Play's two warnings (no deobfuscation file, no native debug symbols) are harmless: minification is off.
 - **Still needed before any wider track:** privacy policy URL, data-safety form, content rating, target audience, store listing, and **foreground-service declarations** (microphone, media playback, connected device, special use) with justifications. A newer personal developer account may also need a closed test (about 12 testers for 14 days) before production.
+
+### 3.6 iOS release (TestFlight) — **not started; handover only**
+Owner has no Mac and declined the $99/year Apple Developer Program (2026-11-06), so there is no iOS build, signing setup or TestFlight. The head is prepared (bundle ID `com.kv4s.nodex`, `Info.plist` fixed, 1024 icon set added, compiles on Windows). **Full requirements, build/upload commands and open gaps are in [`docs/IOS_RELEASE.md`](docs/IOS_RELEASE.md)** so anyone with an Apple account (or a cloud Mac / GitHub Actions macOS runner) can pick it up. Asset catalog and signing properties are unverified until a Mac build.
 
 ---
 
