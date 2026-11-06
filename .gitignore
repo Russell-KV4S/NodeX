@@ -19,3 +19,8 @@ secrets.json
 
 ## Claude Code local state
 .claude/settings.local.json
+
+## Android release signing (passwords + upload key)
+keystore/
+*.keystore
+*.jks
