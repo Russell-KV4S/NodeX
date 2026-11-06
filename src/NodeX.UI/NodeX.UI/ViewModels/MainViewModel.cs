@@ -1080,9 +1080,27 @@ public partial class MainViewModel : ViewModelBase
         else Dispatcher.UIThread.Post(action);
     }
 
+    /// <summary>
+    /// Makes remote text safe to log and copy. Asterisk text frames end with a NUL, and the Windows clipboard
+    /// ends text at the first NUL, so Copy silently dropped everything logged after such a message. Other control
+    /// characters (including line breaks, which would split one entry across lines) become spaces.
+    /// </summary>
+    public static string SanitizeLogText(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+
+        var sb = new System.Text.StringBuilder(text.Length);
+        foreach (char ch in text)
+        {
+            if (ch == '\0') continue;
+            sb.Append(char.IsControl(ch) ? ' ' : ch);
+        }
+        return sb.ToString().Trim();
+    }
+
     private void LogActivity(string text)
     {
-        string entry = $"[{DateTime.Now:HH:mm:ss}] {text}";
+        string entry = $"[{DateTime.Now:HH:mm:ss}] {SanitizeLogText(text)}";
 
         OnUi(() =>
         {
