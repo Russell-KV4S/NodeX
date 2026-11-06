@@ -54,6 +54,12 @@ public sealed record NodeSettings
     /// <summary>Selected speaker (platform-specific id); null = system default.</summary>
     public string? OutputDeviceId { get; init; }
 
+    /// <summary>
+    /// Android: start each link on the loudspeaker instead of the phone earpiece. The Speaker/Phone button on the
+    /// main screen can still switch it while linked.
+    /// </summary>
+    public bool DefaultToSpeaker { get; init; }
+
     /// <summary>Microphone gain, 1.0 = unity.</summary>
     public float MicGain { get; init; } = 1.0f;
 

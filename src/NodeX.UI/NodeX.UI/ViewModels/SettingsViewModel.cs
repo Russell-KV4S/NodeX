@@ -69,6 +69,12 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool TogglePtt { get; set; }
 
+    [ObservableProperty]
+    public partial bool DefaultToSpeaker { get; set; }
+
+    /// <summary>The phone/speaker choice only exists where the platform can switch the audio route (Android).</summary>
+    public bool AudioRouteSupported => AppServices.SpeakerphoneSetter != null;
+
     // ----- hardware PTT button (a phone key) -----
 
     public bool HardwareKeysSupported => AppServices.HardwareKeysSupported;
@@ -184,6 +190,7 @@ public partial class SettingsViewModel : ViewModelBase
         RegisterOnStartup = s.RegisterOnStartup;
         AutoReconnect = s.AutoReconnect;
         TogglePtt = s.TogglePtt;
+        DefaultToSpeaker = s.DefaultToSpeaker;
         HardwarePttKey = s.HardwarePttKey;
         TimeOutSecondsText = s.TimeOutTimerSeconds.ToString(CultureInfo.InvariantCulture);
         MicGain = s.MicGain;
@@ -369,6 +376,7 @@ public partial class SettingsViewModel : ViewModelBase
             MicProcessing = MicProcessing,
             TimeOutTimerSeconds = timeout,
             TogglePtt = TogglePtt,
+            DefaultToSpeaker = DefaultToSpeaker,
             HardwarePttKey = HardwarePttKey,
             IdReminderEnabled = IdReminderEnabled,
             IdReminderMinutes = idMinutes

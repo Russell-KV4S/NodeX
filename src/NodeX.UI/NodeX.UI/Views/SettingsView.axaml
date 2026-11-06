@@ -111,6 +111,9 @@
 
                     <CheckBox Content="Toggle PTT (tap to talk, tap again to stop)" IsChecked="{Binding TogglePtt}" />
 
+                    <CheckBox Content="Use the loudspeaker by default (instead of the phone earpiece)"
+                              IsChecked="{Binding DefaultToSpeaker}" IsVisible="{Binding AudioRouteSupported}" />
+
                     <!-- A phone button as PTT (Android) -->
                     <StackPanel IsVisible="{Binding HardwareKeysSupported}">
                         <TextBlock Classes="label" Text="Phone button for push-to-talk" />

@@ -292,6 +292,9 @@ public partial class MainViewModel : ViewModelBase
 
     // --- Telemetry & Recent Lists ---
     public ObservableCollection<string> ActivityLog { get; } = [];
+
+    /// <summary>The log as one block of text (newest first, as listed) so it can be selected and copied in part.</summary>
+    public string LogText => string.Join(Environment.NewLine, ActivityLog);
     public ObservableCollection<FavoriteItem> FavoriteNodes { get; } = [];
     public bool HasFavorites => FavoriteNodes.Count > 0;
 
@@ -500,7 +503,18 @@ public partial class MainViewModel : ViewModelBase
         runtime.ConfigService.Changed += cfg => OnUi(() => ApplyConfig(cfg));
         runtime.Transmit.Changed += () => OnUi(RefreshTransmit);
         // The OS audio route is reset when nothing is linked any more, so the button must say "phone" again.
-        runtime.LinkActiveChanged += (active, _) => { if (!active) OnUi(() => IsSpeakerOn = false); };
+        // When a link comes up, start on the loudspeaker if the user chose that as the default.
+        runtime.LinkActiveChanged += (active, _) => OnUi(() =>
+        {
+            if (!active) { IsSpeakerOn = false; return; }
+            if (!IsSpeakerOn && runtime.Config.Settings.DefaultToSpeaker && AppServices.SpeakerphoneSetter is { } setter && setter(true))
+            {
+                IsSpeakerOn = true;
+                LogActivity("Audio: loudspeaker (default).");
+            }
+        });
+
+        ActivityLog.CollectionChanged += (_, _) => OnPropertyChanged(nameof(LogText));
 
         ApplyConfig(runtime.Config);
         ApplyRegistration();

@@ -730,15 +730,12 @@
                             </Grid>
 
                             <ScrollViewer Grid.Row="1">
-                                <ItemsControl ItemsSource="{Binding ActivityLog}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding}" FontFamily="Consolas,Menlo,monospace"
-                                                       FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
-                                                       Margin="0,2" TextWrapping="Wrap" />
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                <!-- One selectable block (not a TextBlock per line) so a selection can span lines;
+                                     right-click / long-press offers Copy for the selected text. -->
+                                <SelectableTextBlock Text="{Binding LogText}" FontFamily="Consolas,Menlo,monospace"
+                                                     AutomationProperties.Name="Event log text"
+                                                     FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                                                     LineHeight="17" TextWrapping="Wrap" />
                             </ScrollViewer>
                         </Grid>
                     </Border>

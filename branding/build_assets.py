@@ -5,6 +5,7 @@ HERE=os.path.dirname(os.path.abspath(__file__))
 SRC=os.path.join(HERE,"source"); OUT=os.path.join(HERE,"exports")
 REPO=os.path.dirname(HERE)
 UI=os.path.join(REPO,"src","NodeX.UI")
+ICON_BG=(232,238,252,255)    # #E8EEFC pale-blue tile for app icons (navy-outline mark)
 BG=(13,17,23,255)              # #0D1117, same as the app's ConsoleBackgroundBrush
 os.makedirs(OUT,exist_ok=True)
 
@@ -33,7 +34,7 @@ def font(p,s): return ImageFont.truetype(p,s)
 # ---- masters / exports ----
 save(mark("dark",1024),f"{OUT}/nodex-mark-dark.png")
 save(mark("light",1024),f"{OUT}/nodex-mark-light.png")
-icon1024=on_canvas("dark",1024,0.72,BG); save(icon1024,f"{OUT}/nodex-app-icon-1024.png")        # iOS/store master (square, no alpha needed)
+icon1024=on_canvas("light",1024,0.80,ICON_BG); save(icon1024,f"{OUT}/nodex-app-icon-1024.png")        # iOS/store master (square, no alpha needed)
 save(icon1024.convert("RGB").resize((512,512),Image.LANCZOS),f"{OUT}/nodex-play-store-icon-512.png")
 
 def lockup(variant,h=400):
@@ -56,7 +57,7 @@ save(fg.convert("RGB"),f"{OUT}/nodex-play-feature-graphic-1024x500.png")
 # ---- Android ----
 A=f"{UI}/NodeX.UI.Android/Resources"
 for dens,px in (("mdpi",108),("hdpi",162),("xhdpi",216),("xxhdpi",324),("xxxhdpi",432)):
-    save(on_canvas("dark",px,0.62),f"{A}/mipmap-{dens}/ic_launcher_foreground.png")
+    save(on_canvas("light",px,0.62),f"{A}/mipmap-{dens}/ic_launcher_foreground.png")
     save(on_canvas("mono",px,0.62),f"{A}/mipmap-{dens}/ic_launcher_monochrome.png")
 for dens,px in (("mdpi",24),("hdpi",36),("xhdpi",48),("xxhdpi",72),("xxxhdpi",96)):
     save(on_canvas("mono",px,1.0),f"{A}/drawable-{dens}/ic_stat_nodex.png")
@@ -65,7 +66,7 @@ save(on_canvas("dark",432,0.62),f"{A}/drawable-nodpi/splash_logo.png")
 # ---- Avalonia (shared UI, desktop window icon, browser) ----
 save(mark("dark",256),f"{UI}/NodeX.UI/Assets/nodex-mark.png")
 save(icon1024.resize((512,512),Image.LANCZOS),f"{UI}/NodeX.UI/Assets/Icon.png")
-ico=rounded(on_canvas("dark",1024,0.80,BG),0.22)
+ico=rounded(on_canvas("light",1024,0.80,ICON_BG),0.22)
 ico.save(f"{UI}/NodeX.UI/Assets/nodex.ico",sizes=[(s,s) for s in (16,24,32,48,64,128,256)])
 ico.save(f"{UI}/NodeX.UI.Browser/wwwroot/favicon.ico",sizes=[(s,s) for s in (16,32,48)])
 save(ico.resize((192,192),Image.LANCZOS),f"{UI}/NodeX.UI.Browser/wwwroot/icon-192.png")
