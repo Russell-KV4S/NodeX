@@ -367,19 +367,21 @@
                                              Foreground="{StaticResource RxGreenBrush}" Background="#1F2937" />
                                 <TextBlock Grid.Column="2" Text="{Binding RxAudioLevel, StringFormat='{}{0:P0}'}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
                             </Grid>
-                            <!-- Phone earpiece / loudspeaker (Android only) -->
-                            <Button IsVisible="{Binding CanSwitchSpeaker}" Command="{Binding ToggleSpeakerCommand}"
-                                    AutomationProperties.Name="Switch between phone and speaker audio"
-                                    Content="{Binding SpeakerButtonText}"
-                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                    Background="#1F2937" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1"
-                                    CornerRadius="8" Padding="12,6" FontSize="13" FontWeight="SemiBold" />
                         </StackPanel>
                     </Border>
 
                     <!-- PUSH-TO-TALK: sits in the left column on wide screens, docks to the bottom on phones -->
                     <Border x:Name="PttCard" Classes="card" CornerRadius="16" Padding="24">
                         <StackPanel x:Name="PttInner" Spacing="18" HorizontalAlignment="Center">
+
+                            <!-- Phone earpiece / loudspeaker (Android only). Lives with the PTT key so it is in
+                                 thumb reach on the docked bar instead of down in the scrolling page. -->
+                            <Button x:Name="SpeakerButton" IsVisible="{Binding CanSwitchSpeaker}" Command="{Binding ToggleSpeakerCommand}"
+                                    AutomationProperties.Name="Switch between phone and speaker audio"
+                                    Content="{Binding SpeakerButtonText}"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                    Background="#1F2937" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1"
+                                    CornerRadius="8" Padding="12,8" FontSize="13" FontWeight="SemiBold" />
 
                             <Button x:Name="PttButton" AutomationProperties.Name="Push to talk"
                                     Width="260" Height="140" Padding="0"
