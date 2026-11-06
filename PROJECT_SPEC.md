@@ -340,7 +340,7 @@ Contract and parser exist; no platform implements `IBluetoothPttService`.
 7. **Device testing** on a physical Android phone and iPhone (background audio for ≥1 h screen-off, Wi-Fi↔cellular handoff, Bluetooth headset).
 8. **Housekeeping:** ~~`git init`~~ (done, private GitHub repo); `global.json`; delete `NodeX.UI.Browser`; CI (Windows build + test; macOS runner for iOS signing); `.editorconfig`; README and LICENSE.
 9. **Nice to have:** parse ASL status/linked-node text frames into a "linked nodes" panel; bind configured `IaxPort` to the socket; IPv6; additional codecs; inbound mode over VPN.
-10. **Amateur-radio compliance decisions** (§17): who sends the station ID, and what the app shows/enforces about licensing.
+10. **Optional station-ID reminder** (§17.1, decided): `IdReminderEnabled`/`IdReminderMinutes` settings, Core timer + UI prompt + mobile notification, tests. Remaining compliance decisions (§17.2–3): licensing wording and whether `Callsign` is required before keying.
 11. **Desktop echo handling** (§4.4): headset advisory in the UI or software echo cancellation.
 12. **Linux/macOS secret storage:** use the OS keyring (libsecret / macOS Keychain) instead of a key file beside the ciphertext (§4.7).
 
@@ -363,7 +363,7 @@ The dated results of testing against real nodes and hardware (registration, link
 - **Android `NetworkChange`/`AndroidNetworkMonitor`** behaviour on real devices (API 30+).
 - **Transmit voice clean-up** (`MicProcessor`, §4.4) A/B by ear on air — pending owner.
 - **DTMF end-only frames:** works for function codes; Asterisk logs "emulating" because duration is 0. Optional polish: send DTMF_BEGIN + END ≥ 80 ms.
-- Amateur-radio compliance questions in §17 are open decisions, not verified behaviour.
+- The optional ID reminder (§17.1) is decided but not implemented; §17.2–3 are open decisions.
 
 ---
 
@@ -389,11 +389,11 @@ The dated results of testing against real nodes and hardware (registration, link
 
 ---
 
-## 17. Amateur-radio compliance — OPEN DECISIONS (not implemented, not legal advice)
+## 17. Amateur-radio compliance (decisions; not legal advice)
 
-NodeX links into ASL nodes that key real RF transmitters (the owner's test node 523800 is permanently linked to RF node 47923). Transmitting through such a link is amateur-radio transmission by the control operator of the *remote RF node* and by the person speaking. The spec previously said nothing about this; the following are **undecided** and need an owner decision before NodeX is distributed to anyone else:
+NodeX links into ASL nodes that key real RF transmitters (the owner's test node 523800 is permanently linked to RF node 47923). Transmitting through such a link is amateur-radio transmission by the control operator of the *remote RF node* and by the person speaking. The spec previously said nothing about this; item 1 is decided; items 2–4 still need an owner decision before NodeX is distributed to anyone else:
 
-1. **Station identification.** `Callsign` is stored but nothing transmits an ID. Decide whether NodeX (a) relies on the remote node's own ID, (b) reminds the user to identify (e.g. a timer + UI prompt), or (c) sends an automatic ID. Check the rules that apply in the operator's country.
+1. **Station identification — DECIDED 2026-11-05 (owner), not yet implemented.** NodeX transmits **nothing but the user's voice**: no automatic/synthesised ID, no beacons, no tones. Instead it offers an **optional ID reminder** that the user can switch on or off in Settings: while linked and after the user has transmitted, a UI prompt (and a mobile notification when backgrounded) reminds them to identify by voice after the configured interval. Planned design: setting `IdReminderEnabled` (bool; default **off** — opt-in, easy to flip) and `IdReminderMinutes` (default 10, validated range e.g. 1–60); the timer runs only while a link is active and restarts when the user identifies (a "I've identified" tap) or a transmission ends after a long gap; it never keys the radio or injects audio. The user remains responsible for meeting the identification rules that apply to them.
 2. **Licensing.** Decide whether the app states that a valid amateur licence is required to transmit, and whether `Callsign` is required before keying is enabled (currently the validator makes it optional).
 3. **Third-party / link policy.** Some node owners restrict who may link; NodeX should surface "rejected/busy" clearly (it does) and never retry in a way that looks like abuse (early-hangup retries are capped at 10).
 4. **Testing etiquette.** Live tests that key a linked RF node require the owner present and aware (see the safety note in `docs/LIVE_VALIDATION.md`).
