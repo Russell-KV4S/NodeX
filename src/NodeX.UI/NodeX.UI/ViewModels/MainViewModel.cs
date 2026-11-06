@@ -357,6 +357,34 @@ public partial class MainViewModel : ViewModelBase
             LogActivity($"Saved favorite {node}{(FavoriteLabelInput.Trim().Length > 0 ? $" as \"{FavoriteLabelInput.Trim()}\"" : "")}.");
     }
 
+    // --- Reordering favourites by dragging (the view moves items live, then saves once on drop) ---
+
+    /// <summary>Moves a favourite in the on-screen list only; <see cref="SaveFavoriteOrderAsync"/> persists it.</summary>
+    public void MoveFavorite(int from, int to)
+    {
+        if (from == to || from < 0 || to < 0 || from >= FavoriteNodes.Count || to >= FavoriteNodes.Count) return;
+        FavoriteNodes.Move(from, to);
+    }
+
+    /// <summary>Saves the order the favourites are currently shown in (names are unchanged).</summary>
+    public async Task SaveFavoriteOrderAsync()
+    {
+        var cfg = _runtime.Config;
+        if (!cfg.IsComplete || cfg.Password == null) return;
+
+        var order = FavoriteNodes.Select(f => f.Node).ToList();
+        if (order.SequenceEqual(cfg.Settings.FavoriteNodes)) return;
+
+        try
+        {
+            await _runtime.ConfigService.SaveAsync(cfg.Settings with { FavoriteNodes = order }, cfg.Password);
+        }
+        catch (Exception ex)
+        {
+            LogActivity($"[ERROR] Could not save favorite order: {ex.Message}");
+        }
+    }
+
     // --- Audio route (phone earpiece / speaker), where the platform can switch it ---
 
     public bool CanSwitchSpeaker => AppServices.SpeakerphoneSetter != null;

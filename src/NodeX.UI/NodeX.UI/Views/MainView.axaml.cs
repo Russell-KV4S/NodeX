@@ -41,6 +41,11 @@ public partial class MainView : UserControl
             pttButton.AddHandler(InputElement.PointerCaptureLostEvent, OnPttPointerReleased, RoutingStrategies.Tunnel);
         }
 
+        FavoritesList.AddHandler(InputElement.PointerPressedEvent, OnFavPointerPressed, RoutingStrategies.Tunnel);
+        FavoritesList.AddHandler(InputElement.PointerMovedEvent, OnFavPointerMoved, RoutingStrategies.Tunnel);
+        FavoritesList.AddHandler(InputElement.PointerReleasedEvent, OnFavPointerReleased, RoutingStrategies.Tunnel);
+        FavoritesList.AddHandler(InputElement.PointerCaptureLostEvent, OnFavCaptureLost, RoutingStrategies.Tunnel);
+
         SizeChanged += (_, e) =>
         {
             var isShort = e.NewSize.Height < ShortHeightBreakpoint;
@@ -49,6 +54,91 @@ public partial class MainView : UserControl
                 : HeaderMode.Wide);
             ApplyLayout(e.NewSize.Width < NarrowBreakpoint, isShort);
         };
+    }
+
+    // --- Drag favourites to reorder. A plain click still connects (the Button gets it); once the pointer moves
+    //     past a small threshold the drag takes over the pointer, so no click fires on release. ---
+
+    private const double FavDragThreshold = 8;
+    private int _favDragIndex = -1;
+    private Point _favDragStart;
+    private bool _favDragging;
+
+    /// <summary>Index of the favourite chip under <paramref name="p"/> (relative to the list), or -1.</summary>
+    private int FavIndexAt(Point p)
+    {
+        for (int i = 0; i < FavoritesList.ItemCount; i++)
+        {
+            var c = FavoritesList.ContainerFromIndex(i);
+            if (c == null) continue;
+            var origin = c.TranslatePoint(new Point(0, 0), FavoritesList);
+            if (origin == null) continue;
+            if (new Rect(origin.Value, c.Bounds.Size).Contains(p)) return i;
+        }
+        return -1;
+    }
+
+    private void SetFavDragVisual(int index)
+    {
+        for (int i = 0; i < FavoritesList.ItemCount; i++)
+            if (FavoritesList.ContainerFromIndex(i) is { } c) c.Opacity = i == index ? 0.45 : 1;
+    }
+
+    private void OnFavPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(FavoritesList).Properties.IsLeftButtonPressed) return;
+        _favDragStart = e.GetPosition(FavoritesList);
+        _favDragIndex = FavIndexAt(_favDragStart);
+        _favDragging = false;
+    }
+
+    private void OnFavPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_favDragIndex < 0 || DataContext is not MainViewModel vm) return;
+        if (!e.GetCurrentPoint(FavoritesList).Properties.IsLeftButtonPressed) { EndFavDrag(save: false); return; }
+
+        var pos = e.GetPosition(FavoritesList);
+        if (!_favDragging)
+        {
+            if (Math.Abs(pos.X - _favDragStart.X) < FavDragThreshold && Math.Abs(pos.Y - _favDragStart.Y) < FavDragThreshold)
+                return;
+            _favDragging = true;
+            e.Pointer.Capture(FavoritesList);   // takes the pointer from the chip's Button: no click on release
+            SetFavDragVisual(_favDragIndex);
+        }
+
+        int over = FavIndexAt(pos);
+        if (over >= 0 && over != _favDragIndex)
+        {
+            vm.MoveFavorite(_favDragIndex, over);
+            _favDragIndex = over;
+            // The containers are re-laid out after a move: dim the dragged chip once they are.
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => SetFavDragVisual(_favDragIndex),
+                Avalonia.Threading.DispatcherPriority.Loaded);
+        }
+        e.Handled = true;
+    }
+
+    private void OnFavPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_favDragging) { e.Pointer.Capture(null); e.Handled = true; }
+        EndFavDrag(save: true);
+    }
+
+    private void OnFavCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        // Our own Capture() call makes the Button lose the pointer; only a loss while dragging elsewhere ends it.
+        if (_favDragging && e.Source == FavoritesList) EndFavDrag(save: true);
+    }
+
+    private void EndFavDrag(bool save)
+    {
+        bool wasDragging = _favDragging;
+        _favDragIndex = -1;
+        _favDragging = false;
+        SetFavDragVisual(-1);
+        if (wasDragging && save && DataContext is MainViewModel vm)
+            _ = vm.SaveFavoriteOrderAsync();
     }
 
     /// <summary>Copies the whole event log (oldest line first) to the system clipboard.</summary>

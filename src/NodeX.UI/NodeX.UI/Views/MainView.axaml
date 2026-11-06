@@ -649,8 +649,8 @@
                             </Button>
 
                             <StackPanel Spacing="6" IsVisible="{Binding HasFavorites}">
-                                <TextBlock Text="Favorites (tap to connect)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                <ItemsControl ItemsSource="{Binding FavoriteNodes}">
+                                <TextBlock Text="Favorites (tap to connect, drag to reorder)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                <ItemsControl x:Name="FavoritesList" ItemsSource="{Binding FavoriteNodes}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
                                             <WrapPanel Orientation="Horizontal" />
