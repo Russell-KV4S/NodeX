@@ -208,6 +208,22 @@
                                 <TextBlock Text="{Binding ConnectedNodeDetails}"
                                            FontSize="13" TextWrapping="Wrap"
                                            Foreground="{StaticResource TextSecondaryBrush}" />
+
+                                <!-- Optional station-ID reminder (text only; nothing is transmitted) -->
+                                <Border IsVisible="{Binding IsIdReminderDue}" Margin="0,12,0,0" Padding="12,8"
+                                        CornerRadius="8" BorderThickness="1"
+                                        BorderBrush="{StaticResource AmberAccentBrush}" Background="#2A1F0A">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                        <TextBlock Text="Time to identify (say your callsign)." FontSize="13" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource AmberAccentBrush}" />
+                                        <Button Grid.Column="1" Content="I've identified" Command="{Binding AcknowledgeIdCommand}"
+                                                Background="{StaticResource CardBackgroundBrush}"
+                                                BorderBrush="{StaticResource AmberAccentBrush}" BorderThickness="1"
+                                                Foreground="{StaticResource TextPrimaryBrush}"
+                                                CornerRadius="8" Padding="10,5" FontSize="12" FontWeight="SemiBold" />
+                                    </Grid>
+                                </Border>
                             </StackPanel>
                         </Grid>
                     </Border>

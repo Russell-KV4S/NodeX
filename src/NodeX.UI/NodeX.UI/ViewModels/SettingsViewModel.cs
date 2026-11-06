@@ -70,6 +70,14 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool MicProcessing { get; set; } = true;
 
+    // ----- station ID reminder (never transmits anything) -----
+
+    [ObservableProperty]
+    public partial bool IdReminderEnabled { get; set; }
+
+    [ObservableProperty]
+    public partial string IdReminderMinutesText { get; set; } = "10";
+
     // ----- advanced -----
 
     [ObservableProperty]
@@ -119,6 +127,8 @@ public partial class SettingsViewModel : ViewModelBase
         TimeOutSecondsText = s.TimeOutTimerSeconds.ToString(CultureInfo.InvariantCulture);
         MicGain = s.MicGain;
         MicProcessing = s.MicProcessing;
+        IdReminderEnabled = s.IdReminderEnabled;
+        IdReminderMinutesText = s.IdReminderMinutes.ToString(CultureInfo.InvariantCulture);
         RegistrationUrl = s.RegistrationUrl;
         IaxPortText = s.IaxPort.ToString(CultureInfo.InvariantCulture);
 
@@ -215,6 +225,10 @@ public partial class SettingsViewModel : ViewModelBase
         if (!int.TryParse(TimeOutSecondsText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out timeout))
             issues.Add(new(NodeSettingsValidator.Fields.TimeOutTimerSeconds, "Time-out timer must be a whole number of seconds."));
 
+        int idMinutes = 10;
+        if (!int.TryParse(IdReminderMinutesText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out idMinutes))
+            issues.Add(new(NodeSettingsValidator.Fields.IdReminderMinutes, "ID reminder interval must be a whole number of minutes."));
+
         int port = Iax2Protocol.DefaultPort;
         if (!int.TryParse(IaxPortText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out port))
             issues.Add(new(NodeSettingsValidator.Fields.IaxPort, "IAX port must be a whole number."));
@@ -234,7 +248,9 @@ public partial class SettingsViewModel : ViewModelBase
             MicGain = (float)MicGain,
             MicProcessing = MicProcessing,
             TimeOutTimerSeconds = timeout,
-            TogglePtt = TogglePtt
+            TogglePtt = TogglePtt,
+            IdReminderEnabled = IdReminderEnabled,
+            IdReminderMinutes = idMinutes
         };
 
         // Skip range checks for values that failed to parse; they already have a clearer message.

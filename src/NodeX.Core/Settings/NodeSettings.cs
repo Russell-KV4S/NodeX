@@ -50,4 +50,13 @@ public sealed record NodeSettings
 
     /// <summary>Latching (toggle) PTT instead of press-and-hold.</summary>
     public bool TogglePtt { get; init; }
+
+    /// <summary>
+    /// Show a reminder to identify (by voice) while linked. Off by default. Nothing is ever transmitted
+    /// automatically; the reminder only prompts the user.
+    /// </summary>
+    public bool IdReminderEnabled { get; init; }
+
+    /// <summary>Minutes after the user starts transmitting before the ID reminder appears.</summary>
+    public int IdReminderMinutes { get; init; } = 10;
 }

@@ -128,12 +128,39 @@ public partial class MainViewModel : ViewModelBase
     private static string FormatTot(TimeSpan elapsed, TimeSpan limit) =>
         $"{(int)elapsed.TotalMinutes:D2}:{elapsed.Seconds:D2} / {(int)limit.TotalMinutes:D2}:{limit.Seconds:D2}";
 
+    // --- Optional station-ID reminder (shows a prompt only; transmits nothing) ---
+    private readonly IdReminder _idReminder = new();
+
+    [ObservableProperty]
+    public partial bool IsIdReminderDue { get; set; }
+
+    /// <summary>Raised on the UI thread when the reminder becomes due (heads may post a notification).</summary>
+    public event Action? IdReminderDue;
+
+    [RelayCommand]
+    public void AcknowledgeId()
+    {
+        _idReminder.Acknowledge();
+        LogActivity("Station ID acknowledged.");
+    }
+
+    private void OnIdReminderDueChanged(bool due) => OnUi(() =>
+    {
+        IsIdReminderDue = due;
+        if (due)
+        {
+            LogActivity("[ID] Time to identify (say your callsign).");
+            IdReminderDue?.Invoke();
+        }
+    });
+
     /// <summary>Uses the application-wide runtime (see <see cref="AppServices"/>).</summary>
     public MainViewModel() : this(AppServices.Runtime) { }
 
     public MainViewModel(NodeRuntime runtime)
     {
         _runtime = runtime;
+        _idReminder.DueChanged += OnIdReminderDueChanged;
 
         Settings = new SettingsViewModel(runtime.ConfigService);
         Settings.Saved += OnSettingsSaved;
@@ -351,6 +378,7 @@ public partial class MainViewModel : ViewModelBase
     private void ApplyConfig(NodeConfig cfg)
     {
         var s = cfg.Settings;
+        _idReminder.Configure(s.IdReminderEnabled, TimeSpan.FromMinutes(s.IdReminderMinutes));
         LocalNodeNumber = s.NodeNumber.Length > 0 ? s.NodeNumber : NotSet;
         LocalCallsign = s.Callsign.Length > 0 ? s.Callsign : "NO CALLSIGN";
 
@@ -403,6 +431,7 @@ public partial class MainViewModel : ViewModelBase
 
         if (link == null)
         {
+            _idReminder.Reset();
             SessionState = Iax2SessionState.Disconnected;
             UpdateConnectionBadge();
             LatencyText = "-- ms";
@@ -498,6 +527,7 @@ public partial class MainViewModel : ViewModelBase
         IsTransmitting = active;
         if (active)
         {
+            _idReminder.TransmissionStarted();
             LogActivity($">>> Local PTT Keyed via {source}");
         }
         else

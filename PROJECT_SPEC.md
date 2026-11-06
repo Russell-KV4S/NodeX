@@ -1,7 +1,7 @@
 # NodeX — Project Specification & Engineering Guide
 ### Cross-platform, Asterisk-free AllStarLink node (.NET 10 / Avalonia UI)
 
-> **Last updated:** 2026-11-05 · **Build:** `dotnet build NodeX.sln` → 0 errors, 0 warnings · **Tests:** 327 passing (xUnit)
+> **Last updated:** 2026-11-05 · **Build:** `dotnet build NodeX.sln` → 0 errors, 0 warnings · **Tests:** 343 passing (xUnit)
 >
 > This document is written for **humans and AI coding agents** who pick the project up cold. Read §0 first.
 
@@ -45,6 +45,7 @@ Design stance: **outbound-linking only.** Carrier-grade NAT blocks unsolicited i
 | Bluetooth PTT (BLE GATT, SCO audio, media key, Learn wizard) | **Not implemented** (interface + packet parser only) | Parser tests |
 | Responsive/phone layout | Implemented (single-column phone layout with docked PTT bar below 720 px; two-column desktop above). **Verified only by resizing the Windows app (340–1100 px), not on a real phone** | Screenshots at 340 / 410 / 780 / 1100 px |
 | Live-node interoperability | **Verified against owner's cloud node 523800 (2026-11-05):** registration, call-token handshake, `radio` login, keep-alive, keying, DTMF `*70`, mic audio TX, re-dial (same IP). **Not verified:** different-IP handoff, TX audio quality by ear, other app_rpt versions | `tools/NodeX.LiveCheck`; log in `docs/LIVE_VALIDATION.md` |
+| Optional station-ID reminder (§17.1) | Implemented on all heads' shared UI (prompt in the hero card + activity-log line); **mobile background notification not done**; screen not visually checked | Unit tests (`IdReminderTests`), solution builds |
 | Transmit voice clean-up (`MicProcessor`) | Implemented, unit-tested; **not yet A/B-confirmed by ear on air** | Tests |
 
 ---
@@ -85,7 +86,8 @@ NodeX/
 │   │   ├── Settings/
 │   │   │   ├── NodeSettings.cs  NodeSettingsValidator.cs  Stores.cs  NodeConfigService.cs
 │   │   ├── Bluetooth/IBluetoothPttService.cs  BluetoothPttPacketParser.cs   # contract + parser only
-│   │   └── NodePttController.cs         # PTT state machine
+│   │   ├── NodePttController.cs         # PTT state machine
+│   │   └── IdReminder.cs                # optional "time to identify" reminder (UI prompt only; transmits nothing)
 │   └── NodeX.UI/                    # own Directory.Packages.props (central package versions)
 │       ├── NodeX.UI/                    # shared Avalonia views + view models
 │       │   ├── AppServices.cs               # composition root; heads call Initialize(...)
@@ -188,7 +190,7 @@ Back-off (`ReconnectPolicy`): first retry after `InitialDelay` 2 s (immediately 
 **Network handoff:** `INetworkMonitor` (default `SystemNetworkMonitor`: `NetworkChange` + `NetworkInterface`) reports changes; events are **debounced 1.5 s** and compared by *signature* (set of up, non-loopback, non-tunnel, non-link-local IPv4 addresses) so DHCP renewals are ignored. On a real change: (1) **re-register immediately** (so the registry/remote nodes learn the new address; waits up to 5 s), (2) if a link was established, end it and **re-dial immediately** from the new address (an IAX2 call is bound to the source address and cannot migrate), (3) if the network vanished, wait for it to return. Where the platform restricts network enumeration (recent Android) `SystemNetworkMonitor` degrades to "assume available, signature unknown" and the keep-alive watchdog still catches the loss (~45 s). Android uses `AndroidNetworkMonitor` (ConnectivityManager callback) instead.
 
 ### 4.7 Settings, secrets, registration, resolution
-- **`NodeSettings`** (JSON, `%LOCALAPPDATA%\NodeX\settings.json`, atomic write, corrupt file kept as `.corrupt`): `NodeNumber`, `Callsign`, `DefaultTargetNode`, `FavoriteNodes`, `RegistrationUrl`, `IaxPort`, `RegisterOnStartup`, `AutoReconnect`, `InputDeviceId`/`OutputDeviceId` (reserved, not yet used by any backend), `MicGain`, `MicProcessing` (default true), `TimeOutTimerSeconds`, `TogglePtt`. **The password is never in this file.**
+- **`NodeSettings`** (JSON, `%LOCALAPPDATA%\NodeX\settings.json`, atomic write, corrupt file kept as `.corrupt`): `NodeNumber`, `Callsign`, `DefaultTargetNode`, `FavoriteNodes`, `RegistrationUrl`, `IaxPort`, `RegisterOnStartup`, `AutoReconnect`, `InputDeviceId`/`OutputDeviceId` (reserved, not yet used by any backend), `MicGain`, `MicProcessing` (default true), `TimeOutTimerSeconds`, `TogglePtt`, `IdReminderEnabled` (default **false**), `IdReminderMinutes` (default 10, valid 1–60). **The password is never in this file.**
 - **`NodeSettingsValidator`:** node number 3–7 digits; password required, ≤79 chars (ASL buffer is 80); callsign `[A-Za-z0-9]{1,6}(/[A-Za-z0-9]{1,6})?`; https registration URL; port 1–65535; mic gain 0.1–8; TOT 10–600 s; favourites must be node numbers. Normalisation trims, upper-cases the callsign, de-duplicates favourites.
 - **`NodeConfigService`:** validates, then writes the **password to `ISecretStore` first**, then settings; raises `Changed`. Invalid input writes nothing.
 - **Secret storage per platform:** Windows **DPAPI** (`CurrentUser`); Linux/macOS AES-GCM with a random key in a 0600 file (weaker than a keyring — documented); Android **Keystore** AES-256-GCM key + ciphertext in private SharedPreferences; iOS **Keychain** with `AfterFirstUnlockThisDeviceOnly` (readable in the background with the screen locked, not migrated to backups/other devices). An unreadable secret is treated as "not stored" (user re-enters it).
@@ -292,7 +294,7 @@ Contract and parser exist; no platform implements `IBluetoothPttService`.
 
 ## 11. Testing
 
-`tests/NodeX.Core.Tests` (xUnit, **327 tests**, ~7 s). It references Core **and** `NodeX.UI` (view-model tests). `MainViewModel` itself is untested (needs an Avalonia dispatcher).
+`tests/NodeX.Core.Tests` (xUnit, **343 tests**, ~7 s). It references Core **and** `NodeX.UI` (view-model tests). `MainViewModel` itself is untested (needs an Avalonia dispatcher).
 
 | File | Covers |
 |---|---|
@@ -340,7 +342,7 @@ Contract and parser exist; no platform implements `IBluetoothPttService`.
 7. **Device testing** on a physical Android phone and iPhone (background audio for ≥1 h screen-off, Wi-Fi↔cellular handoff, Bluetooth headset).
 8. **Housekeeping:** ~~`git init`~~ (done, private GitHub repo); `global.json`; delete `NodeX.UI.Browser`; CI (Windows build + test; macOS runner for iOS signing); `.editorconfig`; README and LICENSE.
 9. **Nice to have:** parse ASL status/linked-node text frames into a "linked nodes" panel; bind configured `IaxPort` to the socket; IPv6; additional codecs; inbound mode over VPN.
-10. **Optional station-ID reminder** (§17.1, decided): `IdReminderEnabled`/`IdReminderMinutes` settings, Core timer + UI prompt + mobile notification, tests. Remaining compliance decisions (§17.2–3): licensing wording and whether `Callsign` is required before keying.
+10. **Optional station-ID reminder** (§17.1): ~~settings, Core timer, UI prompt, tests~~ done; **remaining: Android/iOS background notification** (subscribe to `MainViewModel.IdReminderDue`) and a visual check of the banner. Remaining compliance decisions: compliance decisions (§17.2–3): licensing wording and whether `Callsign` is required before keying.
 11. **Desktop echo handling** (§4.4): headset advisory in the UI or software echo cancellation.
 12. **Linux/macOS secret storage:** use the OS keyring (libsecret / macOS Keychain) instead of a key file beside the ciphertext (§4.7).
 
@@ -363,7 +365,7 @@ The dated results of testing against real nodes and hardware (registration, link
 - **Android `NetworkChange`/`AndroidNetworkMonitor`** behaviour on real devices (API 30+).
 - **Transmit voice clean-up** (`MicProcessor`, §4.4) A/B by ear on air — pending owner.
 - **DTMF end-only frames:** works for function codes; Asterisk logs "emulating" because duration is 0. Optional polish: send DTMF_BEGIN + END ≥ 80 ms.
-- The optional ID reminder (§17.1) is decided but not implemented; §17.2–3 are open decisions.
+- The optional ID reminder (§17.1) is implemented and unit-tested but its banner has not been seen on screen and there is no mobile background notification; §17.2–3 are open decisions.
 
 ---
 
@@ -393,7 +395,7 @@ The dated results of testing against real nodes and hardware (registration, link
 
 NodeX links into ASL nodes that key real RF transmitters (the owner's test node 523800 is permanently linked to RF node 47923). Transmitting through such a link is amateur-radio transmission by the control operator of the *remote RF node* and by the person speaking. The spec previously said nothing about this; item 1 is decided; items 2–4 still need an owner decision before NodeX is distributed to anyone else:
 
-1. **Station identification — DECIDED 2026-11-05 (owner), not yet implemented.** NodeX transmits **nothing but the user's voice**: no automatic/synthesised ID, no beacons, no tones. Instead it offers an **optional ID reminder** that the user can switch on or off in Settings: while linked and after the user has transmitted, a UI prompt (and a mobile notification when backgrounded) reminds them to identify by voice after the configured interval. Planned design: setting `IdReminderEnabled` (bool; default **off** — opt-in, easy to flip) and `IdReminderMinutes` (default 10, validated range e.g. 1–60); the timer runs only while a link is active and restarts when the user identifies (a "I've identified" tap) or a transmission ends after a long gap; it never keys the radio or injects audio. The user remains responsible for meeting the identification rules that apply to them.
+1. **Station identification — DECIDED 2026-11-05 (owner); implemented 2026-11-05 except the mobile background notification.** As built: `Core/IdReminder` (injectable `TimeProvider`; clock starts on the first key-up when none is running, becomes *due* after the interval, stays due until acknowledged or the link ends; later key-ups do not restart it; switching the feature off clears it). `MainViewModel` feeds it from `PttStateChanged`, resets it when the link goes away, and shows an amber "Time to identify (say your callsign)" banner with an **I've identified** button in the hero card, plus an `[ID]` activity-log line; it also raises `IdReminderDue` so a platform head can post a notification (not wired yet). Settings screen: "Station ID reminder" card. Original decision text follows. NodeX transmits **nothing but the user's voice**: no automatic/synthesised ID, no beacons, no tones. Instead it offers an **optional ID reminder** that the user can switch on or off in Settings: while linked and after the user has transmitted, a UI prompt (and a mobile notification when backgrounded) reminds them to identify by voice after the configured interval. Planned design: setting `IdReminderEnabled` (bool; default **off** — opt-in, easy to flip) and `IdReminderMinutes` (default 10, validated range e.g. 1–60); the timer runs only while a link is active and restarts when the user identifies (a "I've identified" tap) or a transmission ends after a long gap; it never keys the radio or injects audio. The user remains responsible for meeting the identification rules that apply to them.
 2. **Licensing.** Decide whether the app states that a valid amateur licence is required to transmit, and whether `Callsign` is required before keying is enabled (currently the validator makes it optional).
 3. **Third-party / link policy.** Some node owners restrict who may link; NodeX should surface "rejected/busy" clearly (it does) and never retry in a way that looks like abuse (early-hangup retries are capped at 10).
 4. **Testing etiquette.** Live tests that key a linked RF node require the owner present and aware (see the safety note in `docs/LIVE_VALIDATION.md`).

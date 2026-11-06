@@ -19,6 +19,7 @@ public static partial class NodeSettingsValidator
         public const string IaxPort = nameof(NodeSettings.IaxPort);
         public const string MicGain = nameof(NodeSettings.MicGain);
         public const string TimeOutTimerSeconds = nameof(NodeSettings.TimeOutTimerSeconds);
+        public const string IdReminderMinutes = nameof(NodeSettings.IdReminderMinutes);
     }
 
     /// <summary>ASL3's registration module stores the secret in an 80-byte buffer.</summary>
@@ -82,6 +83,9 @@ public static partial class NodeSettingsValidator
 
         if (s.TimeOutTimerSeconds is < 10 or > 600)
             issues.Add(new(Fields.TimeOutTimerSeconds, "Time-out timer must be between 10 and 600 seconds."));
+
+        if (s.IdReminderMinutes is < 1 or > 60)
+            issues.Add(new(Fields.IdReminderMinutes, "ID reminder interval must be between 1 and 60 minutes."));
 
         return issues;
     }

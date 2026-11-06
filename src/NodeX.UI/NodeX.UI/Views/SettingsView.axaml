@@ -125,6 +125,21 @@
                 </StackPanel>
             </Border>
 
+            <!-- STATION ID REMINDER -->
+            <Border Classes="card">
+                <StackPanel Spacing="14">
+                    <TextBlock Classes="sectionTitle" Text="Station ID reminder" />
+
+                    <CheckBox Content="Remind me to identify while I'm transmitting" IsChecked="{Binding IdReminderEnabled}" />
+
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="Remind me after (minutes)" />
+                        <TextBox Text="{Binding IdReminderMinutesText}" MaxLength="2" />
+                        <TextBlock Classes="hint" Text="Counted from when you start transmitting. NodeX only shows a reminder; it never sends an ID or any audio except your voice. You are responsible for following the identification rules that apply to you." />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- ADVANCED -->
             <Expander Header="Advanced" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                 <StackPanel Spacing="14" Margin="0,8,0,0">
