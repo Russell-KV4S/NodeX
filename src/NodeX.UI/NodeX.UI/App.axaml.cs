@@ -22,7 +22,8 @@ public partial class App : Application
         // One view model for the whole app session; platform heads have already supplied their
         // secure storage and audio backend through AppServices.Initialize.
         var viewModel = new MainViewModel();
-        AppServices.BackHandler = viewModel.CloseTopOverlay;
+        // Back: close an open panel first, then step back through the phone tabs; false = nothing left to go back to.
+        AppServices.BackHandler = () => viewModel.CloseTopOverlay() || (AppServices.TabBackHandler?.Invoke() ?? false);
         viewModel.ExitRequested += () =>
         {
             if (AppServices.ExitHandler is { } exit) exit();

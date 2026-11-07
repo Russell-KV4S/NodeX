@@ -55,6 +55,9 @@ public static class AppServices
     /// </summary>
     public static Func<bool>? BackHandler { get; set; }
 
+    /// <summary>Set by the main view: Back on a phone tab other than Radio returns to the previous tab (true if it did).</summary>
+    public static Func<bool>? TabBackHandler { get; set; }
+
     /// <summary>
     /// Set by a head that can switch the audio output (Android): true = loudspeaker, false = phone earpiece (or a
     /// connected headset). Returns whether the switch worked. Null where the platform has one output.

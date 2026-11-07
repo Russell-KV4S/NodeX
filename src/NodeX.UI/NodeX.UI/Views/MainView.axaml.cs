@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -36,6 +37,7 @@ public partial class MainView : UserControl
     public MainView()
     {
         InitializeComponent();
+        AppServices.TabBackHandler = GoBackTab;
 
         var pttButton = this.FindControl<Button>("PttButton");
         if (pttButton != null)
@@ -193,9 +195,52 @@ public partial class MainView : UserControl
 
     private void OnGoToNodesClick(object? sender, RoutedEventArgs e) => SelectTab(Tab.Nodes);
 
-    private void SelectTab(Tab tab)
+    /// <summary>Tabs visited before the current one (most recent last), so Back returns to where you were.</summary>
+    private readonly List<Tab> _tabHistory = [];
+
+    /// <summary>
+    /// Back on a phone tab other than Radio: return to the previous tab, or Radio when there is no history.
+    /// False on the Radio tab (the platform then sends the app to the background) and on wide layouts.
+    /// </summary>
+    public bool GoBackTab()
     {
+        if (_narrow != true || _tab == Tab.Radio) return false;
+
+        var target = Tab.Radio;
+        if (_tabHistory.Count > 0)
+        {
+            target = _tabHistory[^1];
+            _tabHistory.RemoveAt(_tabHistory.Count - 1);
+        }
+        SelectTab(target, record: false);
+        return true;
+    }
+
+    private void SelectTab(Tab tab, bool record = true)
+    {
+        if (_narrow != true)
+        {
+            // Wide layout: one page with everything on it. Highlight the tab and scroll its card into view
+            // (also when it is already the selected tab, since the user may have scrolled away since).
+            _tab = tab;
+            UpdateNavSelection();
+            switch (tab)
+            {
+                case Tab.Radio: BodyScroll.Offset = default; break;
+                case Tab.Nodes: ConnectCard.BringIntoView(); break;
+                case Tab.Keypad: DtmfCard.BringIntoView(); break;
+                case Tab.Log: LogCard.BringIntoView(); break;
+            }
+            return;
+        }
+
         if (_tab == tab) return;
+        if (record)
+        {
+            _tabHistory.Remove(tab);   // no loops: a tab appears once, at its latest visit
+            _tabHistory.Add(_tab);
+            if (_tabHistory.Count > 8) _tabHistory.RemoveAt(0);
+        }
         _tab = tab;
         if (_narrow == true)
         {
@@ -233,9 +278,12 @@ public partial class MainView : UserControl
         ApplyBodyLayout(narrow, dock);
         ApplyPttSizing(dock, isShort);
 
-        // Phones get the bottom tab bar; the links summary in the header is replaced by the Radio tab's rows.
-        NavBar.IsVisible = narrow;
+        // The bottom bar is always shown. On phones its tabs switch pages (and the links summary in the header is
+        // replaced by the Radio tab's rows); on wide layouts everything is already on screen, so its tabs scroll to
+        // the matching card instead.
+        NavBar.IsVisible = true;
         HeaderLinksStrip.IsVisible = !narrow;
+        if (!narrow) _tabHistory.Clear();
         UpdateNavSelection();
         ApplyConnectLayout(narrow);
 
@@ -255,13 +303,13 @@ public partial class MainView : UserControl
 
             Place(BrandPanel, row: 0, column: 0, columnSpan: 1);
             Place(StationBadge, row: 0, column: 1, columnSpan: 1);
-            Place(SettingsButton, row: 0, column: 2, columnSpan: 1);
+            Place(HeaderActions, row: 0, column: 2, columnSpan: 1);
             Place(BadgesPanel, row: 1, column: 0, columnSpan: 3);
 
             StationBadge.HorizontalAlignment = HorizontalAlignment.Center;
             StationBadge.Margin = new Thickness(0);
             BadgesPanel.Margin = new Thickness(0, 6, 0, 0);
-            SettingsButton.Margin = new Thickness(0);
+            HeaderActions.Margin = new Thickness(0);
             BrandTagline.IsVisible = false;
         }
         else if (mode == HeaderMode.Compact)
@@ -271,14 +319,14 @@ public partial class MainView : UserControl
             HeaderGrid.RowDefinitions = RowDefinitions.Parse("Auto,Auto,Auto");
 
             Place(BrandPanel, row: 0, column: 0, columnSpan: 1);
-            Place(SettingsButton, row: 0, column: 1, columnSpan: 1);
+            Place(HeaderActions, row: 0, column: 1, columnSpan: 1);
             Place(StationBadge, row: 1, column: 0, columnSpan: 2);
             Place(BadgesPanel, row: 2, column: 0, columnSpan: 2);
 
             StationBadge.HorizontalAlignment = HorizontalAlignment.Left;
             StationBadge.Margin = new Thickness(0, 10, 0, 0);
             BadgesPanel.Margin = new Thickness(0, 8, 0, 0);
-            SettingsButton.Margin = new Thickness(0);
+            HeaderActions.Margin = new Thickness(0);
             BrandTagline.IsVisible = false;
         }
         else
@@ -289,12 +337,12 @@ public partial class MainView : UserControl
             Place(BrandPanel, row: 0, column: 0, columnSpan: 1);
             Place(StationBadge, row: 0, column: 1, columnSpan: 1);
             Place(BadgesPanel, row: 0, column: 2, columnSpan: 1);
-            Place(SettingsButton, row: 0, column: 3, columnSpan: 1);
+            Place(HeaderActions, row: 0, column: 3, columnSpan: 1);
 
             StationBadge.HorizontalAlignment = HorizontalAlignment.Center;
             StationBadge.Margin = new Thickness(0);
             BadgesPanel.Margin = new Thickness(0);
-            SettingsButton.Margin = new Thickness(10, 0, 0, 0);
+            HeaderActions.Margin = new Thickness(10, 0, 0, 0);
             BrandTagline.IsVisible = true;
         }
     }

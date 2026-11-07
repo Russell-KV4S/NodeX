@@ -187,6 +187,11 @@ public partial class SettingsViewModel : ViewModelBase
         var cfg = await _config.LoadAsync();
         FillForm(cfg.Settings, cfg.Password ?? "");
 
+        // Platform capabilities are plain properties read at bind time; re-announce them each time Settings opens.
+        OnPropertyChanged(nameof(AudioRouteSupported));
+        OnPropertyChanged(nameof(HardwareKeysSupported));
+        OnPropertyChanged(nameof(LogSharingSupported));
+
         ShowPassword = false;
         TransferPassphrase = "";
         ErrorText = "";

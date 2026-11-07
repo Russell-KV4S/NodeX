@@ -26,7 +26,9 @@ public class MainActivity : AvaloniaMainActivity
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
-        base.OnCreate(savedInstanceState);
+        // Declare what this phone supports BEFORE the base class builds the UI: Settings reads these flags when its
+        // controls are created, and a flag set afterwards left the phone-button mapper (and the speaker and log
+        // options) hidden.
         Current = this;
         AppServices.HardwareKeysSupported = true;
         AppServices.HardwareKeyNamer = code =>
@@ -39,6 +41,8 @@ public class MainActivity : AvaloniaMainActivity
         AppServices.ExitHandler = () => AndroidAppExit.Finish(this);
         AppServices.SpeakerphoneSetter = speaker => AndroidAudioRoute.SetSpeaker(this, speaker);
         AppServices.LogSharer = ShareLogText;
+
+        base.OnCreate(savedInstanceState);
         RequestRuntimePermissions();
         UpdateMicrophoneState();
     }

@@ -244,21 +244,16 @@
                     </Border>
                 </WrapPanel>
 
-                <Button x:Name="SettingsButton" AutomationProperties.Name="Open menu" Grid.Column="3" Content="Menu ▾"
-                        Margin="10,0,0,0" VerticalAlignment="Center"
-                        Background="{StaticResource CardBackgroundBrush}"
-                        BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1"
-                        Foreground="{StaticResource TextPrimaryBrush}"
-                        CornerRadius="12" Padding="12,5" FontSize="11" FontWeight="SemiBold">
-                    <Button.Flyout>
-                        <MenuFlyout Placement="BottomEdgeAlignedRight">
-                            <MenuItem Header="Settings" Command="{Binding OpenSettingsCommand}" />
-                            <MenuItem Header="Find a node…" Command="{Binding OpenSearchCommand}" />
-                            <Separator IsVisible="{Binding CanExit}" />
-                            <MenuItem Header="Exit NodeX" Command="{Binding ExitCommand}" IsVisible="{Binding CanExit}" />
-                        </MenuFlyout>
-                    </Button.Flyout>
-                </Button>
+                <!-- Navigation (including Settings) is the bottom bar, at every width. -->
+                <StackPanel x:Name="HeaderActions" Grid.Column="3" Orientation="Horizontal" Spacing="8"
+                            Margin="10,0,0,0" VerticalAlignment="Center">
+                    <Button x:Name="ExitButton" AutomationProperties.Name="Exit NodeX" Content="Exit"
+                            Command="{Binding ExitCommand}" IsVisible="{Binding CanExit}"
+                            Background="{StaticResource CardBackgroundBrush}"
+                            BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1"
+                            Foreground="{StaticResource TextPrimaryBrush}"
+                            CornerRadius="12" Padding="12,5" FontSize="11" FontWeight="SemiBold" />
+                </StackPanel>
             </Grid>
 
             <!-- Links strip: always visible, so scrolling to the log never hides what you are connected to -->
