@@ -71,8 +71,13 @@ public sealed partial class LinkItemViewModel : ObservableObject
     public partial bool IsTransmitTarget { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(MuteButtonText), nameof(MuteAutomationName))]
+    [NotifyPropertyChangedFor(nameof(MuteButtonText), nameof(MuteAutomationName), nameof(MuteGlyph), nameof(MuteShortText))]
     public partial bool IsMuted { get; set; }
+
+    /// <summary>Speaker glyph + word for the compact phone row, so mute state is never colour-only.</summary>
+    public string MuteGlyph => IsMuted ? "🔇" : "🔊";
+
+    public string MuteShortText => IsMuted ? "Muted" : "Mute";
 
     public bool CanSelectTransmit => !IsTransmitTarget;
 

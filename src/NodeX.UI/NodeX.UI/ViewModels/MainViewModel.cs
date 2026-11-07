@@ -402,8 +402,11 @@ public partial class MainViewModel : ViewModelBase
     public bool CanSwitchSpeaker => AppServices.SpeakerphoneSetter != null;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SpeakerButtonText))]
+    [NotifyPropertyChangedFor(nameof(SpeakerButtonText), nameof(SpeakerChipText))]
     public partial bool IsSpeakerOn { get; set; }
+
+    /// <summary>Short two-line label for the chip beside the PTT key.</summary>
+    public string SpeakerChipText => IsSpeakerOn ? "🔊" + Environment.NewLine + "Speaker" : "📞" + Environment.NewLine + "Phone";
 
     public string SpeakerButtonText => IsSpeakerOn ? "🔊 Speaker — tap for phone" : "📞 Phone — tap for speaker";
 

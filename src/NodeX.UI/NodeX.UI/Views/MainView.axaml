@@ -156,9 +156,36 @@
         <Style Selector="UserControl.narrow Button#PttButton">
             <Setter Property="MinHeight" Value="0" />
         </Style>
+
+        <!-- Phone bottom navigation: the selected tab is bold with a cyan bar on top, not colour alone -->
+        <Style Selector="Button.navTab">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="0,6" />
+            <Setter Property="MinHeight" Value="56" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+        </Style>
+        <Style Selector="Button.navTab TextBlock.navLabel">
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+        <Style Selector="Button.navTab.selected">
+            <Setter Property="Foreground" Value="{StaticResource CyanAccentBrush}" />
+        </Style>
+        <Style Selector="Button.navTab.selected TextBlock.navLabel">
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style Selector="Button.navTab Border.navBar">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="Button.navTab.selected Border.navBar">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
     </UserControl.Styles>
 
-    <Grid RowDefinitions="Auto,*,Auto">
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
 
         <!-- TOP APP / CONSOLE HEADER -->
         <Border Grid.Row="0"
@@ -228,7 +255,7 @@
             </Grid>
 
             <!-- Links strip: always visible, so scrolling to the log never hides what you are connected to -->
-            <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
+            <WrapPanel x:Name="HeaderLinksStrip" Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
                 <TextBlock Text="{Binding LinkCountText, StringFormat='LINKED {0}'}" IsVisible="{Binding HasLinks}"
                            FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"
                            Foreground="{StaticResource TextSecondaryBrush}" />
@@ -371,16 +398,9 @@
                     <Border x:Name="PttCard" Classes="card" CornerRadius="16" Padding="24">
                         <StackPanel x:Name="PttInner" Spacing="18" HorizontalAlignment="Center">
 
-                            <!-- Phone earpiece / loudspeaker (Android only). Lives with the PTT key so it is in
-                                 thumb reach on the docked bar instead of down in the scrolling page. -->
-                            <Button x:Name="SpeakerButton" IsVisible="{Binding CanSwitchSpeaker}" Command="{Binding ToggleSpeakerCommand}"
-                                    AutomationProperties.Name="Switch between phone and speaker audio"
-                                    Content="{Binding SpeakerButtonText}"
-                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                    Background="#1F2937" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1"
-                                    CornerRadius="8" Padding="12,8" FontSize="13" FontWeight="SemiBold" />
-
-                            <Button x:Name="PttButton" AutomationProperties.Name="Push to talk"
+                            <!-- The key, with the Android phone/speaker chip beside it (thumb reach) -->
+                            <Grid x:Name="PttRow" ColumnDefinitions="Auto,Auto" ColumnSpacing="8" HorizontalAlignment="Center">
+                            <Button x:Name="PttButton" Grid.Column="0" AutomationProperties.Name="Push to talk"
                                     Width="260" Height="140" Padding="0"
                                     CornerRadius="20" BorderThickness="0" Background="Transparent"
                                     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
@@ -407,6 +427,16 @@
                                     </StackPanel>
                                 </Border>
                             </Button>
+
+                                <!-- Phone earpiece / loudspeaker (Android only) -->
+                                <Button x:Name="SpeakerButton" Grid.Column="1" IsVisible="{Binding CanSwitchSpeaker}" Command="{Binding ToggleSpeakerCommand}"
+                                        AutomationProperties.Name="Switch between phone and speaker audio"
+                                        Content="{Binding SpeakerChipText}"
+                                        Width="76" Padding="4" VerticalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                        Background="#1F2937" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1"
+                                        CornerRadius="12" FontSize="12" FontWeight="SemiBold" />
+                            </Grid>
 
                             <!-- Shown when transmitting is off (listen only, or microphone access denied). Listening still works. -->
                             <Border x:Name="TxBlockedBanner" IsVisible="{Binding IsTransmitBlocked}"
@@ -459,6 +489,91 @@
 
                 <!-- RIGHT COLUMN (wide layout): connect, DTMF, log -->
                 <StackPanel x:Name="RightColumn" Grid.Column="1" Spacing="16">
+
+                    <!-- PHONE, Radio tab: station-ID reminder (the big hero card is not shown on phones) -->
+                    <Border x:Name="IdReminderCard" IsVisible="{Binding IsIdReminderDue}" Padding="12,8"
+                            CornerRadius="8" BorderThickness="1"
+                            BorderBrush="{StaticResource AmberAccentBrush}" Background="#2A1F0A">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                            <TextBlock Text="Time to identify (say your callsign)." FontSize="13" FontWeight="SemiBold"
+                                       TextWrapping="Wrap" VerticalAlignment="Center"
+                                       Foreground="{StaticResource AmberAccentBrush}" />
+                            <Button Grid.Column="1" Content="I've identified" Command="{Binding AcknowledgeIdCommand}"
+                                    Background="{StaticResource CardBackgroundBrush}"
+                                    BorderBrush="{StaticResource AmberAccentBrush}" BorderThickness="1"
+                                    Foreground="{StaticResource TextPrimaryBrush}"
+                                    CornerRadius="8" Padding="10,5" FontSize="12" FontWeight="SemiBold" />
+                        </Grid>
+                    </Border>
+
+                    <!-- PHONE, Radio tab: slim link rows. "Transmit here" picks the transmit node; mute from here.
+                         Connect / disconnect / favourites live on the Nodes tab. -->
+                    <Border x:Name="CompactLinksCard" Classes="card" Padding="12">
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="LINKS" FontWeight="Bold" FontSize="12"
+                                           Foreground="{StaticResource CyanAccentBrush}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding LinkCountText}" IsVisible="{Binding HasLinks}" FontSize="11"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                            </Grid>
+                            <StackPanel Spacing="8" IsVisible="{Binding !HasLinks}">
+                                <TextBlock Text="Not linked to any node." FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" />
+                                <Button Content="Connect to a node…" Click="OnGoToNodesClick" HorizontalAlignment="Left"
+                                        Padding="14,8" CornerRadius="6" FontSize="13" FontWeight="SemiBold" />
+                            </StackPanel>
+                            <ItemsControl ItemsSource="{Binding LinkItems}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Spacing="6" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:LinkItemViewModel">
+                                        <Border Classes="linkRow" Classes.tx="{Binding IsTransmitTarget}" Padding="10,8">
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="Bold"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Foreground="{StaticResource TextPrimaryBrush}" />
+                                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                                        <Border IsVisible="{Binding IsReceiving}" CornerRadius="8" Padding="6,1"
+                                                                Background="#1A10B981" BorderBrush="{StaticResource RxGreenBrush}" BorderThickness="1">
+                                                            <TextBlock Text="● Receiving" FontSize="10" FontWeight="Bold"
+                                                                       AutomationProperties.LiveSetting="Polite"
+                                                                       Foreground="{StaticResource RxGreenBrush}" />
+                                                        </Border>
+                                                        <TextBlock Text="{Binding StatusText}" FontSize="10" FontWeight="Bold"
+                                                                   VerticalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}" />
+                                                        <TextBlock Text="{Binding RttText}" FontSize="10" VerticalAlignment="Center"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                    <Border IsVisible="{Binding IsTransmitTarget}" VerticalAlignment="Center"
+                                                            CornerRadius="6" Padding="8,6" Background="{StaticResource TxRedBrush}">
+                                                        <TextBlock Text="TRANSMIT" FontSize="11" FontWeight="Black" Foreground="#FFFFFF" />
+                                                    </Border>
+                                                    <Button IsVisible="{Binding CanSelectTransmit}" Content="Transmit here"
+                                                            Command="{Binding SelectTransmitCommand}"
+                                                            AutomationProperties.Name="{Binding SelectAutomationName}"
+                                                            Background="#21262D" CornerRadius="6" Padding="8,6" FontSize="11" FontWeight="SemiBold" />
+                                                    <Button Command="{Binding ToggleMuteCommand}"
+                                                            AutomationProperties.Name="{Binding MuteAutomationName}"
+                                                            Background="#21262D" CornerRadius="6" Padding="8,4" MinWidth="52"
+                                                            HorizontalContentAlignment="Center">
+                                                        <StackPanel HorizontalAlignment="Center">
+                                                            <TextBlock Text="{Binding MuteGlyph}" FontSize="14" HorizontalAlignment="Center" />
+                                                            <TextBlock Text="{Binding MuteShortText}" FontSize="10" HorizontalAlignment="Center" />
+                                                        </StackPanel>
+                                                    </Button>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
 
                     <!-- LINKED NODES: up to 4 at once; only one is the transmit node, the rest are listen-only -->
                     <Border x:Name="LinksCard" Classes="card" IsVisible="{Binding HasLinks}">
@@ -749,14 +864,54 @@
                 BorderBrush="{StaticResource CardBorderBrush}"
                 BorderThickness="0,1,0,0" Padding="12,10" />
 
+        <!-- PHONE BOTTOM NAVIGATION (narrow layout only; shown/hidden by MainView.axaml.cs) -->
+        <Border x:Name="NavBar" Grid.Row="3" IsVisible="False"
+                Background="{StaticResource HeaderBackgroundBrush}"
+                BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="*,*,*,*">
+                <Button x:Name="NavRadio" Grid.Column="0" Classes="navTab" Click="OnNavClick" Tag="0"
+                        AutomationProperties.Name="Radio tab">
+                    <StackPanel>
+                        <Border Classes="navBar" Height="3" Background="{StaticResource CyanAccentBrush}" Margin="12,0,12,4" />
+                        <TextBlock Text="📡" FontSize="18" HorizontalAlignment="Center" />
+                        <TextBlock Classes="navLabel" Text="Radio" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="NavNodes" Grid.Column="1" Classes="navTab" Click="OnNavClick" Tag="1"
+                        AutomationProperties.Name="Nodes tab">
+                    <StackPanel>
+                        <Border Classes="navBar" Height="3" Background="{StaticResource CyanAccentBrush}" Margin="12,0,12,4" />
+                        <TextBlock Text="🔗" FontSize="18" HorizontalAlignment="Center" />
+                        <TextBlock Classes="navLabel" Text="Nodes" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="NavKeypad" Grid.Column="2" Classes="navTab" Click="OnNavClick" Tag="2"
+                        AutomationProperties.Name="Keypad tab">
+                    <StackPanel>
+                        <Border Classes="navBar" Height="3" Background="{StaticResource CyanAccentBrush}" Margin="12,0,12,4" />
+                        <TextBlock Text="🔢" FontSize="18" HorizontalAlignment="Center" />
+                        <TextBlock Classes="navLabel" Text="Keypad" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="NavLog" Grid.Column="3" Classes="navTab" Click="OnNavClick" Tag="3"
+                        AutomationProperties.Name="Log tab">
+                    <StackPanel>
+                        <Border Classes="navBar" Height="3" Background="{StaticResource CyanAccentBrush}" Margin="12,0,12,4" />
+                        <TextBlock Text="📜" FontSize="18" HorizontalAlignment="Center" />
+                        <TextBlock Classes="navLabel" Text="Log" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+
         <!-- FIND A NODE OVERLAY -->
-        <Border Grid.RowSpan="3" IsVisible="{Binding IsSearchOpen}"
+        <Border Grid.RowSpan="4" IsVisible="{Binding IsSearchOpen}"
                 Background="{StaticResource ConsoleBackgroundBrush}">
             <views:NodeSearchView DataContext="{Binding Search}" />
         </Border>
 
         <!-- SETTINGS OVERLAY (full screen so it works on phones as well as desktop) -->
-        <Border Grid.RowSpan="3" IsVisible="{Binding IsSettingsOpen}"
+        <Border Grid.RowSpan="4" IsVisible="{Binding IsSettingsOpen}"
                 Background="{StaticResource ConsoleBackgroundBrush}">
             <views:SettingsView DataContext="{Binding Settings}" />
         </Border>

@@ -27,6 +27,10 @@ public partial class MainView : UserControl
 
     private bool? _narrow;
     private bool? _short;
+
+    /// <summary>Phone bottom-navigation tabs. On wide layouts everything is on one page and this is ignored.</summary>
+    private enum Tab { Radio, Nodes, Keypad, Log }
+    private Tab _tab = Tab.Radio;
     private HeaderMode? _headerMode;
 
     public MainView()
@@ -181,6 +185,34 @@ public partial class MainView : UserControl
         }
     }
 
+    private void OnNavClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string tag } && int.TryParse(tag, out int i) && i is >= 0 and <= 3)
+            SelectTab((Tab)i);
+    }
+
+    private void OnGoToNodesClick(object? sender, RoutedEventArgs e) => SelectTab(Tab.Nodes);
+
+    private void SelectTab(Tab tab)
+    {
+        if (_tab == tab) return;
+        _tab = tab;
+        if (_narrow == true)
+        {
+            ApplyBodyLayout(narrow: true, dock: true);
+            BodyScroll.Offset = default;   // each tab starts at its top
+        }
+        UpdateNavSelection();
+    }
+
+    private void UpdateNavSelection()
+    {
+        NavRadio.Classes.Set("selected", _tab == Tab.Radio);
+        NavNodes.Classes.Set("selected", _tab == Tab.Nodes);
+        NavKeypad.Classes.Set("selected", _tab == Tab.Keypad);
+        NavLog.Classes.Set("selected", _tab == Tab.Log);
+    }
+
     // ------------------------------------------------------------------------------------------
     // Responsive layout. The same cards are re-parented between a wide two-column arrangement
     // (desktop/tablet landscape) and a single scrolling column with a docked PTT bar (phones), so
@@ -200,6 +232,11 @@ public partial class MainView : UserControl
 
         ApplyBodyLayout(narrow, dock);
         ApplyPttSizing(dock, isShort);
+
+        // Phones get the bottom tab bar; the links summary in the header is replaced by the Radio tab's rows.
+        NavBar.IsVisible = narrow;
+        HeaderLinksStrip.IsVisible = !narrow;
+        UpdateNavSelection();
         ApplyConnectLayout(narrow);
 
         RxCard.Padding = TxCard.Padding = new Thickness(dock ? 12 : 16);
@@ -265,7 +302,7 @@ public partial class MainView : UserControl
     private void ApplyBodyLayout(bool narrow, bool dock)
     {
         // Take every card out of whatever currently holds it, then place it for the new layout.
-        foreach (var card in new Control[] { HeroCard, LinksCard, RxTxRow, MetersCard, PttCard, ConnectCard, DtmfCard, LogCard })
+        foreach (var card in new Control[] { HeroCard, LinksCard, RxTxRow, MetersCard, PttCard, ConnectCard, DtmfCard, LogCard, IdReminderCard, CompactLinksCard })
         {
             Detach(card);
         }
@@ -279,13 +316,21 @@ public partial class MainView : UserControl
             RightColumn.IsVisible = false;
             Grid.SetColumn(RightColumn, 0);     // the grid has a single column now; a stale index crashes measure
 
-            // Order for operating: who am I linked to, connect, activity, meters, keypad, log.
-            foreach (var card in new Control[] { HeroCard, LinksCard, ConnectCard, RxTxRow, MetersCard, DtmfCard, LogCard })
+            // One tab at a time. Radio: slim links + RX/TX + meters (PTT is docked below). Nodes: connect, favourites,
+            // full link rows. Keypad and Log are one card each.
+            Control[] cards = _tab switch
+            {
+                Tab.Nodes => [ConnectCard, LinksCard],
+                Tab.Keypad => [DtmfCard],
+                Tab.Log => [LogCard],
+                _ => [IdReminderCard, CompactLinksCard, RxTxRow, MetersCard],
+            };
+            foreach (var card in cards)
             {
                 LeftColumn.Children.Add(card);
             }
 
-            LogCard.Height = 200;
+            LogCard.Height = double.NaN;
         }
         else
         {
@@ -311,14 +356,19 @@ public partial class MainView : UserControl
             LogCard.Height = 220;
         }
 
-        PttDock.Child = dock ? PttCard : null;
-        PttDock.IsVisible = dock;
+        // On phones only the Radio tab carries the PTT key.
+        bool showDock = dock && (!narrow || _tab == Tab.Radio);
+        PttDock.Child = showDock ? PttCard : null;
+        PttDock.IsVisible = showDock;
     }
 
     private void ApplyPttSizing(bool narrow, bool isShort)
     {
+        bool phone = _narrow == true;   // phone layout: the key shares a row with the speaker chip, extras are hidden
         if (narrow)
         {
+            PttRow.ColumnDefinitions = ColumnDefinitions.Parse("*,Auto");
+            PttRow.HorizontalAlignment = HorizontalAlignment.Stretch;
             // A full-width bar the thumb can find without looking. On short screens the bar is slimmer and the
             // time-out/mode strip is hidden (the key face already shows the running transmit time).
             PttCard.Padding = new Thickness(isShort ? 8 : 12);
@@ -327,15 +377,17 @@ public partial class MainView : UserControl
             PttInner.HorizontalAlignment = HorizontalAlignment.Stretch;
             PttButton.Width = double.NaN;
             PttButton.HorizontalAlignment = HorizontalAlignment.Stretch;
-            PttButton.Height = isShort ? 64 : 96;
+            PttButton.Height = isShort ? 64 : phone ? 112 : 96;
             PttInfo.Width = double.NaN;
             PttInfo.HorizontalAlignment = HorizontalAlignment.Stretch;
-            PttInfo.IsVisible = !isShort;
+            PttInfo.IsVisible = !isShort && !phone;   // phones: nothing but the key and the chip (mode lives in Settings)
             PttCaption.IsVisible = false;
             PttModeHint.IsVisible = true;
         }
         else
         {
+            PttRow.ColumnDefinitions = ColumnDefinitions.Parse("Auto,Auto");
+            PttRow.HorizontalAlignment = HorizontalAlignment.Center;
             PttCard.Padding = new Thickness(24);
             PttCard.CornerRadius = new CornerRadius(16);
             PttInner.Spacing = 18;

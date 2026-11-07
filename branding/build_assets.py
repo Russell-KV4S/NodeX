@@ -10,6 +10,10 @@ BG=(13,17,23,255)              # #0D1117, same as the app's ConsoleBackgroundBru
 os.makedirs(OUT,exist_ok=True)
 
 def mark(name,px):
+    # dark/light: the owner's uploaded logo (branding/logo/*.png, transparent). mono: Android themed-icon SVG.
+    if name in ("dark","light"):
+        im=Image.open(os.path.join(HERE,"logo",f"nodex-logo-{name}.png")).convert("RGBA")
+        return im.resize((px,px),Image.LANCZOS)
     d=fitz.open(os.path.join(SRC,f"nodex-mark-{name}.svg"))
     p=fitz.open("pdf",d.convert_to_pdf())[0]
     pix=p.get_pixmap(matrix=fitz.Matrix(px/480,px/480),alpha=True)
