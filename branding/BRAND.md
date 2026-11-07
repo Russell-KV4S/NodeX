@@ -3,6 +3,8 @@
 **Name:** NodeX  **Tagline:** AllStarLink Radioless Node
 
 ## Logo
+**Current (owner-supplied, 2026-11-06):** navy X with amber outline and amber circuit traces, `screen.png` (raster, transparent) -> `logo/nodex-logo-light.png` (as uploaded) and `logo/nodex-logo-dark.png` (navy fill lifted to #3F6FE0 for dark UI). `build_assets.py` uses these for the "dark"/"light" marks. App icon = light logo on a pale blue #E8EEFC tile. The SVG masters below are the earlier AI blue-X mark and are now used only for the mono icons.
+
 An X with four circuit traces per side ending in nodes. Masters are in `source/` (SVG, transparent):
 - `nodex-mark-dark.svg`: for dark backgrounds (app UI, app icon, store art)
 - `nodex-mark-light.svg`: for white/light backgrounds
@@ -15,9 +17,10 @@ Regenerate every PNG/ICO and push them into the app projects: `python build_asse
 | Use | Hex |
 |---|---|
 | Brand background (= app console bg) | `#0D1117` |
-| X fill | `#3F6FE0` |
+| X fill (dark version) | `#3F6FE0` |
 | X outline on dark | `#B8CCFF` |
-| X outline on light | `#10126E` |
+| X fill (light version, as uploaded) | `#10126E` |
+| App icon tile | `#E8EEFC` |
 | Circuit lines/nodes (brand accent) | `#F59E0B` (matches the app's `AmberAccentBrush`) |
 | Wordmark on dark / secondary text | `#F0F6FC` / `#8B949E` |
 
