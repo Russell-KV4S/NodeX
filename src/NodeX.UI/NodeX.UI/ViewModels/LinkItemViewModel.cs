@@ -66,6 +66,31 @@ public sealed partial class LinkItemViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsReceiving { get; set; }
 
+    /// <summary>When audio from this node last started or stopped arriving (null = not heard this session).</summary>
+    private DateTime? _lastHeard;
+
+    [ObservableProperty]
+    public partial string LastHeardText { get; set; } = "Not heard yet";
+
+    /// <summary>Records that this node was just heard (called on key and unkey).</summary>
+    public void NoteHeard()
+    {
+        _lastHeard = DateTime.Now;
+        UpdateLastHeardText();
+    }
+
+    /// <summary>"Hearing now" / "Last heard 7:41 PM (2 min ago)". The UI timer calls this too, so the age ticks.</summary>
+    public void UpdateLastHeardText()
+    {
+        if (IsReceiving) { LastHeardText = "Hearing now"; return; }
+        if (_lastHeard is not { } t) { LastHeardText = "Not heard yet"; return; }
+        var age = DateTime.Now - t;
+        string ago = age.TotalSeconds < 60 ? "just now"
+            : age.TotalMinutes < 60 ? $"{(int)age.TotalMinutes} min ago"
+            : $"{(int)age.TotalHours} h {age.Minutes} min ago";
+        LastHeardText = $"Last heard {t:h:mm tt} ({ago})";
+    }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSelectTransmit), nameof(MuteButtonText), nameof(MuteAutomationName))]
     public partial bool IsTransmitTarget { get; set; }
@@ -166,6 +191,7 @@ public sealed partial class LinkItemViewModel : ObservableObject
     {
         var rtt = c.Link?.Session.RoundTripTime ?? TimeSpan.Zero;
         RttText = IsConnected && rtt > TimeSpan.Zero ? $"RTT {rtt.TotalMilliseconds:F0} ms" : "RTT —";
+        UpdateLastHeardText();
     }
 
     [RelayCommand]

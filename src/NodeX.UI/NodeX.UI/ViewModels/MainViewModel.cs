@@ -965,7 +965,7 @@ public partial class MainViewModel : ViewModelBase
         void OnKeyed(bool keyed) => OnUi(() =>
         {
             var item = LinkItems.FirstOrDefault(l => l.Node == node);
-            if (item != null) item.IsReceiving = keyed;
+            if (item != null) { item.IsReceiving = keyed; item.NoteHeard(); }
             IsRemoteKeyed = LinkItems.Any(l => l.IsReceiving);
             LogActivity(_runtime.Connections.Count > 1
                 ? keyed ? $"<<< Node {node} keyed (RX active)" : $"<<< Node {node} unkeyed"

@@ -23,34 +23,6 @@
             <Setter Property="Padding" Value="16" />
         </Style>
 
-        <!-- RX / TX activity cards and their dots -->
-        <Style Selector="Border#RxCard">
-            <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
-        </Style>
-        <Style Selector="Border#RxCard.active">
-            <Setter Property="BorderBrush" Value="{StaticResource RxGreenBrush}" />
-            <Setter Property="Background" Value="#1A10B981" />
-        </Style>
-        <Style Selector="Border#TxCard">
-            <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
-        </Style>
-        <Style Selector="Border#TxCard.active">
-            <Setter Property="BorderBrush" Value="{StaticResource TxRedBrush}" />
-            <Setter Property="Background" Value="#26EF4444" />
-        </Style>
-        <Style Selector="Border#RxDot">
-            <Setter Property="Background" Value="#374151" />
-        </Style>
-        <Style Selector="Border#RxDot.on">
-            <Setter Property="Background" Value="{StaticResource RxGreenBrush}" />
-        </Style>
-        <Style Selector="Border#TxDot">
-            <Setter Property="Background" Value="#374151" />
-        </Style>
-        <Style Selector="Border#TxDot.on">
-            <Setter Property="Background" Value="{StaticResource TxRedBrush}" />
-        </Style>
-
         <!-- Registration dot: amber until registered, then green -->
         <Style Selector="Ellipse#AslDot">
             <Setter Property="Fill" Value="{StaticResource AmberAccentBrush}" />
@@ -127,6 +99,11 @@
         </Style>
         <Style Selector="Ellipse.chipDot.up">
             <Setter Property="Fill" Value="{StaticResource RxGreenBrush}" />
+        </Style>
+        <Style Selector="Border.linkRow.rx">
+            <Setter Property="Background" Value="#1A10B981" />
+            <Setter Property="BorderBrush" Value="{StaticResource RxGreenBrush}" />
+            <Setter Property="BorderThickness" Value="2" />
         </Style>
         <Style Selector="Border.linkRow.tx">
             <Setter Property="BorderBrush" Value="{StaticResource TxRedBrush}" />
@@ -338,44 +315,6 @@
                         </Grid>
                     </Border>
 
-                    <!-- RX / TX LIVE ACTIVITY CARDS -->
-                    <Grid x:Name="RxTxRow" ColumnDefinitions="*,*" ColumnSpacing="12">
-                        <Border x:Name="RxCard" AutomationProperties.Name="Receive indicator" Grid.Column="0" Classes="card" Classes.active="{Binding IsRemoteKeyed}"
-                                BorderThickness="2" CornerRadius="10">
-                            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                                <Border x:Name="RxDot" Width="16" Height="16" CornerRadius="8" Classes.on="{Binding IsRemoteKeyed}" />
-                                <StackPanel>
-                                    <TextBlock Text="RECEIVE (RX)" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" />
-                                    <!-- Text state, so on-air status never depends on colour alone (and shows on phones too) -->
-                                    <StackPanel x:Name="RxSubtitle">
-                                        <TextBlock Text="Idle" FontSize="11" IsVisible="{Binding !IsRemoteKeyed}"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" />
-                                        <TextBlock Text="Receiving" FontSize="11" FontWeight="Bold" IsVisible="{Binding IsRemoteKeyed}"
-                                                   AutomationProperties.LiveSetting="Polite"
-                                                   Foreground="{StaticResource RxGreenBrush}" />
-                                    </StackPanel>
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <Border x:Name="TxCard" AutomationProperties.Name="Transmit indicator" Grid.Column="1" Classes="card" Classes.active="{Binding IsTransmitting}"
-                                BorderThickness="2" CornerRadius="10">
-                            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                                <Border x:Name="TxDot" Width="16" Height="16" CornerRadius="8" Classes.on="{Binding IsTransmitting}" />
-                                <StackPanel>
-                                    <TextBlock Text="TRANSMIT (TX)" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" />
-                                    <StackPanel x:Name="TxSubtitle">
-                                        <TextBlock Text="Idle" FontSize="11" IsVisible="{Binding !IsTransmitting}"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" />
-                                        <TextBlock Text="ON AIR" FontSize="11" FontWeight="Bold" IsVisible="{Binding IsTransmitting}"
-                                                   AutomationProperties.LiveSetting="Assertive"
-                                                   Foreground="#FCA5A5" />
-                                    </StackPanel>
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-
                     <!-- AUDIO VU METERS -->
                     <Border x:Name="MetersCard" Classes="card" CornerRadius="10">
                         <StackPanel Spacing="10">
@@ -531,35 +470,36 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:LinkItemViewModel">
-                                        <Border Classes="linkRow" Classes.tx="{Binding IsTransmitTarget}" Padding="10,8">
-                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="Bold"
-                                                               TextTrimming="CharacterEllipsis"
+                                        <Border Classes="linkRow" Classes.tx="{Binding IsTransmitTarget}" Classes.rx="{Binding IsReceiving}" Padding="10,8">
+                                            <StackPanel Spacing="6">
+                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                                    <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="14" FontWeight="Bold"
+                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                                                                Foreground="{StaticResource TextPrimaryBrush}" />
-                                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                                        <Border IsVisible="{Binding IsReceiving}" CornerRadius="8" Padding="6,1"
-                                                                Background="#1A10B981" BorderBrush="{StaticResource RxGreenBrush}" BorderThickness="1">
-                                                            <TextBlock Text="● Receiving" FontSize="10" FontWeight="Bold"
-                                                                       AutomationProperties.LiveSetting="Polite"
-                                                                       Foreground="{StaticResource RxGreenBrush}" />
-                                                        </Border>
-                                                        <TextBlock Text="{Binding StatusText}" FontSize="10" FontWeight="Bold"
-                                                                   VerticalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}" />
-                                                        <TextBlock Text="{Binding RttText}" FontSize="10" VerticalAlignment="Center"
-                                                                   Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    </StackPanel>
-                                                </StackPanel>
-                                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                                    <Border IsVisible="{Binding IsTransmitTarget}" VerticalAlignment="Center"
-                                                            CornerRadius="6" Padding="8,6" Background="{StaticResource TxRedBrush}">
+                                                    <Border Grid.Column="1" IsVisible="{Binding IsTransmitTarget}" VerticalAlignment="Center"
+                                                            CornerRadius="6" Padding="8,3" Background="{StaticResource TxRedBrush}">
                                                         <TextBlock Text="TRANSMIT" FontSize="11" FontWeight="Black" Foreground="#FFFFFF" />
                                                     </Border>
-                                                    <Button IsVisible="{Binding CanSelectTransmit}" Content="Transmit here"
+                                                </Grid>
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <TextBlock Text="{Binding StatusText}" FontSize="11" FontWeight="Bold"
+                                                               VerticalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}" />
+                                                    <TextBlock Text="{Binding RttText}" FontSize="11" VerticalAlignment="Center"
+                                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    <Border IsVisible="{Binding IsReceiving}" CornerRadius="8" Padding="7,1"
+                                                            Background="{StaticResource RxGreenBrush}">
+                                                        <TextBlock Text="● RX" FontSize="11" FontWeight="Black" Foreground="#04130D"
+                                                                   AutomationProperties.LiveSetting="Polite" />
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding LastHeardText}" FontSize="11"
+                                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
+                                                    <Button Grid.Column="0" IsVisible="{Binding CanSelectTransmit}" Content="Transmit here"
                                                             Command="{Binding SelectTransmitCommand}"
                                                             AutomationProperties.Name="{Binding SelectAutomationName}"
                                                             Background="#21262D" CornerRadius="6" Padding="8,6" FontSize="11" FontWeight="SemiBold" />
-                                                    <Button Command="{Binding ToggleMuteCommand}"
+                                                    <Button Grid.Column="2" Command="{Binding ToggleMuteCommand}"
                                                             AutomationProperties.Name="{Binding MuteAutomationName}"
                                                             Background="#21262D" CornerRadius="6" Padding="8,4" MinWidth="52"
                                                             HorizontalContentAlignment="Center">
@@ -568,8 +508,18 @@
                                                             <TextBlock Text="{Binding MuteShortText}" FontSize="10" HorizontalAlignment="Center" />
                                                         </StackPanel>
                                                     </Button>
-                                                </StackPanel>
-                                            </Grid>
+                                                    <Button Grid.Column="3" Command="{Binding DisconnectCommand}"
+                                                            AutomationProperties.Name="{Binding DisconnectAutomationName}"
+                                                            Background="{StaticResource DangerButtonBrush}" Foreground="#FFFFFF"
+                                                            CornerRadius="6" Padding="8,4" MinWidth="52"
+                                                            HorizontalContentAlignment="Center">
+                                                        <StackPanel HorizontalAlignment="Center">
+                                                            <TextBlock Text="✕" FontSize="14" HorizontalAlignment="Center" />
+                                                            <TextBlock Text="Disconnect" FontSize="10" HorizontalAlignment="Center" />
+                                                        </StackPanel>
+                                                    </Button>
+                                                </Grid>
+                                            </StackPanel>
                                         </Border>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -599,7 +549,7 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:LinkItemViewModel">
-                                        <Border Classes="linkRow" Classes.tx="{Binding IsTransmitTarget}">
+                                        <Border Classes="linkRow" Classes.tx="{Binding IsTransmitTarget}" Classes.rx="{Binding IsReceiving}">
                                             <StackPanel Spacing="8">
                                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                                     <StackPanel Grid.Column="0">
@@ -614,7 +564,13 @@
                                                                        Foreground="{StaticResource TextPrimaryBrush}" />
                                                             <TextBlock Text="{Binding RttText}" FontSize="11"
                                                                        Foreground="{StaticResource TextSecondaryBrush}" />
+                                                            <Border IsVisible="{Binding IsReceiving}" CornerRadius="8" Padding="7,1"
+                                                                    Background="{StaticResource RxGreenBrush}">
+                                                                <TextBlock Text="● RX" FontSize="11" FontWeight="Black" Foreground="#04130D" />
+                                                            </Border>
                                                         </StackPanel>
+                                                        <TextBlock Text="{Binding LastHeardText}" FontSize="11"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}" />
                                                     </StackPanel>
                                                     <!-- Text pill, so "audio is arriving from this node" is not colour-only -->
                                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Top">

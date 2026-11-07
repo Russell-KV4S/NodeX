@@ -3,6 +3,7 @@ using System;
 using Android.App;
 using Android.Content.PM;
 using Android.OS;
+using Android.Window;
 using Avalonia;
 using Avalonia.Android;
 
@@ -43,6 +44,7 @@ public class MainActivity : AvaloniaMainActivity
         AppServices.LogSharer = ShareLogText;
 
         base.OnCreate(savedInstanceState);
+        RegisterBackCallback();
         RequestRuntimePermissions();
         UpdateMicrophoneState();
     }
@@ -58,11 +60,31 @@ public class MainActivity : AvaloniaMainActivity
     /// Back closes an open panel, otherwise it only hides the app: NodeX keeps running (and stays registered) in the
     /// background. Quitting is the explicit "Exit NodeX" menu item.
     /// </summary>
-#pragma warning disable CA1422 // OnBackPressed is the portable route; predictive back is not enabled
-    public override void OnBackPressed()
+    /// <summary>
+    /// Android 13+ with predictive back never calls OnBackPressed, so Back skipped our tab/overlay handling and just
+    /// hid the app. Registering a dispatcher callback routes every Back press through the same logic on every version.
+    /// </summary>
+    private void RegisterBackCallback()
+    {
+        if (!OperatingSystem.IsAndroidVersionAtLeast(33)) return;
+        OnBackInvokedDispatcher.RegisterOnBackInvokedCallback(0, new BackCallback(this));
+    }
+
+    private sealed class BackCallback(MainActivity activity) : Java.Lang.Object, IOnBackInvokedCallback
+    {
+        public void OnBackInvoked() => activity.HandleBack();
+    }
+
+    private void HandleBack()
     {
         if (AppServices.BackHandler?.Invoke() == true) return;
         MoveTaskToBack(true);
+    }
+
+#pragma warning disable CA1422 // OnBackPressed is the portable route; predictive back is not enabled
+    public override void OnBackPressed()
+    {
+        HandleBack();
     }
 #pragma warning restore CA1422
 

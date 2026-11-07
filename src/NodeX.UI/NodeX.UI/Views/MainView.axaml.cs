@@ -287,7 +287,6 @@ public partial class MainView : UserControl
         UpdateNavSelection();
         ApplyConnectLayout(narrow);
 
-        RxCard.Padding = TxCard.Padding = new Thickness(dock ? 12 : 16);
     }
 
     private void ApplyHeaderLayout(HeaderMode mode)
@@ -350,7 +349,7 @@ public partial class MainView : UserControl
     private void ApplyBodyLayout(bool narrow, bool dock)
     {
         // Take every card out of whatever currently holds it, then place it for the new layout.
-        foreach (var card in new Control[] { HeroCard, LinksCard, RxTxRow, MetersCard, PttCard, ConnectCard, DtmfCard, LogCard, IdReminderCard, CompactLinksCard })
+        foreach (var card in new Control[] { HeroCard, LinksCard, MetersCard, PttCard, ConnectCard, DtmfCard, LogCard, IdReminderCard, CompactLinksCard })
         {
             Detach(card);
         }
@@ -371,7 +370,7 @@ public partial class MainView : UserControl
                 Tab.Nodes => [ConnectCard, LinksCard],
                 Tab.Keypad => [DtmfCard],
                 Tab.Log => [LogCard],
-                _ => [IdReminderCard, CompactLinksCard, RxTxRow, MetersCard],
+                _ => [IdReminderCard, CompactLinksCard, MetersCard],
             };
             foreach (var card in cards)
             {
@@ -391,8 +390,8 @@ public partial class MainView : UserControl
 
             // Two columns. PTT stays in the left column on tall screens; on short ones it is docked below.
             foreach (var card in dock
-                         ? new Control[] { HeroCard, RxTxRow, MetersCard }
-                         : new Control[] { HeroCard, RxTxRow, MetersCard, PttCard })
+                         ? new Control[] { HeroCard, MetersCard }
+                         : new Control[] { HeroCard, MetersCard, PttCard })
             {
                 LeftColumn.Children.Add(card);
             }
