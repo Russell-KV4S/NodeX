@@ -107,7 +107,8 @@
         </Style>
         <Style Selector="Border.linkRow.tx">
             <Setter Property="BorderBrush" Value="{StaticResource TxRedBrush}" />
-            <Setter Property="BorderThickness" Value="4,1,1,1" />
+            <Setter Property="BorderThickness" Value="3" />
+            <Setter Property="Background" Value="#33EF4444" />
         </Style>
         <Style Selector="Button.chip">
             <Setter Property="Background" Value="#1F2937" />
@@ -480,6 +481,11 @@
                                                             CornerRadius="6" Padding="8,3" Background="{StaticResource TxRedBrush}">
                                                         <TextBlock Text="TRANSMIT" FontSize="11" FontWeight="Black" Foreground="#FFFFFF" />
                                                     </Border>
+                                                    <Border Grid.Column="1" IsVisible="{Binding CanSelectTransmit}" VerticalAlignment="Center"
+                                                            CornerRadius="6" Padding="8,3" Background="#1F2937">
+                                                        <TextBlock Text="LISTEN ONLY" FontSize="11" FontWeight="Bold"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    </Border>
                                                 </Grid>
                                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                                     <TextBlock Text="{Binding StatusText}" FontSize="11" FontWeight="Bold"
@@ -802,14 +808,14 @@
                                 </StackPanel>
                             </Grid>
 
-                            <ScrollViewer Grid.Row="1">
-                                <!-- One selectable block (not a TextBlock per line) so a selection can span lines;
-                                     right-click / long-press offers Copy for the selected text. -->
-                                <SelectableTextBlock Text="{Binding LogText}" FontFamily="Consolas,Menlo,monospace"
-                                                     AutomationProperties.Name="Event log text"
-                                                     FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
-                                                     LineHeight="17" TextWrapping="Wrap" />
-                            </ScrollViewer>
+                            <!-- Read-only TextBox: unlike SelectableTextBlock it gives touch selection handles on Android, and
+                                 still selects with the mouse on desktop. Copy copies everything. -->
+                            <TextBox Grid.Row="1" Text="{Binding LogText}" IsReadOnly="True" AcceptsReturn="True"
+                                     TextWrapping="Wrap" FontFamily="Consolas,Menlo,monospace" FontSize="11"
+                                     AutomationProperties.Name="Event log text"
+                                     Background="Transparent" BorderThickness="0" Padding="0"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     Foreground="{StaticResource TextSecondaryBrush}" />
                         </Grid>
                     </Border>
                 </StackPanel>
