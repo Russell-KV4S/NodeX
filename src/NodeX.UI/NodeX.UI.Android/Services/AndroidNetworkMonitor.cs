@@ -59,13 +59,42 @@ public sealed class AndroidNetworkMonitor : INetworkMonitor
         }
 
         bool changed;
+        string before;
         lock (_gate)
         {
+            before = _signature;
             changed = signature != _signature || available != _available;
             _signature = signature;
             _available = available;
         }
-        if (changed) Changed?.Invoke();
+
+        if (changed)
+        {
+            NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("net",
+                $"Android default network: {Describe(network)} \"{before}\" -> \"{signature}\" available={available}");
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>"wifi", "cellular"... for the log; a Wi-Fi to cellular handoff is exactly what is being diagnosed.</summary>
+    private string Describe(Network? network)
+    {
+        if (network == null) return "none";
+        try
+        {
+            var caps = _cm?.GetNetworkCapabilities(network);
+            if (caps == null) return "unknown";
+            if (caps.HasTransport(TransportType.Wifi)) return "wifi";
+            if (caps.HasTransport(TransportType.Cellular)) return "cellular";
+            if (caps.HasTransport(TransportType.Ethernet)) return "ethernet";
+            if (caps.HasTransport(TransportType.Vpn)) return "vpn";
+            if (caps.HasTransport(TransportType.Bluetooth)) return "bluetooth";
+            return "other";
+        }
+        catch (Exception)
+        {
+            return "unknown";
+        }
     }
 
     public void Dispose()

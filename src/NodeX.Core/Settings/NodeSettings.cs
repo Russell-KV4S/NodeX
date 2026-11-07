@@ -89,4 +89,10 @@ public sealed record NodeSettings
 
     /// <summary>Minutes after the user starts transmitting before the ID reminder appears.</summary>
     public int IdReminderMinutes { get; init; } = 10;
+
+    /// <summary>
+    /// Write per-step timings and protocol state to the troubleshooting log file (in addition to the normal event
+    /// lines, which are always logged). Off by default because it is chatty; turn on to chase a problem, then send the log.
+    /// </summary>
+    public bool DetailedLogging { get; init; }
 }

@@ -111,8 +111,11 @@
 
                     <CheckBox Content="Toggle PTT (tap to talk, tap again to stop)" IsChecked="{Binding TogglePtt}" />
 
+                    <!-- Always listed so it can be found; only an Android phone has an earpiece to switch from. -->
                     <CheckBox Content="Use the loudspeaker by default (instead of the phone earpiece)"
-                              IsChecked="{Binding DefaultToSpeaker}" IsVisible="{Binding AudioRouteSupported}" />
+                              IsChecked="{Binding DefaultToSpeaker}" IsEnabled="{Binding AudioRouteSupported}" />
+                    <TextBlock Classes="hint" Margin="0,-8,0,0" IsVisible="{Binding !AudioRouteSupported}"
+                               Text="Phone only: this computer has a single audio output, so there is nothing to switch." />
 
                     <!-- A phone button as PTT (Android) -->
                     <StackPanel IsVisible="{Binding HardwareKeysSupported}">
@@ -188,6 +191,24 @@
                         <Button Grid.Row="1" Grid.Column="1" Content="Paste from clipboard" Click="OnPasteImportClick"
                                 HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" MinHeight="44" CornerRadius="6" />
                     </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- TROUBLESHOOTING -->
+            <Border Classes="card">
+                <StackPanel Spacing="14">
+                    <TextBlock Classes="sectionTitle" Text="Troubleshooting" />
+                    <TextBlock Classes="hint" Margin="0"
+                               Text="NodeX keeps a log file on this device (the last few hundred KB). Turn on detailed logging, reproduce the problem (for example, switch from Wi-Fi to cellular while linked), then send the log." />
+
+                    <CheckBox Content="Detailed logging (step timings and protocol state; turn off afterwards)"
+                              IsChecked="{Binding DetailedLogging}" />
+
+                    <Button Content="Send logs…" Command="{Binding SendLogsCommand}" IsVisible="{Binding LogSharingSupported}"
+                            IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                            MinHeight="44" CornerRadius="6" />
+                    <TextBlock Classes="hint" IsVisible="{Binding LogSharingSupported}"
+                               Text="Opens your share sheet (e-mail, Drive, chat...). The log has your node number, callsign and IP addresses, never your password. Detailed logging takes effect when you press Save." />
                 </StackPanel>
             </Border>
 

@@ -30,7 +30,8 @@ sealed class Program
     /// Linux and macOS currently run silently (signalling and registration work, no sound) until a
     /// cross-platform backend is added.
     /// </summary>
-    private static void ConfigureServices() =>
+    private static void ConfigureServices()
+    {
         AppServices.Initialize(
             new ProtectedFileSecretStore(),
             () => OperatingSystem.IsWindows()
@@ -38,4 +39,18 @@ sealed class Program
                 : new NullAudioDeviceService(),
             // Privacy: open the microphone only while keyed (+3 s hold-off), not for the whole connection.
             new NodeX.Core.Audio.NodeAudioEngineOptions { OpenMicOnlyWhileKeyed = true });
+
+        // Desktop "send logs": show the log file in the file manager; the user attaches it to an e-mail.
+        AppServices.LogSharer = (path, _) =>
+        {
+            var psi = OperatingSystem.IsWindows()
+                ? new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{path}\"")
+                : OperatingSystem.IsMacOS()
+                    ? new System.Diagnostics.ProcessStartInfo("open", $"-R \"{path}\"")
+                    : new System.Diagnostics.ProcessStartInfo("xdg-open", $"\"{System.IO.Path.GetDirectoryName(path)}\"");
+            psi.UseShellExecute = false;
+            System.Diagnostics.Process.Start(psi);
+            return System.Threading.Tasks.Task.CompletedTask;
+        };
+    }
 }

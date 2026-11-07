@@ -1126,7 +1126,9 @@ public partial class MainViewModel : ViewModelBase
 
     private void LogActivity(string text)
     {
-        string entry = $"[{DateTime.Now:HH:mm:ss}] {SanitizeLogText(text)}";
+        string clean = SanitizeLogText(text);
+        string entry = $"[{DateTime.Now:HH:mm:ss}] {clean}";
+        NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("event", clean);   // same line, with millisecond time, in the log file
 
         OnUi(() =>
         {

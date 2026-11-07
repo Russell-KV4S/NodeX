@@ -1,8 +1,10 @@
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using NodeX.Core;
 using NodeX.Core.Audio;
+using NodeX.Core.Diagnostics;
 using NodeX.Core.Settings;
 
 namespace NodeX.UI;
@@ -59,6 +61,38 @@ public static class AppServices
     /// </summary>
     public static Func<bool, bool>? SpeakerphoneSetter { get; set; }
 
+    /// <summary>
+    /// Set by a head that can hand the troubleshooting log to the user (Android: the share sheet, desktop: show the
+    /// file). Receives the path of a shareable copy and the log text (capped for message bodies). Null = not supported.
+    /// </summary>
+    public static Func<string, string, Task>? LogSharer { get; set; }
+
+    /// <summary>Largest log text handed to <see cref="LogSharer"/>; message bodies and Android intents have size limits.</summary>
+    public const int ShareTextLimit = 120_000;
+
+    /// <summary>
+    /// Packages the troubleshooting log and passes it to the head's <see cref="LogSharer"/>. Returns a sentence for the
+    /// user: what happened, or why nothing did.
+    /// </summary>
+    public static async Task<string> ShareLogsAsync()
+    {
+        var log = DiagnosticLog.Default;
+        if (LogSharer is not { } sharer) return "Sending logs isn't available on this device.";
+
+        string? path = log.CreateShareFile();
+        if (path == null) return "There is no log yet. Use the app for a while, then try again.";
+
+        try
+        {
+            await sharer(path, log.ReadAll(ShareTextLimit));
+            return "Log ready to send. It includes your node number, callsign and IP addresses but never your password.";
+        }
+        catch (Exception ex)
+        {
+            return $"Could not share the log: {ex.Message}";
+        }
+    }
+
     /// <summary>The phone button mapped to push-to-talk; the platform head feeds key events to it.</summary>
     public static HardwarePttMapper HardwarePtt { get; } = new();
 
@@ -92,6 +126,10 @@ public static class AppServices
         lock (Gate)
         {
             if (IsInitialized) return;
+
+            DiagnosticLog.Default.Configure(Path.Combine(JsonFileSettingsStore.DefaultDirectory, "logs"));
+            DiagnosticLog.Default.WriteHeader(typeof(AppServices).Assembly.GetName().Version?.ToString() ?? "?");
+
             _runtime = Create(settings ?? new JsonFileSettingsStore(), secrets, audioFactory, audioOptions, networkMonitor);
             IsInitialized = true;
         }

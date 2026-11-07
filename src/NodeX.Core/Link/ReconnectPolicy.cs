@@ -13,7 +13,7 @@ public sealed record ReconnectPolicy
     public double Factor { get; init; } = 2.0;
 
     /// <summary>Quiet time after a burst of network-change events before acting on them.</summary>
-    public TimeSpan NetworkChangeDebounce { get; init; } = TimeSpan.FromSeconds(1.5);
+    public TimeSpan NetworkChangeDebounce { get; init; } = TimeSpan.FromSeconds(0.5);
 
     /// <summary>How long a network change waits for the immediate re-registration before re-dialling.</summary>
     public TimeSpan RegistrationWait { get; init; } = TimeSpan.FromSeconds(5);

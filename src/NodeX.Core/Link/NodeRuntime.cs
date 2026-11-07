@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Net;
 using NodeX.Core.Audio;
+using NodeX.Core.Diagnostics;
 using NodeX.Core.Settings;
 
 namespace NodeX.Core;
@@ -26,6 +28,8 @@ public sealed class NodeRuntime : IAsyncDisposable
     private readonly object _connLock = new();
     private readonly List<NodeConnection> _connections = [];   // guarded by _connLock
     private string? _transmitNode;                              // guarded by _connLock
+
+    private static DiagnosticLog Log => DiagnosticLog.Default;
 
     private INetworkMonitor? _monitor;
     private AslRegistrationService? _registration;
@@ -255,6 +259,7 @@ public sealed class NodeRuntime : IAsyncDisposable
             var previous = Config;
             Config = cfg;
             Transmit.ListenOnly = cfg.Settings.ListenOnly;
+            Log.Detailed = cfg.Settings.DetailedLogging;
 
             // Changing something unrelated to registration (a favourite, the PTT mode...) must not drop and
             // redo the registration.
@@ -327,6 +332,9 @@ public sealed class NodeRuntime : IAsyncDisposable
         if (!registered) RegisteredSince = null;
         else if (!IsRegistered) RegisteredSince = DateTimeOffset.UtcNow;   // false -> true; refreshes keep the start
 
+        if (registered != IsRegistered || status != RegistrationStatus || !Equals(address, PerceivedAddress))
+            Log.Info("reg", $"registered={registered} status=\"{status}\" perceivedAddress={address?.ToString() ?? "none"}");
+
         IsRegistered = registered;
         RegistrationStatus = status;
         PerceivedAddress = address;
@@ -340,12 +348,16 @@ public sealed class NodeRuntime : IAsyncDisposable
         var registration = _registration;
         if (registration == null) return false;
 
+        var sw = Stopwatch.StartNew();
         try
         {
-            return await registration.SendHeartbeatAsync();
+            bool ok = await registration.SendHeartbeatAsync();
+            Log.Detail("reg", $"immediate re-registration ok={ok} in {sw.ElapsedMilliseconds} ms");
+            return ok;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Log.Detail("reg", $"immediate re-registration threw after {sw.ElapsedMilliseconds} ms: {ex.Message}");
             return false;
         }
     }
@@ -434,7 +446,9 @@ public sealed class NodeRuntime : IAsyncDisposable
     /// <summary>Resolves and starts a call, publishing the new link. Used for the first dial and for retries.</summary>
     private async Task<NodeInfo?> DialAsync(NodeConnection c, CancellationToken cancellationToken)
     {
+        var sw = Stopwatch.StartNew();
         var info = await _resolver.ResolveNodeAsync(c.Node, cancellationToken);
+        Log.Detail("dial", $"node {c.Node}: resolve {(info == null ? "failed" : "ok -> " + info.EndPoint)} in {sw.ElapsedMilliseconds} ms");
         if (info == null) return null;
         c.Info = info;
 
@@ -443,6 +457,10 @@ public sealed class NodeRuntime : IAsyncDisposable
         link.Audio.Muted = c.Muted;
         link.Error += m => ErrorOccurred?.Invoke(ForNode(c, m));
         link.Session.StateChanged += state => OnLinkState(c, link, state);
+
+        var dialClock = Stopwatch.StartNew();
+        link.Session.StateChanged += state =>
+            Log.Detail("iax", $"node {c.Node}: session {state} {dialClock.ElapsedMilliseconds} ms after dial started");
 
         c.Link = link;
         ApplyTransmitFlags();          // sets this link's TransmitEnabled from the current choice
@@ -595,6 +613,8 @@ public sealed class NodeRuntime : IAsyncDisposable
 
             var reason = link.DisconnectReason;
             string node = link.Target.NodeNumber;
+            Log.Info("link", $"node {node}: call ended, reason={reason}, wasConnected={link.WasConnected}, " +
+                             $"up={link.ConnectedDuration.TotalSeconds:0.0} s, remoteCause=\"{link.RemoteCause}\"");
 
             // Say how long it had been up: "lost after 4 min" (network/sleep) reads very differently from
             // "hung up after 0:20" (the far node dropped us). Goes into the copyable event log.
@@ -812,7 +832,12 @@ public sealed class NodeRuntime : IAsyncDisposable
                 attempt++;
                 PublishReconnect(c, new(true, attempt, null, $"Reconnecting to node {target} (attempt {attempt})…"));
 
-                if (await TryReconnectOnceAsync(c, ct))
+                var attemptClock = Stopwatch.StartNew();
+                Log.Detail("reconnect", $"node {target}: attempt {attempt} starting (delay was {delay.TotalSeconds:0.0} s)");
+                bool succeeded = await TryReconnectOnceAsync(c, ct);
+                Log.Info("reconnect", $"node {target}: attempt {attempt} {(succeeded ? "succeeded" : "failed")} after {attemptClock.ElapsedMilliseconds} ms");
+
+                if (succeeded)
                 {
                     Notice?.Invoke(attempt == 1
                         ? $"Reconnected to node {target}."
@@ -942,6 +967,7 @@ public sealed class NodeRuntime : IAsyncDisposable
     private void OnNetworkChanged()
     {
         // Wake any reconnect wait immediately, then debounce the burst of events before acting.
+        Log.Detail("net", $"network event received (monitor signature now \"{_monitor?.GetSignature()}\", available={_monitor?.IsAvailable})");
         Interlocked.Exchange(ref _networkSignal, NewSignal()).TrySetResult();
 
         var cts = new CancellationTokenSource();
@@ -969,9 +995,17 @@ public sealed class NodeRuntime : IAsyncDisposable
 
         // DHCP renewals and similar noise leave the usable addresses unchanged: nothing to do.
         string signature = monitor.GetSignature();
-        if (Interlocked.Exchange(ref _lastSignature, signature) == signature) return;
+        string previousSignature = Interlocked.Exchange(ref _lastSignature, signature);
+        if (previousSignature == signature)
+        {
+            Log.Detail("net", $"network settled with the same address signature \"{signature}\"; nothing to do");
+            return;
+        }
 
         bool available = monitor.IsAvailable;
+        var handoffClock = Stopwatch.StartNew();
+        Log.Info("net", $"network changed: \"{previousSignature}\" -> \"{signature}\", available={available}, " +
+                        $"autoReconnect={Config.Settings.AutoReconnect}");
 
         // 1. Tell the registry our new address right away rather than at the next 60 s cycle; remote
         //    nodes validate callers against it.
@@ -988,20 +1022,25 @@ public sealed class NodeRuntime : IAsyncDisposable
 
         if (available)
         {
-            await Task.WhenAny(registration, Task.Delay(_policy.RegistrationWait));
+            var finished = await Task.WhenAny(registration, Task.Delay(_policy.RegistrationWait));
+            Log.Info("net", finished == registration
+                ? $"re-registration finished ok={registration.Result} {handoffClock.ElapsedMilliseconds} ms after acting on the change"
+                : $"re-registration still pending after {_policy.RegistrationWait.TotalSeconds:0.#} s; re-dialling anyway");
         }
 
         Notice?.Invoke(available
             ? "Network changed; re-establishing the link from the new address."
             : "Network connection lost; will reconnect when it returns.");
 
-        foreach (var c in affected)
+        // Hang up every old call at once (each hang-up waits on a dead or changing path), then re-dial each node.
+        await Task.WhenAll(affected.Select(async c =>
         {
             var link = c.Link;
-            if (link == null) continue;
+            if (link == null) return;
             await EndLinkAsync(c, link, transient: true);
             StartReconnect(c, immediate: available);
-        }
+        }));
+        Log.Info("net", $"handoff: {affected.Length} link(s) hung up and re-dial started {handoffClock.ElapsedMilliseconds} ms after acting on the change");
     }
 
     // =====================================================================================

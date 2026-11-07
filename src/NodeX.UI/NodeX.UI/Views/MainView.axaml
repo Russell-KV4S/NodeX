@@ -221,6 +221,13 @@
                 <!-- Registration + Bluetooth badges (wrap onto a second line when space is tight) -->
                 <WrapPanel x:Name="BadgesPanel" Grid.Column="2" Orientation="Horizontal"
                            ItemSpacing="10" LineSpacing="6" VerticalAlignment="Center">
+                    <!-- Always visible on the Radio screen while transmitting is off (listen-only setting or microphone denied) -->
+                    <Border x:Name="ListenOnlyChip" IsVisible="{Binding IsTransmitBlocked}" CornerRadius="12" Padding="10,5"
+                            Background="#2B2110" BorderBrush="{StaticResource AmberAccentBrush}" BorderThickness="1"
+                            ToolTip.Tip="{Binding TransmitBlockedText}" AutomationProperties.Name="Listen only: transmitting is off">
+                        <TextBlock Text="LISTEN ONLY" FontSize="11" FontWeight="Bold" Foreground="#FCD34D" />
+                    </Border>
+
                     <Border Classes="card" CornerRadius="12" Padding="10,5">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <Ellipse x:Name="AslDot" Width="8" Height="8" Classes.registered="{Binding IsAslRegistered}" />
@@ -868,12 +875,16 @@
         <Border x:Name="NavBar" Grid.Row="3" IsVisible="False"
                 Background="{StaticResource HeaderBackgroundBrush}"
                 BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,1,0,0">
-            <Grid ColumnDefinitions="*,*,*,*">
+            <Grid ColumnDefinitions="*,*,*,*,*">
                 <Button x:Name="NavRadio" Grid.Column="0" Classes="navTab" Click="OnNavClick" Tag="0"
                         AutomationProperties.Name="Radio tab">
                     <StackPanel>
                         <Border Classes="navBar" Height="3" Background="{StaticResource CyanAccentBrush}" Margin="12,0,12,4" />
-                        <TextBlock Text="📡" FontSize="18" HorizontalAlignment="Center" />
+                        <!-- Handheld ham transceiver: antenna, knob, display, speaker grille. Follows the tab's colour. -->
+                        <Path Width="22" Height="22" Stretch="Uniform" HorizontalAlignment="Center"
+                              Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.6"
+                              StrokeLineCap="Round" StrokeJoin="Round"
+                              Data="M16 1.5 V6 M10 3.5 V6 M9 6 H15 A2 2 0 0 1 17 8 V20 A2 2 0 0 1 15 22 H9 A2 2 0 0 1 7 20 V8 A2 2 0 0 1 9 6 Z M9.5 8.5 H14.5 V11.5 H9.5 Z M9.5 14.5 H14.5 M9.5 16.5 H14.5 M9.5 18.5 H14.5" />
                         <TextBlock Classes="navLabel" Text="Radio" HorizontalAlignment="Center" />
                     </StackPanel>
                 </Button>
@@ -899,6 +910,15 @@
                         <Border Classes="navBar" Height="3" Background="{StaticResource CyanAccentBrush}" Margin="12,0,12,4" />
                         <TextBlock Text="📜" FontSize="18" HorizontalAlignment="Center" />
                         <TextBlock Classes="navLabel" Text="Log" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <!-- Not a tab: opens the Settings screen -->
+                <Button x:Name="NavSettings" Grid.Column="4" Classes="navTab" Command="{Binding OpenSettingsCommand}"
+                        AutomationProperties.Name="Settings">
+                    <StackPanel>
+                        <Border Classes="navBar" Height="3" Background="{StaticResource CyanAccentBrush}" Margin="12,0,12,4" />
+                        <TextBlock Text="⚙" FontSize="18" HorizontalAlignment="Center" />
+                        <TextBlock Classes="navLabel" Text="Settings" HorizontalAlignment="Center" />
                     </StackPanel>
                 </Button>
             </Grid>

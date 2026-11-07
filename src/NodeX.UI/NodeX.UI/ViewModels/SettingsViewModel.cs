@@ -132,6 +132,21 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial string IdReminderMinutesText { get; set; } = "10";
 
+    // ----- troubleshooting -----
+
+    [ObservableProperty]
+    public partial bool DetailedLogging { get; set; }
+
+    public bool LogSharingSupported => AppServices.LogSharer != null;
+
+    /// <summary>Hands the log file to the platform (share sheet / file manager) and says what happened.</summary>
+    [RelayCommand]
+    private async Task SendLogsAsync()
+    {
+        ErrorText = "";
+        StatusText = await AppServices.ShareLogsAsync();
+    }
+
     // ----- advanced -----
 
     [ObservableProperty]
@@ -197,6 +212,7 @@ public partial class SettingsViewModel : ViewModelBase
         MicProcessing = s.MicProcessing;
         IdReminderEnabled = s.IdReminderEnabled;
         IdReminderMinutesText = s.IdReminderMinutes.ToString(CultureInfo.InvariantCulture);
+        DetailedLogging = s.DetailedLogging;
         RegistrationUrl = s.RegistrationUrl;
         IaxPortText = s.IaxPort.ToString(CultureInfo.InvariantCulture);
     }
@@ -379,7 +395,8 @@ public partial class SettingsViewModel : ViewModelBase
             DefaultToSpeaker = DefaultToSpeaker,
             HardwarePttKey = HardwarePttKey,
             IdReminderEnabled = IdReminderEnabled,
-            IdReminderMinutes = idMinutes
+            IdReminderMinutes = idMinutes,
+            DetailedLogging = DetailedLogging
         };
 
         // Skip range checks for values that failed to parse; they already have a clearer message.

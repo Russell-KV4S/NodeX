@@ -38,6 +38,7 @@ public class MainActivity : AvaloniaMainActivity
         AppServices.MicrophonePermissionRequester = RequestMicrophoneOrOpenSettings;
         AppServices.ExitHandler = () => AndroidAppExit.Finish(this);
         AppServices.SpeakerphoneSetter = speaker => AndroidAudioRoute.SetSpeaker(this, speaker);
+        AppServices.LogSharer = ShareLogText;
         RequestRuntimePermissions();
         UpdateMicrophoneState();
     }
@@ -93,6 +94,21 @@ public class MainActivity : AvaloniaMainActivity
     }
 
     /// <summary>Without the microphone the node still connects and listens; only transmit is turned off.</summary>
+    /// <summary>
+    /// Opens the Android share sheet with the log as plain text (e-mail body, note, chat...). Text rather than a
+    /// file attachment keeps this free of a FileProvider; the size is capped by <see cref="AppServices.ShareTextLimit"/>.
+    /// The full copy stays in the app's private storage.
+    /// </summary>
+    private System.Threading.Tasks.Task ShareLogText(string path, string text)
+    {
+        var send = new global::Android.Content.Intent(global::Android.Content.Intent.ActionSend);
+        send.SetType("text/plain");
+        send.PutExtra(global::Android.Content.Intent.ExtraSubject, $"NodeX log {DateTime.Now:yyyy-MM-dd HH:mm}");
+        send.PutExtra(global::Android.Content.Intent.ExtraText, text);
+        StartActivity(global::Android.Content.Intent.CreateChooser(send, "Send NodeX log"));
+        return System.Threading.Tasks.Task.CompletedTask;
+    }
+
     private void UpdateMicrophoneState() =>
         AppServices.Runtime.Transmit.MicrophoneAllowed =
             CheckSelfPermission(global::Android.Manifest.Permission.RecordAudio) == Permission.Granted;
