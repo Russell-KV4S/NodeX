@@ -207,5 +207,23 @@ public sealed partial class LinkItemViewModel : ObservableObject
     public void ToggleFavorite() => _toggleFavorite(Node);
 
     [RelayCommand]
-    public void SaveLabel() => _saveLabel(Node, LabelInput);
+    public void SaveLabel()
+    {
+        _saveLabel(Node, LabelInput);
+        IsEditingLabel = false;
+    }
+
+    /// <summary>
+    /// The rename box is shown inline in the card rather than in a popup: a popup stays put when the Android keyboard
+    /// opens and ends up hidden behind it, while an inline box scrolls into view with the page.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsEditingLabel { get; set; }
+
+    [RelayCommand]
+    public void ToggleEditLabel()
+    {
+        if (!IsEditingLabel) LabelInput = _labelFor(Node);   // start from the saved name, dropping any abandoned edit
+        IsEditingLabel = !IsEditingLabel;
+    }
 }

@@ -22,6 +22,17 @@ namespace NodeX.UI.Android
             .WithInterFont();
         }
 
+        /// <summary>"1.8 (10)": the manifest versionName and versionCode, so a sent log identifies the release.</summary>
+        private string? AndroidVersionName()
+        {
+            try
+            {
+                var info = PackageManager?.GetPackageInfo(PackageName!, 0);
+                return info == null ? null : $"{info.VersionName} ({info.LongVersionCode})";
+            }
+            catch (System.Exception) { return null; }
+        }
+
         private void ConfigureServices()
         {
             // Keystore-backed secret storage and the AudioRecord/AudioTrack backend.
@@ -30,7 +41,8 @@ namespace NodeX.UI.Android
                 () => new AndroidAudioDeviceService(),
                 // Battery: open the microphone only while keyed.
                 new NodeX.Core.Audio.NodeAudioEngineOptions { OpenMicOnlyWhileKeyed = true },
-                networkMonitor: new AndroidNetworkMonitor(this));
+                networkMonitor: new AndroidNetworkMonitor(this),
+                appVersion: AndroidVersionName());
 
             // Keep the process alive while NodeX has work: a configured node stays registered (and follows IP
             // changes) even when nothing is linked; while linked the service also holds the CPU/Wi-Fi locks and

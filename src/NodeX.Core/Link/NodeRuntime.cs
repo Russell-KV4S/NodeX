@@ -432,6 +432,7 @@ public sealed class NodeRuntime : IAsyncDisposable
 
         try
         {
+            await WaitForRegistrationToSettleAsync(cancellationToken);
             var info = await DialAsync(c, cancellationToken);
             if (info == null) RemoveConnection(c, byUser: true);
             return info;
@@ -441,6 +442,23 @@ public sealed class NodeRuntime : IAsyncDisposable
             RemoveConnection(c, byUser: true);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Hubs hang up on a node whose registration they have not seen yet. If we registered only moments ago, hold the
+    /// first dial until <see cref="ReconnectPolicy.RegistrationSettleDelay"/> has passed instead of failing and retrying.
+    /// </summary>
+    private async Task WaitForRegistrationToSettleAsync(CancellationToken cancellationToken)
+    {
+        var since = RegisteredSince;
+        if (!IsRegistered || since == null || _policy.RegistrationSettleDelay <= TimeSpan.Zero) return;
+
+        var wait = _policy.RegistrationSettleDelay - (DateTimeOffset.UtcNow - since.Value);
+        if (wait <= TimeSpan.Zero) return;
+
+        Log.Info("dial", $"registered {(_policy.RegistrationSettleDelay - wait).TotalSeconds:0.0} s ago; waiting {wait.TotalSeconds:0.0} s before dialling");
+        Notice?.Invoke($"Just registered; waiting {Math.Ceiling(wait.TotalSeconds):0} s for the network to learn about this node before connecting.");
+        await Task.Delay(wait, cancellationToken);
     }
 
     /// <summary>Resolves and starts a call, publishing the new link. Used for the first dial and for retries.</summary>

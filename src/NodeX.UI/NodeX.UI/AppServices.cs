@@ -124,18 +124,33 @@ public static class AppServices
         Func<IAudioDeviceService> audioFactory,
         NodeAudioEngineOptions? audioOptions = null,
         ISettingsStore? settings = null,
-        INetworkMonitor? networkMonitor = null)
+        INetworkMonitor? networkMonitor = null,
+        string? appVersion = null)
     {
         lock (Gate)
         {
             if (IsInitialized) return;
 
             DiagnosticLog.Default.Configure(Path.Combine(JsonFileSettingsStore.DefaultDirectory, "logs"));
-            DiagnosticLog.Default.WriteHeader(typeof(AppServices).Assembly.GetName().Version?.ToString() ?? "?");
+            DiagnosticLog.Default.WriteHeader(appVersion ?? AppVersion());
 
             _runtime = Create(settings ?? new JsonFileSettingsStore(), secrets, audioFactory, audioOptions, networkMonitor);
             IsInitialized = true;
         }
+    }
+
+    /// <summary>The release version for the log header: the entry assembly's version (the head's ApplicationDisplayVersion on Android), not this library's.</summary>
+    private static string AppVersion()
+    {
+        try
+        {
+            var entry = System.Reflection.Assembly.GetEntryAssembly() ?? typeof(AppServices).Assembly;
+            string? info = System.Reflection.CustomAttributeExtensions
+                .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(entry)?.InformationalVersion;
+            if (!string.IsNullOrWhiteSpace(info)) return info.Split('+')[0];
+            return entry.GetName().Version?.ToString() ?? "?";
+        }
+        catch (Exception) { return "?"; }
     }
 
     private static NodeRuntime Create(

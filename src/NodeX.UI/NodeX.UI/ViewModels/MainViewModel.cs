@@ -309,6 +309,17 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial string FavoriteLabelInput { get; set; } = "";
 
+    /// <summary>Inline rename box under the connect row (not a popup, so the Android keyboard cannot cover it).</summary>
+    [ObservableProperty]
+    public partial bool IsEditingFavoriteLabel { get; set; }
+
+    [RelayCommand]
+    public void ToggleEditFavoriteLabel()
+    {
+        if (!IsEditingFavoriteLabel) RefreshTargetFavorite();   // start from the saved name
+        IsEditingFavoriteLabel = !IsEditingFavoriteLabel;
+    }
+
     public string TargetFavoriteGlyph => TargetIsFavorite ? "★" : "☆";
     public string TargetFavoriteName => TargetIsFavorite ? "Remove this node from favorites" : "Add this node to favorites";
 
@@ -322,6 +333,7 @@ public partial class MainViewModel : ViewModelBase
         var item = FavoriteNodes.FirstOrDefault(f => f.Node == node);
         TargetIsFavorite = item != null;
         FavoriteLabelInput = item?.Label ?? "";
+        IsEditingFavoriteLabel = false;   // a different node was typed: close the rename box
     }
 
     [RelayCommand]
@@ -365,6 +377,7 @@ public partial class MainViewModel : ViewModelBase
     {
         string node = TargetNodeInput?.Trim() ?? "";
         if (!NodeSettingsValidator.IsValidNodeNumber(node)) return;
+        IsEditingFavoriteLabel = false;
         if (await UpdateFavoriteAsync(node, favorite: true, FavoriteLabelInput))
             LogActivity($"Saved favorite {node}{(FavoriteLabelInput.Trim().Length > 0 ? $" as \"{FavoriteLabelInput.Trim()}\"" : "")}.");
     }

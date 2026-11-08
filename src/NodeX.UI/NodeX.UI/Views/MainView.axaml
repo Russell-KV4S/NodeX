@@ -100,8 +100,9 @@
         <Style Selector="Ellipse.chipDot.up">
             <Setter Property="Fill" Value="{StaticResource RxGreenBrush}" />
         </Style>
+        <!-- A node you are hearing: clearly green (was a 10% tint, too faint on the dark card) -->
         <Style Selector="Border.linkRow.rx">
-            <Setter Property="Background" Value="#1A10B981" />
+            <Setter Property="Background" Value="#5522C55E" />
             <Setter Property="BorderBrush" Value="{StaticResource RxGreenBrush}" />
             <Setter Property="BorderThickness" Value="2" />
         </Style>
@@ -109,6 +110,11 @@
             <Setter Property="BorderBrush" Value="{StaticResource TxRedBrush}" />
             <Setter Property="BorderThickness" Value="3" />
             <Setter Property="Background" Value="#33EF4444" />
+        </Style>
+        <!-- The transmit node that is also being heard: keep the red border (it is where you talk) but go green
+             inside. Before, the tx rule came later and hid rx entirely, so the transmit node never showed audio. -->
+        <Style Selector="Border.linkRow.tx.rx">
+            <Setter Property="Background" Value="#6622C55E" />
         </Style>
         <Style Selector="Button.chip">
             <Setter Property="Background" Value="#1F2937" />
@@ -592,25 +598,10 @@
                                                         </Border>
                                                         <!-- Favourite this node: star toggles, pencil (favourites only) renames -->
                                                         <Button Content="✎" FontSize="14" IsVisible="{Binding IsFavorite}"
+                                                                Command="{Binding ToggleEditLabelCommand}"
                                                                 AutomationProperties.Name="{Binding RenameAutomationName}"
                                                                 MinWidth="36" MinHeight="36" Padding="0" CornerRadius="6"
                                                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
-                                                            <Button.Flyout>
-                                                                <Flyout Placement="BottomEdgeAlignedRight">
-                                                                    <StackPanel Spacing="8" Width="240">
-                                                                        <TextBlock Text="Favorite name" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                                        <TextBox AutomationProperties.Name="Favorite name"
-                                                                                 Text="{Binding LabelInput}" MaxLength="40"
-                                                                                 PlaceholderText="e.g. East Coast Reflector">
-                                                                            <TextBox.KeyBindings>
-                                                                                <KeyBinding Gesture="Enter" Command="{Binding SaveLabelCommand}" />
-                                                                            </TextBox.KeyBindings>
-                                                                        </TextBox>
-                                                                        <Button Content="Save" Command="{Binding SaveLabelCommand}"
-                                                                                HorizontalAlignment="Right" Padding="14,6" CornerRadius="6" FontWeight="SemiBold" />
-                                                                    </StackPanel>
-                                                                </Flyout>
-                                                            </Button.Flyout>
                                                         </Button>
                                                         <Button Content="{Binding FavoriteGlyph}" FontSize="20"
                                                                 Command="{Binding ToggleFavoriteCommand}"
@@ -620,6 +611,24 @@
                                                                 Foreground="{StaticResource AmberAccentBrush}" />
                                                     </StackPanel>
                                                 </Grid>
+
+                                                <!-- Inline rename (not a popup, which the Android keyboard would cover) -->
+                                                <StackPanel Spacing="6" IsVisible="{Binding IsEditingLabel}">
+                                                    <TextBlock Text="Favorite name" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    <TextBox AutomationProperties.Name="Favorite name"
+                                                             Text="{Binding LabelInput}" MaxLength="40"
+                                                             PlaceholderText="e.g. East Coast Reflector">
+                                                        <TextBox.KeyBindings>
+                                                            <KeyBinding Gesture="Enter" Command="{Binding SaveLabelCommand}" />
+                                                        </TextBox.KeyBindings>
+                                                    </TextBox>
+                                                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                                                        <Button Content="Cancel" Command="{Binding ToggleEditLabelCommand}"
+                                                                Padding="14,6" CornerRadius="6" />
+                                                        <Button Content="Save" Command="{Binding SaveLabelCommand}"
+                                                                Padding="14,6" CornerRadius="6" FontWeight="SemiBold" />
+                                                    </StackPanel>
+                                                </StackPanel>
 
                                                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                                                     <Border Grid.Column="0" IsVisible="{Binding IsTransmitTarget}" VerticalAlignment="Center"
@@ -677,25 +686,10 @@
                                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                             Foreground="{StaticResource AmberAccentBrush}" />
                                     <Button Content="✎" FontSize="16" IsVisible="{Binding TargetIsFavorite}"
+                                            Command="{Binding ToggleEditFavoriteLabelCommand}"
                                             AutomationProperties.Name="Rename this favorite"
                                             MinWidth="36" MinHeight="40" Padding="0" CornerRadius="6"
                                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
-                                        <Button.Flyout>
-                                            <Flyout Placement="BottomEdgeAlignedLeft">
-                                                <StackPanel Spacing="8" Width="260">
-                                                    <TextBlock Text="Favorite name" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBox AutomationProperties.Name="Favorite name"
-                                                             Text="{Binding FavoriteLabelInput}" MaxLength="40"
-                                                             PlaceholderText="e.g. East Coast Reflector">
-                                                        <TextBox.KeyBindings>
-                                                            <KeyBinding Gesture="Enter" Command="{Binding SaveFavoriteLabelCommand}" />
-                                                        </TextBox.KeyBindings>
-                                                    </TextBox>
-                                                    <Button Content="Save" Command="{Binding SaveFavoriteLabelCommand}"
-                                                            HorizontalAlignment="Right" Padding="14,6" CornerRadius="6" FontWeight="SemiBold" />
-                                                </StackPanel>
-                                            </Flyout>
-                                        </Button.Flyout>
                                     </Button>
                                 </StackPanel>
                                 <TextBox x:Name="TargetBox" AutomationProperties.Name="Node number to connect to" Grid.Column="1" Text="{Binding TargetNodeInput}"
@@ -720,6 +714,24 @@
                                             CornerRadius="6" Padding="14,8" />
                                 </Grid>
                             </Grid>
+
+                            <!-- Inline rename (not a popup, which the Android keyboard would cover) -->
+                            <StackPanel Spacing="6" IsVisible="{Binding IsEditingFavoriteLabel}">
+                                <TextBlock Text="Favorite name" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBox AutomationProperties.Name="Favorite name"
+                                         Text="{Binding FavoriteLabelInput}" MaxLength="40"
+                                         PlaceholderText="e.g. East Coast Reflector">
+                                    <TextBox.KeyBindings>
+                                        <KeyBinding Gesture="Enter" Command="{Binding SaveFavoriteLabelCommand}" />
+                                    </TextBox.KeyBindings>
+                                </TextBox>
+                                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                                    <Button Content="Cancel" Command="{Binding ToggleEditFavoriteLabelCommand}"
+                                            Padding="14,6" CornerRadius="6" />
+                                    <Button Content="Save" Command="{Binding SaveFavoriteLabelCommand}"
+                                            Padding="14,6" CornerRadius="6" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </StackPanel>
 
                             <Button Command="{Binding OpenSearchCommand}" AutomationProperties.Name="Find a node"
                                     HorizontalAlignment="Left" Padding="12,8" CornerRadius="6" FontSize="13">

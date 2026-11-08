@@ -37,6 +37,13 @@ public sealed record ReconnectPolicy
     /// Raised from 10 after a busy hub (27339) took the full ~6 minutes and only just accepted on retry 10.
     /// </summary>
     public int EarlyHangupMaxRetries { get; init; } = 30;
+
+    /// <summary>
+    /// A first dial made sooner than this after registering waits out the difference. Seen live 2026-11-07: dialling
+    /// 5 s after registering got hung up on for ~30 s, while dialling 30 s after registering worked first time.
+    /// Zero disables the wait.
+    /// </summary>
+    public TimeSpan RegistrationSettleDelay { get; init; } = TimeSpan.FromSeconds(15);
 }
 
 /// <summary>What the auto-reconnect machinery is doing right now, for display.</summary>
