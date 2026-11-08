@@ -15,6 +15,7 @@ public sealed class RxActivity : IDisposable
     {
         public volatile bool Keyed;
         public long LastVoiceTicks;
+        public long KeyedAtTicks;
         public Action Detach = static () => { };
     }
 
@@ -30,7 +31,11 @@ public sealed class RxActivity : IDisposable
         string node = link.Target.NodeNumber;
         var watch = new Watch();
 
-        void OnKeyed(bool keyed) => watch.Keyed = keyed;
+        void OnKeyed(bool keyed)
+        {
+            if (keyed) Interlocked.Exchange(ref watch.KeyedAtTicks, _clock());
+            watch.Keyed = keyed;
+        }
         void OnVoice(ushort _, ReadOnlyMemory<byte> __) => Interlocked.Exchange(ref watch.LastVoiceTicks, _clock());
 
         link.Session.RemoteKeyedChanged += OnKeyed;
@@ -76,10 +81,20 @@ public sealed class RxActivity : IDisposable
             return _watches.TryGetValue(node, out var w) && IsActive(w, now);
     }
 
-    private static bool IsActive(Watch w, long now)
+    private static bool IsActive(Watch w, long now) =>
+        IsHeard(w.Keyed, Interlocked.Read(ref w.KeyedAtTicks), Interlocked.Read(ref w.LastVoiceTicks), now);
+
+    /// <summary>How long a KEY with no voice frames at all is believed. A node that keys carries voice continuously, so
+    /// silence this long means the UNKEY was lost or never sent and the node must not stay lit forever.</summary>
+    public static readonly TimeSpan KeyStale = TimeSpan.FromSeconds(3);
+
+    /// <summary>The single "is this node being heard" rule, shared with the Radio screen.</summary>
+    public static bool IsHeard(bool keyed, long keyedAtTicks, long lastVoiceTicks, long now)
     {
-        long last = Interlocked.Read(ref w.LastVoiceTicks);
-        return w.Keyed || (last != 0 && now - last < VoiceHold.TotalMilliseconds);
+        if (lastVoiceTicks != 0 && now - lastVoiceTicks < VoiceHold.TotalMilliseconds) return true;
+        if (!keyed) return false;
+        long since = Math.Max(keyedAtTicks, lastVoiceTicks);
+        return now - since < KeyStale.TotalMilliseconds;
     }
 
     public void Dispose()

@@ -56,6 +56,7 @@ public partial class MainViewModel : ViewModelBase
         public volatile float RxLevel;   // written on that link's playout thread
         public bool Keyed;               // from KEY/UNKEY control frames (UI thread)
         public long LastVoiceTicks;      // Environment.TickCount64 of the last voice frame (network thread)
+        public long KeyedAtTicks;        // when the last KEY arrived
         public string Node = "";
         public Action Detach = static () => { };
     }
@@ -1001,7 +1002,8 @@ public partial class MainViewModel : ViewModelBase
         {
             var item = LinkItems.FirstOrDefault(l => l.Node == node);
             watch.Keyed = keyed;
-            if (item != null) { item.IsReceiving = keyed || VoiceRecent(watch); item.NoteHeard(); }
+            if (keyed) watch.KeyedAtTicks = Environment.TickCount64;
+            if (item != null) { item.IsReceiving = IsHeard(watch); item.NoteHeard(); }
             IsRemoteKeyed = LinkItems.Any(l => l.IsReceiving);
             LogActivity(_runtime.Connections.Count > 1
                 ? keyed ? $"<<< Node {node} keyed (RX active)" : $"<<< Node {node} unkeyed"
@@ -1100,11 +1102,8 @@ public partial class MainViewModel : ViewModelBase
 
     private int _tick;
 
-    private static bool VoiceRecent(LinkWatch w)
-    {
-        long last = System.Threading.Interlocked.Read(ref w.LastVoiceTicks);
-        return last != 0 && Environment.TickCount64 - last < 500;
-    }
+    private static bool IsHeard(LinkWatch w) =>
+        RxActivity.IsHeard(w.Keyed, w.KeyedAtTicks, System.Threading.Interlocked.Read(ref w.LastVoiceTicks), Environment.TickCount64);
 
     private void OnUiTimerTick()
     {
@@ -1126,7 +1125,7 @@ public partial class MainViewModel : ViewModelBase
         {
             var li = LinkItems.FirstOrDefault(l => l.Node == w.Node);
             if (li == null || !li.IsConnected) continue;
-            bool on = w.Keyed || VoiceRecent(w);
+            bool on = IsHeard(w);
             if (li.IsReceiving != on) { li.IsReceiving = on; li.NoteHeard(); }
             anyRx |= on;
         }
