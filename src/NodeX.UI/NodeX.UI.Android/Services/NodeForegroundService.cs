@@ -139,7 +139,9 @@ public sealed class NodeForegroundService : Service
         if (state.IsLinked)
         {
             _keeper.Acquire();
-            _keeper.StartBluetoothSco();   // no-op when no Bluetooth headset is connected
+            // No-op when no Bluetooth headset is connected. Skipped for a car session: a car's hands-free link must
+            // not switch the phone into call-style audio.
+            if (!CarSession.Active) _keeper.StartBluetoothSco();
         }
         else
         {
@@ -164,7 +166,9 @@ public sealed class NodeForegroundService : Service
         }
 
         var types = ForegroundService.TypeMediaPlayback | ForegroundService.TypeConnectedDevice;
-        if (micAllowed) types |= ForegroundService.TypeMicrophone;
+        // A car-started link is listen-only and may start while the app is in the background, where Android 14+
+        // refuses microphone-type services: leave the type off.
+        if (micAllowed && !CarSession.Active) types |= ForegroundService.TypeMicrophone;
         return types;
     }
 

@@ -31,5 +31,8 @@
 	<application android:label="NodeX" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"
 		android:allowBackup="true"
 		android:fullBackupContent="@xml/backup_rules"
-		android:dataExtractionRules="@xml/data_extraction_rules" />
+		android:dataExtractionRules="@xml/data_extraction_rules">
+		<!-- Android Auto: NodeX is a (listen-only) media app -->
+		<meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
+	</application>
 </manifest>

@@ -117,7 +117,8 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
 
             _track = new AudioTrack.Builder()
                 .SetAudioAttributes(new AudioAttributes.Builder()
-                    .SetUsage(AudioUsageKind.VoiceCommunication)!
+                    // Car listening (Android Auto) needs normal media audio; phone use keeps the call stream.
+                    .SetUsage(CarSession.Active ? AudioUsageKind.Media : AudioUsageKind.VoiceCommunication)!
                     .SetContentType(AudioContentType.Speech)!
                     .Build()!)!
                 .SetAudioFormat(new global::Android.Media.AudioFormat.Builder()

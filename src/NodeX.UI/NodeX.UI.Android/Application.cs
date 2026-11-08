@@ -33,8 +33,21 @@ namespace NodeX.UI.Android
             catch (System.Exception) { return null; }
         }
 
+        // The media service (Android Auto) can start the process with no Activity, so services are also set up from
+        // OnCreate. Whichever runs first wins.
+        private static bool _servicesConfigured;
+
+        public override void OnCreate()
+        {
+            base.OnCreate();
+            ConfigureServices();
+        }
+
         private void ConfigureServices()
         {
+            if (_servicesConfigured) return;
+            _servicesConfigured = true;
+
             // Keystore-backed secret storage and the AudioRecord/AudioTrack backend.
             AppServices.Initialize(
                 new AndroidKeystoreSecretStore(this),

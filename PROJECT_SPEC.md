@@ -372,6 +372,7 @@ Contract and parser exist; no platform implements `IBluetoothPttService`.
 10. **Optional station-ID reminder** (§17.1): ~~settings, Core timer, UI prompt, tests~~ done; **remaining: Android/iOS background notification** (subscribe to `MainViewModel.IdReminderDue`) and a visual check of the banner. Remaining compliance decisions: compliance decisions (§17.2–3): licensing wording and whether `Callsign` is required before keying.
 11. **Desktop echo handling** (§4.4): headset advisory in the UI or software echo cancellation.
 12. **Linux/macOS secret storage:** use the OS keyring (libsecret / macOS Keychain) instead of a key file beside the ciphertext (§4.7).
+13. **Android Auto (proposed, not started):** listen-only media app first; transmit is a separate later decision. Design, known code problems and acceptance criteria are in the Android Auto appendix.
 
 ---
 
@@ -460,6 +461,102 @@ Requirement (owner): a configured node stays registered with AllStarLink and tra
 - **Exit semantics:** ASL has no documented "unregister"; after Exit the registry entry simply ages out.
 
 - **2026-11-06 follow-ups (built, uncommitted):** (1) `DnsPortLookup` reads the SRV (`_iax._udp.<n>.nodes.allstarlink.org`) / TXT (`PT=`) port with raw UDP DNS (live-verified: 4569 for 27339/45192/523800). `NodeResolution` tries listed port → DNS port → 4569 (probe each); the DNS port is a fallback, NOT preferred, because 27339's DNS says 4569 but it answers on its listed 4579. (2) `Iax2Session.SendNewKeyOnAccept` (default on) sends `!NEWKEY1!\0` right after ACCEPT; hub ACKed it, but a held-link/TX test is UNVERIFIED (523802 must be registered, else hubs hang up ~0.1 s after accept, with or without NEWKEY1). (3) `Iax2Registrar` = IAX2 REGREQ/REGAUTH(MD5)/REGACK over UDP from its own socket (CALLTOKEN echoed); opt-in setting `UdpRegistration` (default off, no UI yet); loopback-tested only, never tried against register.allstarlink.org. It is a separate socket from the call sockets, so the registry would record that socket's port, not 4569.
+
+## Appendix: cloud relay (Zello-style) — considered, **probably not pursued** (2026-11-08)
+Idea: a small server (Vultr $5–10 or AWS) holds each user's IAX2 link to AllStar and talks WebSocket/TLS + push to the phone, so the phone can sleep when idle and be woken by push (Zello's battery/background model). Still AllStar, not a separate network. **Owner decision: maybe, probably not, because of the concerns below.** Nothing built.
+- **Credentials:** the server must hold every user's ASL node number and password (encryption at rest, breach plan, Play Data Safety/privacy policy). Callsign ownership would need verifying.
+- **Single point of failure:** one outage drops all users; DDoS null-routing on the host; direct mode would have to stay as a fallback.
+- **Shared IP:** all users reach AllStar from one cloud IP — possible registration rate limits (unverified) and operators blocking cloud ranges would affect everyone at once.
+- **Cost/scale (estimates, unmeasured):** µ-law ≈80–90 kbps per active link; ~1–2 TB/month on a small Vultr plan ≈ 150–300 heavy users; AWS egress ≈ $0.09/GB, so Opus to the phone is preferable. 1 vCPU ≈ 50–100 concurrent active streams with transcoding.
+- **Push wake latency:** 1–3 s or more, so the server must buffer the start of each transmission; iOS push needs the paid Apple account that is shelved.
+- **Upside:** a public IP makes inbound links possible despite carrier NAT.
+- **Do first instead (no server):** Android foreground service + smarter keep-alive and the AlarmManager heartbeat fallback (see the stay-registered appendix). Only revisit a relay if idle battery drain remains a real problem after device testing.
+
+## Appendix: Android Auto — Phase 1 **implemented, untested on a head unit** (2026-11-08)
+**Status (2026-11-08, later):** Phase 1 is coded and the Android head builds; the merged manifest has the service and the `com.google.android.gms.car.application` meta-data. **Not run on the Desktop Head Unit, a phone or a car.** Phase 2 (transmit) is not started.
+
+**What was built**
+- `NodeX.Core/Link/CarBrowse.cs` (+ `CarBrowseTests`): favourites to browse rows, Next/Previous with wrap, voice query matching, "replace only the car's previous node".
+- `NodeRuntime.StartAsync` is now idempotent and awaitable by every caller (cold start from the service while the UI starts later).
+- `Services/NodeXMediaBrowserService.cs`: framework `MediaBrowserService` + `MediaSession`; caller allow-list in `OnGetRoot` (Android Auto, Assistant, System UI, system, uid-checked); initial state Stopped; Play/Pause/Stop/PlayFromMediaId/PlayFromSearch/Next/Previous; Pause = hang up; error state with a phone-setup message; audio focus (transient loss mutes, permanent loss hangs up the car's node, regain restores only what it muted). A link already up when the car connects is adopted as now-playing (**owner confirmed 2026-11-08**: show it as now-playing; the car session does not start its audio, so MA-1 autoplay is not triggered by adoption).
+- `Services/CarSession.cs`: flag set while a car session owns audio. It makes the `AudioTrack` use `Media` usage, skips Bluetooth SCO, and drops the `microphone` foreground type in `NodeForegroundService`.
+- `Application.OnCreate` now also configures services (guarded), so the service can start the process with no Activity.
+- Nothing in the car path touches `NodePttController`, `HardwarePtt` or the transmit choice, and `OnMediaButtonEvent` is not overridden.
+
+**Requirements re-checked 2026-11-08** (developer.android.com car media + quality pages): `automotive_app_desc` with `<uses name="media"/>` and the meta-data are unchanged. New or newly noted: the docs now describe `MediaBrowserServiceCompat` / Media3 `MediaLibraryService` and never the framework classes (we use the framework ones; untested whether that is accepted, fall back to the AndroidX binding if the DHU shows problems). Required default actions include Pause. Quality criteria that apply: MA-1 no autoplay on startup (initial state Stopped, no play on bind), VC-1 Gemini/Assistant voice must work, DR-1/2/3 buttons answer within 2 s and launch/content load within 10 s (the first dial can wait on the registration settle delay, so Buffering is shown at once), EP-2 restore state on relaunch (not done), VD-2/VD-3 white icon set and colours the system can adjust (**no car media icon provided yet**), GB-1 disabled controls must be inert. Error state must carry a user-facing message, and say so when the phone must be used. The September 2026 note says Games became generally available; the templated-media/calling restrictions in the old text below were not re-verified.
+
+**Still to do:** run on the DHU and a car; confirm voice (`onPlayFromSearch`) with Assistant/Gemini; a white monochrome media icon; check `StartForegroundService` is allowed from a car command with the app never opened; EP-2 state restore; tests for the service itself (only `CarBrowse` is unit tested).
+
+*Original proposal and analysis (written earlier 2026-11-08, before implementation):*
+Google's rules below were read from developer.android.com on 2026-11-08 and change often. Code references were read the same day.
+
+**Goal:** use NodeX in the car from the Android Auto screen. Phase 1 is listen-only. Transmit is a separate, optional Phase 2.
+
+### Platform constraints
+- Android Auto only accepts listed app categories. There is no push-to-talk or radio-link category. In-app audio while driving is limited to media apps and navigation voice guidance.
+- **Media** (`MediaBrowserService` + `MediaSession`; the category description includes radio): all Play tracks. Android Auto draws the browse and now-playing screens; the app supplies no car UI.
+- **Templated media** (Car App Library): early-access program; internal and closed testing tracks only.
+- **Calling** (Telecom Jetpack + Car App Library): beta; internal and closed testing only; builds on open or production tracks are rejected. Telecom must be used at all times, not just in the car. The docs do not mention push-to-talk or group calling.
+- **Car microphone:** `CarAudioRecord` (Car App Library, car API level 5, `RECORD_AUDIO`) delivers 16 kHz L16, so it needs resampling to NodeX's 8 kHz. It requires audio focus, and `read` returns -1 when the user dismisses the mic on the car screen. It is not available to a plain `MediaBrowserService` app.
+- **.NET:** `Xamarin.AndroidX.Car.App.App` 1.7.0.4 supports `net10.0-android` (needed for Phase 2 options B and C only). Some templated-media requirements refer to Car App Library 1.9, so check the binding is new enough. `Android.Service.Media.MediaBrowserService` and `Android.Media.Session.MediaSession` are in `Mono.Android`. Phase 1 may need no new package; if Android Auto does not work with the framework classes, use the AndroidX media binding.
+
+### Phase 1: listen-only media app
+**Car behaviour**
+| Surface | Behaviour |
+|---|---|
+| Browse root | One playable item per `NodeSettings.FavoriteNodes`, titled from `FavoriteLabels` or else the node number. |
+| No favorites | One non-playable item telling the user to add favorites on the phone. |
+| Select a favorite | `NodeRuntime.ConnectAsync(node)`. It becomes the now-playing node. |
+| Select another favorite | Connect it, then `DisconnectAsync(previous)` for the previous now-playing node only. Links started on the phone are left alone. **Proposed default; owner to confirm.** |
+| Link already up when the car connects | Show it as now playing (`Runtime.Link` if set, else the first link). |
+| Stop | `DisconnectAsync(now-playing node)`. |
+| Next / Previous | Move through favorites, same as selecting one. |
+| Playback state | Connecting or reconnecting (§4.6) = buffering; connected = playing with unknown position; no link = stopped. No pause, seek or position. |
+| Metadata | Title = label or node number; subtitle = connection state, later receiving or last-heard time. A talker's callsign needs link TEXT frame parsing (§13 item 1) and is out of scope. |
+| Voice | `onPlayFromSearch`: match a favorite label or node number; an empty query plays the last-used favorite. Confirm against the current voice-actions docs. |
+| Not configured or registration failed | Playback error with a short message to finish setup on the phone. No forms or text entry on the car screen, so Find-a-node and Settings stay phone-only. |
+
+**Never in Phase 1:** nothing reachable from the car may key the transmitter. `MediaSession` callbacks must not touch `NodePttController` or `HardwarePtt`.
+
+**Implementation**
+1. New `Services/NodeXMediaBrowserService.cs` in the Android head: exported, intent filter `android.media.browse.MediaBrowserService`, owns the `MediaSession`, and follows `NodeRuntime` events (`LinkAdded`, `LinkRemoved`, `ConnectionsChanged`, session state). Validate the caller in `OnGetRoot`.
+2. Add `Resources/xml/automotive_app_desc.xml` (`<automotiveApp><uses name="media"/></automotiveApp>`) and application meta-data `com.google.android.gms.car.application` pointing at it.
+3. Provide a car-appropriate monochrome media icon.
+4. Keep NodeX behaviour in `NodeX.Core` where practical (§12): for example a favorite-to-browse-item mapping and the "replace now-playing node" rule, with unit tests. Only Android bindings go in the head.
+
+**Known code problems to solve**
+- **Cold start:** Android Auto can bind the service with no Activity. Today `Runtime.StartAsync` and the settings load are reached only from `MainViewModel.InitializeAsync`, created in `App.OnFrameworkInitializationCompleted`. Whether that runs without an Activity is unverified. Move startup to an idempotent call in `AppServices` that the service and view model can both use.
+- **Foreground service:** `NodeForegroundService.TypesFor` adds `microphone` whenever `RECORD_AUDIO` is granted. Android 14+ restricts starting microphone-type services from the background, and `Apply` handles a refusal by shutting the service down. A car-started link must use `mediaPlayback` without `microphone`. Also confirm that `EnsureStarted` is permitted when started from a car media command.
+- **Audio path:** `AndroidAudioDeviceService` plays with `AudioUsageKind.VoiceCommunication`. `AndroidAudioRoute` sets `Mode.InCommunication` and defaults to Bluetooth SCO or the earpiece. `NodeForegroundService.Apply` starts SCO when linked if a Bluetooth headset is present, and a car's hands-free link may count as one. Car listening needs usage `Media`, content type `Speech`, normal audio mode and no SCO. The `AudioTrack` usage is fixed when it is created, so a link already up when the car connects or disconnects needs its track rebuilt.
+- **Audio focus:** no focus handling exists today. Request `AUDIOFOCUS_GAIN` on connect and abandon it on stop. On transient loss (navigation prompt, phone call), duck or mute but keep the link up. On permanent loss, define the behaviour during the first head-unit test.
+- **Receive state:** `IsReceiving` and last-heard live in `LinkItemViewModel`. A car subtitle needs them exposed from Core.
+
+**Acceptance criteria (Phase 1)**
+- NodeX appears in the Android Auto launcher on the Desktop Head Unit, then in a real car.
+- With the phone locked and the app never opened since boot, a favorite can be selected and heard through the car speakers.
+- Stop drops the link and the foreground notification returns to its idle state.
+- A navigation prompt ducks or interrupts the audio, and playback resumes without redialling.
+- A phone call pauses audio; the link recovers after the call.
+- Wi-Fi to cellular handoff shows buffering and resumes (§4.6).
+- No car action can transmit, confirmed by a unit test on the controller path and by node logs.
+- Non-car phone and Bluetooth headset audio are unchanged.
+- Empty favorites and incomplete settings show the message states rather than a blank screen or crash.
+
+**Testing:** Google's Desktop Head Unit on the PC first (`adb forward tcp:5277 tcp:5277`, Android Auto developer mode, "Unknown sources" for sideloaded debug builds), then the Play internal track and a real car.
+
+### Phase 2: transmit (separate decision, after Phase 1 works in a car)
+| Option | Approach | Limits |
+|---|---|---|
+| **A (try first)** | Map a `MediaSession` command from the steering wheel to `HandleButtonAsync` on `Runtime.Link.Ptt`, with a new `PttSource`. | Toggle only (press to key, press to unkey). Phone or Bluetooth mic unless routed otherwise. Google may object to this in a media app, so internal track only until that is known. |
+| **B** | Templated media with an on-screen PTT action and `CarAudioRecord`. | Early access; internal and closed tracks only. |
+| **C** | Calling category, treating a link as a call and mute as PTT. | Beta; internal and closed tracks only. Telecom integration at all times. Poor fit for PTT. |
+
+**Safety requirements for any Phase 2 option:** off by default behind an explicit setting; honour `TransmitPolicy` and the multi-node transmit rules (only the chosen transmit node; never redirect to another node); enforce the existing time-out timer (`TimeOutTimerLimit`) whenever keyed from the car; give an audible key and unkey indication; never key on connect, reconnect, or head-unit attach or detach. The owner's 523800 relays to RF node 47923, so check links and warn before any keyed test. Review §17 station-ID behaviour for hands-free use.
+
+### Open questions
+- Will Google approve a ham-link app in the media category for production? Listen-only is the best case; it is unconfirmed.
+- Does a third-party media app's `AudioRecord` get the phone mic or the car mic during Android Auto? Only relevant to Phase 2 option A.
+- Does the transmit timing and audio quality hold up with the head-unit audio buffering? Measure it.
 
 ## Appendix: branding (2026-11-06)
 Logo (**owner-supplied navy X with amber outline and traces**, `branding/screen.png`; supersedes the earlier AI blue-X mark) applied: desktop window/exe icon (`Assets/nodex.ico`), header logo (`Assets/nodex-mark.png`), Android adaptive + monochrome launcher icons, notification small icon, splash, browser favicon. Sources, palette and the regeneration script (`build_assets.py`) are in `branding/` (see `branding/BRAND.md`). Android build and desktop launch verified; Android icon/splash **not seen on a device**. iOS has no app-icon asset catalogue yet.

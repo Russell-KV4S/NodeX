@@ -39,6 +39,7 @@ public sealed class NodeRuntime : IAsyncDisposable
     private bool _active;
     private string? _activeNode;
     private bool _started;
+    private Task? _startTask;                                   // guarded by _connLock
     private bool _disposed;
     private volatile bool _exited;
 
@@ -232,9 +233,16 @@ public sealed class NodeRuntime : IAsyncDisposable
     // =====================================================================================
 
     /// <summary>Loads the saved configuration, starts registering if it is complete, and starts watching the network.</summary>
-    public async Task StartAsync(CancellationToken cancellationToken = default)
+    public Task StartAsync(CancellationToken cancellationToken = default)
     {
-        if (_started) return;
+        // Idempotent and awaitable by every caller: the UI and the Android Auto service can both start the runtime,
+        // and whichever comes second waits for the first to finish loading the settings.
+        lock (_connLock)
+            return _startTask ??= StartCoreAsync(cancellationToken);
+    }
+
+    private async Task StartCoreAsync(CancellationToken cancellationToken)
+    {
         _started = true;
 
         _monitor ??= new SystemNetworkMonitor();
