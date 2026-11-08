@@ -82,6 +82,18 @@ public sealed record NodeSettings
     public int HardwarePttKey { get; init; }
 
     /// <summary>
+    /// Android Auto: show a Talk button on the car's now-playing screen that keys the transmit node (tap to talk, tap
+    /// again to stop). Off by default; nothing in the car can transmit unless this is on.
+    /// </summary>
+    public bool CarPtt { get; init; }
+
+    /// <summary>
+    /// Android Auto, only with <see cref="CarPtt"/>: which steering-wheel button (Next or Back/Previous) toggles talk
+    /// instead of skipping favourites; the other one still skips. Off by default because a stray press would go on air.
+    /// </summary>
+    public CarWheelTalk CarPttWheel { get; init; }
+
+    /// <summary>
     /// Show a reminder to identify (by voice) while linked. Off by default. Nothing is ever transmitted
     /// automatically; the reminder only prompts the user.
     /// </summary>

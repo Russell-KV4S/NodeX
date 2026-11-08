@@ -12,7 +12,9 @@ public enum PttSource
     BluetoothBle,
     MediaKey,
     Vox,
-    External
+    External,
+    /// <summary>Android Auto Talk button or steering-wheel button (toggle only).</summary>
+    Car
 }
 
 /// <summary>

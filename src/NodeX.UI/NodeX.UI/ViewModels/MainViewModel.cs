@@ -33,6 +33,18 @@ public partial class MainViewModel : ViewModelBase
 
     private readonly NodeRuntime _runtime;
     private DispatcherTimer? _timer;
+
+    /// <summary>
+    /// Keeps the "Last heard 3:03 PM (4 min ago)" age text current. It is separate from the 100 ms meter timer
+    /// (which is stopped in the background and runs at Background priority) so a row can never stay stuck on
+    /// "just now" after the screen comes back.
+    /// </summary>
+    private DispatcherTimer? _ageTimer;
+
+    private void RefreshLastHeardAges()
+    {
+        foreach (var item in LinkItems) item.UpdateLastHeardText();
+    }
     private volatile float _micMeter;   // written on audio threads, applied by the UI timer
     private DateTime? _backgroundedAt;
 
@@ -42,6 +54,9 @@ public partial class MainViewModel : ViewModelBase
     private sealed class LinkWatch
     {
         public volatile float RxLevel;   // written on that link's playout thread
+        public bool Keyed;               // from KEY/UNKEY control frames (UI thread)
+        public long LastVoiceTicks;      // Environment.TickCount64 of the last voice frame (network thread)
+        public string Node = "";
         public Action Detach = static () => { };
     }
 
@@ -559,6 +574,8 @@ public partial class MainViewModel : ViewModelBase
         if (foreground)
         {
             _timer.Start();
+            _ageTimer?.Start();
+            RefreshLastHeardAges();   // the screen may have been off for minutes
             OnUiTimerTick();
         }
         else
@@ -572,6 +589,8 @@ public partial class MainViewModel : ViewModelBase
     {
         _timer ??= new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Background, (_, _) => OnUiTimerTick());
         _timer.Start();
+        _ageTimer ??= new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Normal, (_, _) => RefreshLastHeardAges());
+        _ageTimer.Start();
 
         try
         {
@@ -967,7 +986,10 @@ public partial class MainViewModel : ViewModelBase
 
         string node = link.Target.NodeNumber;
         bool first = _watches.Count == 0;
-        var watch = new LinkWatch();
+        var watch = new LinkWatch { Node = node };
+
+        // Some nodes send audio without (or before) a KEY control frame, so also treat voice frames as "receiving".
+        void OnVoice(ushort _, ReadOnlyMemory<byte> __) => System.Threading.Interlocked.Exchange(ref watch.LastVoiceTicks, Environment.TickCount64);
 
         void OnState(Iax2SessionState s) => OnUi(() =>
         {
@@ -978,7 +1000,8 @@ public partial class MainViewModel : ViewModelBase
         void OnKeyed(bool keyed) => OnUi(() =>
         {
             var item = LinkItems.FirstOrDefault(l => l.Node == node);
-            if (item != null) { item.IsReceiving = keyed; item.NoteHeard(); }
+            watch.Keyed = keyed;
+            if (item != null) { item.IsReceiving = keyed || VoiceRecent(watch); item.NoteHeard(); }
             IsRemoteKeyed = LinkItems.Any(l => l.IsReceiving);
             LogActivity(_runtime.Connections.Count > 1
                 ? keyed ? $"<<< Node {node} keyed (RX active)" : $"<<< Node {node} unkeyed"
@@ -993,6 +1016,7 @@ public partial class MainViewModel : ViewModelBase
 
         link.Session.StateChanged += OnState;
         link.Session.RemoteKeyedChanged += OnKeyed;
+        link.Session.VoiceFrameReceived += OnVoice;
         link.Session.NodeMessageReceived += OnMessage;
         link.Ptt.PttStateChanged += OnPtt;
         link.Ptt.TimeOutTimerExceeded += OnTimeOutExceeded;
@@ -1004,6 +1028,7 @@ public partial class MainViewModel : ViewModelBase
         {
             link.Session.StateChanged -= OnState;
             link.Session.RemoteKeyedChanged -= OnKeyed;
+            link.Session.VoiceFrameReceived -= OnVoice;
             link.Session.NodeMessageReceived -= OnMessage;
             link.Ptt.PttStateChanged -= OnPtt;
             link.Ptt.TimeOutTimerExceeded -= OnTimeOutExceeded;
@@ -1075,6 +1100,12 @@ public partial class MainViewModel : ViewModelBase
 
     private int _tick;
 
+    private static bool VoiceRecent(LinkWatch w)
+    {
+        long last = System.Threading.Interlocked.Read(ref w.LastVoiceTicks);
+        return last != 0 && Environment.TickCount64 - last < 500;
+    }
+
     private void OnUiTimerTick()
     {
         var link = TxLink;
@@ -1088,6 +1119,18 @@ public partial class MainViewModel : ViewModelBase
         }
 
         MicAudioLevel = _micMeter;
+
+        // Per-node RX highlight: keyed by control frame OR voice frames in the last 500 ms.
+        bool anyRx = false;
+        foreach (var w in _watches.Values)
+        {
+            var li = LinkItems.FirstOrDefault(l => l.Node == w.Node);
+            if (li == null || !li.IsConnected) continue;
+            bool on = w.Keyed || VoiceRecent(w);
+            if (li.IsReceiving != on) { li.IsReceiving = on; li.NoteHeard(); }
+            anyRx |= on;
+        }
+        if (IsRemoteKeyed != anyRx) IsRemoteKeyed = anyRx;
 
         // The speaker meter shows the loudest linked node.
         float rx = 0;

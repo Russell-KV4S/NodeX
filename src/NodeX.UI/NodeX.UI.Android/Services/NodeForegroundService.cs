@@ -117,23 +117,51 @@ public sealed class NodeForegroundService : Service
         var notification = BuildNotification(state);
         bool micAllowed = CheckSelfPermission(global::Android.Manifest.Permission.RecordAudio) == Permission.Granted;
 
+        bool carTalk = CarSession.Active && AppServices.Runtime.Config.Settings.CarPtt;
+        bool wantMic = micAllowed && (!CarSession.Active || carTalk);
+        bool micGranted = false;
+
         try
         {
             if (OperatingSystem.IsAndroidVersionAtLeast(30))
             {
-                StartForeground(NotificationId, notification, TypesFor(state, micAllowed));
+                StartForeground(NotificationId, notification, TypesFor(state, wantMic));
+                micGranted = wantMic && state.IsLinked;
             }
             else
             {
                 StartForeground(NotificationId, notification);
+                micGranted = micAllowed;
             }
         }
         catch (Exception ex)
         {
             global::Android.Util.Log.Warn("NodeX", $"Foreground start refused: {ex.Message}");
-            Shutdown();
-            return false;
+
+            // From the car with the app in the background, Android 14+ may refuse the microphone type. Keep listening
+            // without it and tell the car it cannot talk, rather than losing the link.
+            bool retried = false;
+            if (wantMic && state.IsLinked && CarSession.Active && OperatingSystem.IsAndroidVersionAtLeast(30))
+            {
+                try
+                {
+                    StartForeground(NotificationId, notification, TypesFor(state, false));
+                    retried = true;
+                }
+                catch (Exception ex2)
+                {
+                    global::Android.Util.Log.Warn("NodeX", $"Foreground start refused again: {ex2.Message}");
+                }
+            }
+
+            if (!retried)
+            {
+                CarSession.MicrophoneUsable = false;
+                Shutdown();
+                return false;
+            }
         }
+        CarSession.MicrophoneUsable = micGranted;
 
         _keeper ??= new AndroidBackgroundKeeper(this);
         if (state.IsLinked)
@@ -156,7 +184,7 @@ public sealed class NodeForegroundService : Service
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("android30.0")]
-    private static ForegroundService TypesFor(BackgroundState state, bool micAllowed)
+    private static ForegroundService TypesFor(BackgroundState state, bool includeMic)
     {
         if (!state.IsLinked)
         {
@@ -166,9 +194,9 @@ public sealed class NodeForegroundService : Service
         }
 
         var types = ForegroundService.TypeMediaPlayback | ForegroundService.TypeConnectedDevice;
-        // A car-started link is listen-only and may start while the app is in the background, where Android 14+
-        // refuses microphone-type services: leave the type off.
-        if (micAllowed && !CarSession.Active) types |= ForegroundService.TypeMicrophone;
+        // A car session leaves the microphone type off unless "Talk from the car" is on, because Android 14+ refuses
+        // it for a service started from the background (Apply then falls back to listen-only).
+        if (includeMic) types |= ForegroundService.TypeMicrophone;
         return types;
     }
 

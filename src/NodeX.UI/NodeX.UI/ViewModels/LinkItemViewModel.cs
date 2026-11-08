@@ -85,11 +85,14 @@ public sealed partial class LinkItemViewModel : ObservableObject
         if (IsReceiving) { LastHeardText = "Hearing now"; return; }
         if (_lastHeard is not { } t) { LastHeardText = "Not heard yet"; return; }
         var age = DateTime.Now - t;
-        string ago = age.TotalSeconds < 60 ? "just now"
-            : age.TotalMinutes < 60 ? $"{(int)age.TotalMinutes} min ago"
-            : $"{(int)age.TotalHours} h {age.Minutes} min ago";
-        LastHeardText = $"Last heard {t:h:mm tt} ({ago})";
+        LastHeardText = $"Last heard {t:h:mm tt} ({AgoText(age)})";
     }
+
+    /// <summary>"just now" for under a minute, then "N min ago", then "H h M min ago".</summary>
+    public static string AgoText(TimeSpan age) =>
+        age.TotalSeconds < 60 ? "just now"
+        : age.TotalMinutes < 60 ? $"{(int)age.TotalMinutes} min ago"
+        : $"{(int)age.TotalHours} h {age.Minutes} min ago";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSelectTransmit), nameof(MuteButtonText), nameof(MuteAutomationName))]

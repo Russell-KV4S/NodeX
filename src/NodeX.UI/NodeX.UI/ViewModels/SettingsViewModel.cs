@@ -72,6 +72,14 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool DefaultToSpeaker { get; set; }
 
+    /// <summary>Android Auto: a Talk button on the car screen (off by default).</summary>
+    [ObservableProperty]
+    public partial bool CarPtt { get; set; }
+
+    /// <summary>Android Auto: which steering-wheel button talks. 0 = none (default), 1 = Next, 2 = Back. A ComboBox index.</summary>
+    [ObservableProperty]
+    public partial int CarWheelIndex { get; set; }
+
     /// <summary>The phone/speaker choice only exists where the platform can switch the audio route (Android).</summary>
     public bool AudioRouteSupported => AppServices.SpeakerphoneSetter != null;
 
@@ -211,6 +219,8 @@ public partial class SettingsViewModel : ViewModelBase
         AutoReconnect = s.AutoReconnect;
         TogglePtt = s.TogglePtt;
         DefaultToSpeaker = s.DefaultToSpeaker;
+        CarPtt = s.CarPtt;
+        CarWheelIndex = (int)s.CarPttWheel;
         HardwarePttKey = s.HardwarePttKey;
         TimeOutSecondsText = s.TimeOutTimerSeconds.ToString(CultureInfo.InvariantCulture);
         MicGain = s.MicGain;
@@ -398,6 +408,8 @@ public partial class SettingsViewModel : ViewModelBase
             TimeOutTimerSeconds = timeout,
             TogglePtt = TogglePtt,
             DefaultToSpeaker = DefaultToSpeaker,
+            CarPtt = CarPtt,
+            CarPttWheel = CarPtt && CarWheelIndex is >= 1 and <= 2 ? (CarWheelTalk)CarWheelIndex : CarWheelTalk.Off,
             HardwarePttKey = HardwarePttKey,
             IdReminderEnabled = IdReminderEnabled,
             IdReminderMinutes = idMinutes,

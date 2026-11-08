@@ -5,8 +5,8 @@
     <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <ApplicationId>com.kv4s.nodex</ApplicationId>
-    <ApplicationVersion>11</ApplicationVersion>
-    <ApplicationDisplayVersion>1.9</ApplicationDisplayVersion>
+    <ApplicationVersion>12</ApplicationVersion>
+    <ApplicationDisplayVersion>1.10</ApplicationDisplayVersion>
     <AndroidPackageFormat Condition="'$(Configuration)' == 'Release'">aab</AndroidPackageFormat>
     <AndroidPackageFormat Condition="'$(Configuration)' != 'Release'">apk</AndroidPackageFormat>
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>

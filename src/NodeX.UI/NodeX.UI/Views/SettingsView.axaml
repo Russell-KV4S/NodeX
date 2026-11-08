@@ -117,6 +117,22 @@
                     <TextBlock Classes="hint" Margin="0,-8,0,0" IsVisible="{Binding !AudioRouteSupported}"
                                Text="Phone only: this computer has a single audio output, so there is nothing to switch." />
 
+                    <!-- Android Auto talk (Android only; off by default) -->
+                    <StackPanel Spacing="6" IsVisible="{Binding HardwareKeysSupported}">
+                        <CheckBox Content="Android Auto: show a Talk button on the car screen"
+                                  IsChecked="{Binding CarPtt}" />
+                        <TextBlock Classes="hint" Margin="28,-4,0,0" TextWrapping="Wrap"
+                                   Text="Tap Talk to go on air, tap again to stop. It only keys the node you chose as the transmit node, and it stops by itself at the time-out timer, on a call or navigation prompt, or when the car disconnects. Uses the phone's microphone. Check the node's links first: this can reach your RF station." />
+                        <StackPanel Margin="28,0,0,0" Spacing="4" IsEnabled="{Binding CarPtt}">
+                            <TextBlock Classes="label" Text="Steering-wheel button that talks" />
+                            <ComboBox SelectedIndex="{Binding CarWheelIndex}" HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="None (use the on-screen Talk button)" />
+                                <ComboBoxItem Content="Next button talks (Back still skips favourites)" />
+                                <ComboBoxItem Content="Back button talks (Next still skips favourites)" />
+                            </ComboBox>
+                        </StackPanel>
+                    </StackPanel>
+
                     <!-- A phone button as PTT (Android) -->
                     <StackPanel IsVisible="{Binding HardwareKeysSupported}">
                         <TextBlock Classes="label" Text="Phone button for push-to-talk" />
