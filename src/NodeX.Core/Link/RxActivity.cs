@@ -91,10 +91,15 @@ public sealed class RxActivity : IDisposable
     /// <summary>The single "is this node being heard" rule, shared with the Radio screen.</summary>
     public static bool IsHeard(bool keyed, long keyedAtTicks, long lastVoiceTicks, long now)
     {
-        if (lastVoiceTicks != 0 && now - lastVoiceTicks < VoiceHold.TotalMilliseconds) return true;
-        if (!keyed) return false;
-        long since = Math.Max(keyedAtTicks, lastVoiceTicks);
-        return now - since < KeyStale.TotalMilliseconds;
+        if (keyedAtTicks != 0)
+        {
+            // This node has sent a KEY frame, so it announces its transmissions and its UNKEY is believed. Voice frames
+            // after UNKEY (a hub relaying silence or noise) must not keep it lit. The voice rule below is only for nodes
+            // such as East Coast Reflector that send audio with no KEY at all.
+            if (!keyed) return false;
+            return now - Math.Max(keyedAtTicks, lastVoiceTicks) < KeyStale.TotalMilliseconds;
+        }
+        return lastVoiceTicks != 0 && now - lastVoiceTicks < VoiceHold.TotalMilliseconds;
     }
 
     public void Dispose()

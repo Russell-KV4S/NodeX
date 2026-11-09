@@ -44,6 +44,7 @@
                            Foreground="{StaticResource TextPrimaryBrush}" />
                 <TextBlock Classes="hint" Margin="0"
                            Text="Enter the details of the node you registered on the AllStarLink portal (allstarlink.org)." />
+                <TextBlock Classes="hint" Margin="0" Text="{Binding VersionText}" />
             </StackPanel>
 
             <!-- STATION -->

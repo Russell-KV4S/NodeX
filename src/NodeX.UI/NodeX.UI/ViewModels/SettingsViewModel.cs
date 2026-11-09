@@ -17,6 +17,9 @@ namespace NodeX.UI.ViewModels;
 /// </summary>
 public partial class SettingsViewModel : ViewModelBase
 {
+    /// <summary>"Version 1.11", shown at the top of Settings so a tester can tell which build they are running.</summary>
+    public string VersionText => AppServices.VersionText;
+
     private readonly NodeConfigService _config;
     private readonly Func<AslRegistrationConfig, AslRegistrationService> _registrationFactory;
 

@@ -140,6 +140,8 @@ public static class AppServices
     }
 
     /// <summary>The release version for the log header: the entry assembly's version (the head's ApplicationDisplayVersion on Android), not this library's.</summary>
+    public static string VersionText => $"Version {AppVersion()}";
+
     private static string AppVersion()
     {
         try
