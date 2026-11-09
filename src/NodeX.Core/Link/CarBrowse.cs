@@ -2,8 +2,8 @@ using NodeX.Core.Settings;
 
 namespace NodeX.Core;
 
-/// <summary>One row on the car's browse screen. <see cref="MediaId"/> is the node number for a playable row.</summary>
-public sealed record CarBrowseItem(string MediaId, string Title, bool Playable);
+/// <summary>One row on the car's browse screen. <see cref="MediaId"/> is the node number or command id for a playable row.</summary>
+public sealed record CarBrowseItem(string MediaId, string Title, bool Playable, string? Subtitle = null);
 
 /// <summary>
 /// Platform-neutral rules for the Android Auto listen-only media app: what the browse list shows, which favourite
@@ -12,21 +12,109 @@ public sealed record CarBrowseItem(string MediaId, string Title, bool Playable);
 /// </summary>
 public static class CarBrowse
 {
+    /// <summary>The browse root identifier.</summary>
+    public const string RootId = "nodex_root";
+
+    /// <summary>Media ID of the Active Links folder/tab.</summary>
+    public const string ActiveFolderId = "nodex:active";
+
+    /// <summary>Media ID of the Favourites folder/tab.</summary>
+    public const string FavoritesFolderId = "nodex:favorites";
+
     /// <summary>Media id of the single non-playable row shown when there are no favourites.</summary>
     public const string NoFavoritesId = "nodex:no-favorites";
 
-    /// <summary>The favourites as browse rows, or one explanatory row when there are none.</summary>
-    public static IReadOnlyList<CarBrowseItem> BuildItems(NodeSettings settings)
+    /// <summary>Media id of the single non-playable row shown when there are no active links.</summary>
+    public const string NoActiveId = "nodex:no-active";
+
+    /// <summary>Prefix for disconnecting an individual node from the car screen.</summary>
+    public const string DisconnectPrefix = "nodex:disconnect:";
+
+    /// <summary>Media ID for disconnecting all nodes from the car screen.</summary>
+    public const string DisconnectAllId = "nodex:disconnect:all";
+
+    /// <summary>Top-level navigation tabs for Android Auto.</summary>
+    public static IReadOnlyList<CarBrowseItem> BuildRootItems(int activeCount, int favoritesCount)
+    {
+        return
+        [
+            new CarBrowseItem(ActiveFolderId, "Active Links", false, activeCount > 0 ? $"{activeCount} connected" : "None connected"),
+            new CarBrowseItem(FavoritesFolderId, "Favourites", false, favoritesCount > 0 ? $"{favoritesCount} saved" : "None saved")
+        ];
+    }
+
+    /// <summary>The favourites as browse rows with connection badges, or one explanatory row when there are none.</summary>
+    public static IReadOnlyList<CarBrowseItem> BuildFavoritesItems(
+        NodeSettings settings,
+        IReadOnlyList<string>? connectedNodes = null,
+        string? transmitNode = null)
     {
         var items = new List<CarBrowseItem>();
+        var connectedSet = connectedNodes != null ? new HashSet<string>(connectedNodes) : [];
+
         foreach (string node in settings.FavoriteNodes ?? [])
         {
             if (string.IsNullOrWhiteSpace(node)) continue;
-            items.Add(new CarBrowseItem(node, TitleFor(settings, node), true));
+            bool isConnected = connectedSet.Contains(node);
+            string subtitle = isConnected
+                ? (node == transmitNode ? $"Node {node} • Connected (Transmit)" : $"Node {node} • Connected (Listen)")
+                : $"Node {node}";
+            items.Add(new CarBrowseItem(node, TitleFor(settings, node), true, subtitle));
         }
 
         if (items.Count == 0)
             items.Add(new CarBrowseItem(NoFavoritesId, "No favourites yet. Add them in NodeX on your phone.", false));
+        return items;
+    }
+
+    /// <summary>The favourites as browse rows, or one explanatory row when there are none.</summary>
+    public static IReadOnlyList<CarBrowseItem> BuildItems(NodeSettings settings) =>
+        BuildFavoritesItems(settings);
+
+    /// <summary>
+    /// Rows for the Active Links folder: shows each connected/reconnecting node with status, a disconnect row
+    /// for each, and a disconnect-all row when multiple links exist.
+    /// </summary>
+    public static IReadOnlyList<CarBrowseItem> BuildActiveItems(
+        NodeSettings settings,
+        IReadOnlyList<NodeConnection> connections,
+        string? transmitNode,
+        IReadOnlySet<string>? talkingNodes = null)
+    {
+        var items = new List<CarBrowseItem>();
+        foreach (var conn in connections)
+        {
+            string node = conn.Node;
+            string title = TitleFor(settings, node);
+            bool isTx = node == transmitNode;
+            bool isTalking = talkingNodes?.Contains(node) == true;
+            bool isConnected = conn.Link?.Session.State == Iax2SessionState.Connected;
+
+            string role = isTx ? "Transmit" : "Listen-only";
+            string status;
+            if (!isConnected)
+                status = $"{role} • " + (conn.Reconnect.Active ? "Reconnecting…" : "Connecting…");
+            else if (isTalking)
+                status = $"{role} • Hearing now";
+            else
+                status = $"{role} • Connected";
+
+            // Row 1: The node itself (playable: selects it as now playing and makes it transmit node)
+            items.Add(new CarBrowseItem(node, title, true, status));
+
+            // Row 2: Disconnect action for this specific node
+            items.Add(new CarBrowseItem(DisconnectPrefix + node, $"Disconnect {node}", true, $"Hang up {title}"));
+        }
+
+        if (items.Count == 0)
+        {
+            items.Add(new CarBrowseItem(NoActiveId, "No active links", false, "Select a favourite to connect"));
+        }
+        else if (connections.Count > 1)
+        {
+            items.Add(new CarBrowseItem(DisconnectAllId, "Disconnect all nodes", true, $"Hang up all {connections.Count} active links"));
+        }
+
         return items;
     }
 
@@ -79,8 +167,8 @@ public static class CarBrowse
 
     /// <summary>
     /// The node to hang up when the car selects <paramref name="selected"/>: the one that was now-playing, unless it is
-    /// the same node. Links started on the phone are never returned because only the car's own now-playing node is passed in.
+    /// the same node or the selected node is already connected (in which case we are just switching focus).
     /// </summary>
-    public static string? NodeToReplace(string? nowPlaying, string selected) =>
-        string.IsNullOrEmpty(nowPlaying) || nowPlaying == selected ? null : nowPlaying;
+    public static string? NodeToReplace(string? nowPlaying, string selected, bool selectedAlreadyConnected = false) =>
+        selectedAlreadyConnected || string.IsNullOrEmpty(nowPlaying) || nowPlaying == selected ? null : nowPlaying;
 }

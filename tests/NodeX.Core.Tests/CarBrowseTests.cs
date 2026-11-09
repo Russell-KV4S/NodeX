@@ -58,5 +58,76 @@ public class CarBrowseTests
         Assert.Equal("1111", CarBrowse.NodeToReplace("1111", "2222"));
         Assert.Null(CarBrowse.NodeToReplace("1111", "1111"));
         Assert.Null(CarBrowse.NodeToReplace(null, "2222"));
+        Assert.Null(CarBrowse.NodeToReplace("1111", "2222", selectedAlreadyConnected: true));
+    }
+
+    [Fact]
+    public void Root_items_expose_active_links_and_favorites_tabs()
+    {
+        var root = CarBrowse.BuildRootItems(activeCount: 2, favoritesCount: 5);
+        Assert.Equal(2, root.Count);
+        Assert.Equal(CarBrowse.ActiveFolderId, root[0].MediaId);
+        Assert.False(root[0].Playable);
+        Assert.Equal("2 connected", root[0].Subtitle);
+
+        Assert.Equal(CarBrowse.FavoritesFolderId, root[1].MediaId);
+        Assert.False(root[1].Playable);
+        Assert.Equal("5 saved", root[1].Subtitle);
+    }
+
+    [Fact]
+    public void Favorites_items_show_connection_badges()
+    {
+        var s = Settings("27339", "2000", "5555");
+        var items = CarBrowse.BuildFavoritesItems(s, connectedNodes: ["27339", "2000"], transmitNode: "27339");
+        Assert.Equal(3, items.Count);
+
+        Assert.Equal("Node 27339 • Connected (Transmit)", items[0].Subtitle);
+        Assert.Equal("Node 2000 • Connected (Listen)", items[1].Subtitle);
+        Assert.Equal("Node 5555", items[2].Subtitle);
+    }
+
+    [Fact]
+    public void Active_items_show_nodes_disconnect_rows_and_disconnect_all()
+    {
+        var s = Settings("27339", "2000");
+        var conn1 = new NodeConnection("27339");
+        var conn2 = new NodeConnection("2000");
+
+        var items = CarBrowse.BuildActiveItems(s, [conn1, conn2], transmitNode: "27339", talkingNodes: new HashSet<string> { "27339" });
+        // Expected:
+        // 1. Node 27339 item
+        // 2. Disconnect 27339 item
+        // 3. Node 2000 item
+        // 4. Disconnect 2000 item
+        // 5. Disconnect all nodes item
+        Assert.Equal(5, items.Count);
+
+        Assert.Equal("27339", items[0].MediaId);
+        Assert.Equal("East Coast Reflector", items[0].Title);
+        Assert.Equal("Transmit • Connecting…", items[0].Subtitle);
+
+        Assert.Equal(CarBrowse.DisconnectPrefix + "27339", items[1].MediaId);
+        Assert.Equal("Disconnect 27339", items[1].Title);
+
+        Assert.Equal("2000", items[2].MediaId);
+        Assert.Equal("2000", items[2].Title);
+        Assert.Equal("Listen-only • Connecting…", items[2].Subtitle);
+
+        Assert.Equal(CarBrowse.DisconnectPrefix + "2000", items[3].MediaId);
+        Assert.Equal("Disconnect 2000", items[3].Title);
+
+        Assert.Equal(CarBrowse.DisconnectAllId, items[4].MediaId);
+        Assert.Equal("Disconnect all nodes", items[4].Title);
+    }
+
+    [Fact]
+    public void Active_items_empty_gives_non_playable_notice()
+    {
+        var s = Settings("27339");
+        var items = CarBrowse.BuildActiveItems(s, [], transmitNode: null);
+        var only = Assert.Single(items);
+        Assert.False(only.Playable);
+        Assert.Equal(CarBrowse.NoActiveId, only.MediaId);
     }
 }

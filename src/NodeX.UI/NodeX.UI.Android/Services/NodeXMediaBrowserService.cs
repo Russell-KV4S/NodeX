@@ -41,7 +41,6 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
     private MediaSession? _session;
     private AudioFocusRequestClass? _focus;
     private string? _nowPlaying;          // the node this car session is playing; null = nothing
-    private bool _carStarted;             // we (not the phone) dialled _nowPlaying
     private string? _error;
     private readonly HashSet<string> _mutedForFocus = [];
     private Action? _changed;
@@ -150,13 +149,29 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
                 var items = new JavaList<MediaBrowser.MediaItem>();
                 if (parentId == RootId)
                 {
-                    foreach (var item in CarBrowse.BuildItems(rt.Config.Settings))
+                    int activeCount = rt.Connections.Count;
+                    int favCount = (rt.Config.Settings.FavoriteNodes ?? []).Count(f => !string.IsNullOrWhiteSpace(f));
+                    foreach (var item in CarBrowse.BuildRootItems(activeCount, favCount))
+                        items.Add(ToMediaItem(item));
+                }
+                else if (parentId == CarBrowse.ActiveFolderId)
+                {
+                    var conns = rt.Connections;
+                    var talking = new HashSet<string>(_rx.Talking());
+                    foreach (var item in CarBrowse.BuildActiveItems(rt.Config.Settings, conns, rt.TransmitNode, talking))
+                        items.Add(ToMediaItem(item));
+                }
+                else if (parentId == CarBrowse.FavoritesFolderId)
+                {
+                    var connectedNodes = rt.Connections.Select(c => c.Node).ToList();
+                    foreach (var item in CarBrowse.BuildFavoritesItems(rt.Config.Settings, connectedNodes, rt.TransmitNode))
                         items.Add(ToMediaItem(item));
                 }
                 result.SendResult(items);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                global::Android.Util.Log.Warn("NodeX", $"OnLoadChildren failed for {parentId}: {ex.Message}");
                 result.SendResult(new JavaList<MediaBrowser.MediaItem>());
             }
         });
@@ -167,9 +182,20 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         var description = new MediaDescription.Builder()
             .SetMediaId(item.MediaId)!
             .SetTitle(item.Title)!
-            .SetSubtitle(item.Playable ? "Node " + item.MediaId : null)!
+            .SetSubtitle(item.Subtitle ?? (item.Playable ? "Node " + item.MediaId : null))!
             .Build();
         return new MediaBrowser.MediaItem(description, item.Playable ? MediaItemFlags.Playable : MediaItemFlags.Browsable);
+    }
+
+    private void NotifyChanges()
+    {
+        try
+        {
+            NotifyChildrenChanged(RootId);
+            NotifyChildrenChanged(CarBrowse.ActiveFolderId);
+            NotifyChildrenChanged(CarBrowse.FavoritesFolderId);
+        }
+        catch (Exception) { /* head unit disconnected or not ready */ }
     }
 
     // ----- control (from the MediaSession callback) -----
@@ -186,18 +212,25 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
                 return;
             }
 
-            string? previous = _carStarted ? _nowPlaying : null;
+            string? previous = _nowPlaying;
             bool alreadyUp = rt.Connections.Any(c => c.Node == node && c.Link != null);
 
             lock (_gate)
             {
                 _error = null;
                 _nowPlaying = node;
-                _carStarted = true;
             }
             BeginCarSession();
             Remember(node);
+
+            // Switching to an already-connected node promotes it to the transmit target so the Talk button keys it!
+            if (alreadyUp && rt.TransmitNode != node)
+            {
+                rt.SetTransmitNode(node);
+            }
+
             PublishState();
+            NotifyChanges();
 
             if (!alreadyUp)
             {
@@ -209,8 +242,8 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
                 }
             }
 
-            // The new node is up; now drop the car's previous one. Links started on the phone are left alone.
-            string? replace = CarBrowse.NodeToReplace(previous, node);
+            // The new node is up; now drop the car's previous one. If switching between already-connected nodes, keep both!
+            string? replace = CarBrowse.NodeToReplace(previous, node, alreadyUp);
             if (replace != null) await rt.DisconnectAsync(replace);
         }
         catch (Exception ex)
@@ -230,6 +263,52 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         catch (Exception) { /* already gone */ }
         EndCarSession();
         PublishState();
+        NotifyChanges();
+    }
+
+    private async Task DisconnectNodeAsync(string node)
+    {
+        try
+        {
+            await AppServices.Runtime.DisconnectAsync(node);
+            NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", $"disconnected node {node} from car screen");
+        }
+        catch (Exception ex)
+        {
+            NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", $"failed to disconnect node {node}: {ex.Message}");
+        }
+
+        lock (_gate)
+        {
+            if (_nowPlaying == node)
+            {
+                _nowPlaying = null;
+            }
+        }
+
+        OnRuntimeChanged();
+    }
+
+    private async Task DisconnectAllAsync()
+    {
+        try
+        {
+            await AppServices.Runtime.DisconnectAsync();
+            NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", "disconnected all nodes from car screen");
+        }
+        catch (Exception ex)
+        {
+            NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", $"failed to disconnect all nodes: {ex.Message}");
+        }
+
+        lock (_gate)
+        {
+            _nowPlaying = null;
+        }
+
+        EndCarSession();
+        PublishState();
+        NotifyChanges();
     }
 
     // ----- talk (only with "Talk from the car" on; see CarTransmit for the rules) -----
@@ -355,18 +434,18 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
             {
                 // A link was already up when the car connected: show it (the transmit/first link), as the phone's.
                 string? adopt = rt.TransmitNode ?? conns.FirstOrDefault()?.Node;
-                if (adopt != null) { _nowPlaying = adopt; _carStarted = false; }
+                if (adopt != null) { _nowPlaying = adopt; }
             }
             else if (!conns.Any(c => c.Node == _nowPlaying) && _error == null)
             {
-                // It was hung up (here, on the phone, or recovery gave up).
-                _nowPlaying = null;
-                _carStarted = false;
+                // It was hung up (here, on the phone, or recovery gave up). Adopt remaining if any.
+                _nowPlaying = rt.TransmitNode ?? conns.FirstOrDefault()?.Node;
             }
         }
 
         if (_nowPlaying == null) EndCarSession();
         PublishState();
+        NotifyChanges();
     }
 
     private void PublishState()
@@ -377,6 +456,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         var rt = AppServices.Runtime;
         string? node = _nowPlaying;
         var conn = node == null ? null : rt.Connections.FirstOrDefault(c => c.Node == node);
+        int activeCount = rt.Connections.Count(c => c.Link != null);
 
         PlaybackStateCode code;
         string subtitle;
@@ -393,7 +473,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         else if (conn?.Link?.Session.State == Iax2SessionState.Connected)
         {
             code = PlaybackStateCode.Playing;
-            subtitle = "Connected";
+            subtitle = activeCount > 1 ? $"Connected ({activeCount} links)" : "Connected";
         }
         else
         {
@@ -407,7 +487,8 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
 
         bool keyed = rt.Link?.Ptt.IsPttActive == true;
         // Who is talking: the last set RefreshTalkers decided to show (not recomputed here, so it cannot flicker).
-        if (code == PlaybackStateCode.Playing && _talkers.Length > 0) subtitle = "Hearing " + _talkers;
+        if (code == PlaybackStateCode.Playing && _talkers.Length > 0)
+            subtitle = activeCount > 1 ? $"Hearing {_talkers} ({activeCount} links)" : "Hearing " + _talkers;
         if (keyed && code == PlaybackStateCode.Playing) subtitle = "TRANSMITTING";
         if (_notice != null && code != PlaybackStateCode.Error) subtitle = _notice;
 
@@ -447,7 +528,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         lock (_gate) _error = message;
         EndCarSession();
         PublishState();
-        lock (_gate) { _nowPlaying = null; _carStarted = false; _error = null; }
+        lock (_gate) { _nowPlaying = null; _error = null; }
     }
 
     // ----- audio session -----
@@ -538,8 +619,22 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
     {
         public override void OnPlayFromMediaId(string? mediaId, Bundle? extras)
         {
-            if (!string.IsNullOrEmpty(mediaId) && mediaId != CarBrowse.NoFavoritesId)
+            if (string.IsNullOrEmpty(mediaId)) return;
+
+            if (mediaId == CarBrowse.DisconnectAllId)
+            {
+                _ = owner.DisconnectAllAsync();
+            }
+            else if (mediaId.StartsWith(CarBrowse.DisconnectPrefix))
+            {
+                string node = mediaId[CarBrowse.DisconnectPrefix.Length..];
+                _ = owner.DisconnectNodeAsync(node);
+            }
+            else if (mediaId != CarBrowse.NoFavoritesId && mediaId != CarBrowse.NoActiveId
+                     && mediaId != CarBrowse.ActiveFolderId && mediaId != CarBrowse.FavoritesFolderId)
+            {
                 _ = owner.PlayAsync(mediaId);
+            }
         }
 
         public override void OnPlay() => owner.PlaySearch(null);
