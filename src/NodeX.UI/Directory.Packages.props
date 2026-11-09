@@ -11,7 +11,6 @@
         <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.5" />
         <PackageVersion Include="Avalonia.Desktop" Version="12.1.5" />
         <PackageVersion Include="Avalonia.iOS" Version="12.1.5" />
-        <PackageVersion Include="Avalonia.Browser" Version="12.1.5" />
         <PackageVersion Include="Avalonia.Android" Version="12.1.5" />
         <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
 

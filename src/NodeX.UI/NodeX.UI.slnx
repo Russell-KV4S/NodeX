@@ -2,7 +2,6 @@
   <Project Path="NodeX.UI.Android/NodeX.UI.Android.csproj">
     <Deploy />
   </Project>
-  <Project Path="NodeX.UI.Browser/NodeX.UI.Browser.csproj" />
   <Project Path="NodeX.UI.Desktop/NodeX.UI.Desktop.csproj" />
   <Project Path="NodeX.UI.iOS/NodeX.UI.iOS.csproj">
     <Deploy />

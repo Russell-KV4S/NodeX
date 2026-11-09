@@ -5,6 +5,7 @@ using Android.Content.PM;
 using Android.OS;
 using AndroidX.Core.App;
 using NodeX.Core;
+using NodeX.Core.Settings;
 
 namespace NodeX.UI.Android;
 
@@ -40,6 +41,8 @@ public sealed class NodeForegroundService : Service
 
     private AndroidBackgroundKeeper? _keeper;
     private Action<BackgroundState>? _handler;
+    private Action<NodeConfig>? _configHandler;
+    private AndroidHeadsetPtt? _headset;
 
     public static bool IsRunning { get; private set; }
 
@@ -81,6 +84,10 @@ public sealed class NodeForegroundService : Service
         // the app is in the background without any new service start (which Android restricts there).
         _handler = state => Apply(state);
         AppServices.Runtime.BackgroundChanged += _handler;
+
+        // Settings saved while linked (the headset-button option) take effect without a relink.
+        _configHandler = _ => { if (IsRunning) Apply(AppServices.Runtime.Background); };
+        AppServices.Runtime.ConfigService.Changed += _configHandler;
     }
 
     public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
@@ -179,6 +186,10 @@ public sealed class NodeForegroundService : Service
             AndroidAudioRoute.Reset(this);   // loudspeaker choice only lasts while linked
         }
 
+        // A headset's Play/Pause button as push-to-talk, only while linked, only if the user turned it on, never in the car.
+        _headset ??= new AndroidHeadsetPtt(this);
+        _headset.Update(state.IsLinked && !CarSession.Active && AppServices.Runtime.Config.Settings.MediaKeyPtt);
+
         IsRunning = true;
         return true;
     }
@@ -212,6 +223,8 @@ public sealed class NodeForegroundService : Service
     {
         if (_handler != null) AppServices.Runtime.BackgroundChanged -= _handler;
         _handler = null;
+        if (_configHandler != null) AppServices.Runtime.ConfigService.Changed -= _configHandler;
+        _configHandler = null;
         Teardown();
         base.OnDestroy();
     }
@@ -225,6 +238,8 @@ public sealed class NodeForegroundService : Service
 
     private void Teardown()
     {
+        _headset?.Dispose();
+        _headset = null;
         _keeper?.Dispose();
         _keeper = null;
         IsRunning = false;

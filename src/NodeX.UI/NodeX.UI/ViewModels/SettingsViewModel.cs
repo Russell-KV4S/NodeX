@@ -76,6 +76,10 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool DefaultToSpeaker { get; set; }
 
+    /// <summary>Android: a Bluetooth headset's Play/Pause button is push-to-talk while linked (off by default).</summary>
+    [ObservableProperty]
+    public partial bool MediaKeyPtt { get; set; }
+
     /// <summary>Android Auto: a Talk button on the car screen (off by default).</summary>
     [ObservableProperty]
     public partial bool CarPtt { get; set; }
@@ -338,6 +342,7 @@ public partial class SettingsViewModel : ViewModelBase
         TogglePtt = s.TogglePtt;
         DefaultToSpeaker = s.DefaultToSpeaker;
         CarPtt = s.CarPtt;
+        MediaKeyPtt = s.MediaKeyPtt;
         CarWheelIndex = (int)s.CarPttWheel;
         HardwarePttKey = s.HardwarePttKey;
         _blePttProfile = s.GetBlePttProfile();
@@ -533,6 +538,7 @@ public partial class SettingsViewModel : ViewModelBase
             TogglePtt = TogglePtt,
             DefaultToSpeaker = DefaultToSpeaker,
             CarPtt = CarPtt,
+            MediaKeyPtt = MediaKeyPtt,
             CarPttWheel = CarPtt && CarWheelIndex is >= 1 and <= 2 ? (CarWheelTalk)CarWheelIndex : CarWheelTalk.Off,
             HardwarePttKey = HardwarePttKey,
             BlePttAddress = _blePttProfile?.DeviceAddress ?? "",

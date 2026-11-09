@@ -150,6 +150,14 @@
                                    Text="Press “Choose button”, then press a volume key or a headset button. It then works like the on-screen PTT: hold to talk, or tap to start and tap again to stop if Toggle PTT is on. It works while NodeX is on screen; a volume key used this way no longer changes the volume. Save to keep it." />
                     </StackPanel>
 
+                    <!-- A Bluetooth headset's Play/Pause button as PTT (Android; off by default) -->
+                    <StackPanel Spacing="6" IsVisible="{Binding HardwareKeysSupported}">
+                        <CheckBox Content="Headset Play/Pause button is push-to-talk"
+                                  IsChecked="{Binding MediaKeyPtt}" />
+                        <TextBlock Classes="hint" Margin="28,-4,0,0" TextWrapping="Wrap"
+                                   Text="While linked, press the button on your Bluetooth headset or earbuds to go on air, and press again to stop (a headset button can't be held, so this is always tap to talk). You hear a beep when you start, a lower one when you stop, and a buzz if it was refused. It works with the screen off, keys only the transmit node, stops if the headset disconnects, and takes over that button from your music apps while linked. Check the node's links first: this can reach your RF station." />
+                    </StackPanel>
+
                     <!-- Bluetooth (BLE) push-to-talk button (Android) -->
                     <StackPanel Spacing="6" IsVisible="{Binding BleSupported}">
                         <TextBlock Classes="label" Text="Bluetooth push-to-talk button" />

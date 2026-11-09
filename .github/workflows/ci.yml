@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Core + shared UI + desktop head, and all unit tests. The Android and iOS heads need their .NET workloads
+  # (and iOS needs a Mac runner with signing), so they are built by hand on the developer machine for now.
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build core, UI and desktop head
+        run: dotnet build src/NodeX.UI/NodeX.UI.Desktop -c Release --nologo
+
+      - name: Unit tests
+        run: dotnet test tests/NodeX.Core.Tests -c Release --nologo

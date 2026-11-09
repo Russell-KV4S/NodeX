@@ -243,20 +243,27 @@ public class JitterBufferTests
     [Fact]
     public async Task ConcurrentPushAndPop_DoesNotThrowOrDeadlock()
     {
+        // Bounded by work done, not by a wall-clock window: a time window made this flaky when the thread pool was busy
+        // (the producer could start after the window had closed and push nothing).
+        const int frames = 5000;
         var jb = new JitterBuffer();
-        using var cts = new CancellationTokenSource(300);
-        var producer = Task.Run(() =>
+        int producerDone = 0;
+        var producer = Task.Factory.StartNew(() =>
         {
             ushort ts = 0;
-            while (!cts.IsCancellationRequested) { jb.Push(ts, Frame(1)); ts += 20; Thread.Yield(); }
-        });
-        var consumer = Task.Run(() =>
+            for (int i = 0; i < frames; i++) { jb.Push(ts, Frame(1)); ts += 20; Thread.Yield(); }
+            Volatile.Write(ref producerDone, 1);
+        }, TaskCreationOptions.LongRunning);
+        var consumer = Task.Factory.StartNew(() =>
         {
             var o = new short[160];
-            while (!cts.IsCancellationRequested) { jb.Pop(o); Thread.Yield(); }
-        });
-        await Task.WhenAll(producer, consumer);
-        Assert.True(jb.Stats.Received > 0);
+            while (Volatile.Read(ref producerDone) == 0) { jb.Pop(o); Thread.Yield(); }
+        }, TaskCreationOptions.LongRunning);
+
+        var all = Task.WhenAll(producer, consumer);
+        Assert.Same(all, await Task.WhenAny(all, Task.Delay(TimeSpan.FromSeconds(60))));   // deadlock guard
+        await all;
+        Assert.Equal(frames, jb.Stats.Received);
     }
 }
 

@@ -81,6 +81,13 @@ public sealed record NodeSettings
     /// </summary>
     public int HardwarePttKey { get; init; }
 
+    /// <summary>
+    /// Android: the Play/Pause button on a Bluetooth headset or earbuds acts as push-to-talk while linked (press to
+    /// talk, press again to stop), even with the screen off. Off by default because it takes over that button and a stray
+    /// press would go on air.
+    /// </summary>
+    public bool MediaKeyPtt { get; init; }
+
     // ----- BLE PTT button (learned in Settings; empty address = none) -----
 
     /// <summary>Bluetooth address of the BLE PTT button.</summary>
