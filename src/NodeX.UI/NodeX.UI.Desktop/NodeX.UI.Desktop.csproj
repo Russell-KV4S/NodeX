@@ -5,6 +5,8 @@
     See https://docs.avaloniaui.net/docs/guides/platforms/platform-specific-code/dotnet for more details.-->
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
+    <!-- Shown in Settings and the log header. Keep in step with ApplicationDisplayVersion in NodeX.UI.Android.csproj. -->
+    <Version>1.12</Version>
   </PropertyGroup>
 
   <PropertyGroup>
