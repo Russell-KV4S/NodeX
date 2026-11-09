@@ -132,7 +132,8 @@ public static class AppServices
             if (IsInitialized) return;
 
             DiagnosticLog.Default.Configure(Path.Combine(JsonFileSettingsStore.DefaultDirectory, "logs"));
-            DiagnosticLog.Default.WriteHeader(appVersion ?? AppVersion());
+            _version = appVersion ?? AppVersion();
+            DiagnosticLog.Default.WriteHeader(_version);
 
             _runtime = Create(settings ?? new JsonFileSettingsStore(), secrets, audioFactory, audioOptions, networkMonitor);
             IsInitialized = true;
@@ -140,7 +141,10 @@ public static class AppServices
     }
 
     /// <summary>The release version for the log header: the entry assembly's version (the head's ApplicationDisplayVersion on Android), not this library's.</summary>
-    public static string VersionText => $"Version {AppVersion()}";
+    private static string? _version;
+
+    /// <summary>The same version the log header shows (the head passes its own on Android).</summary>
+    public static string VersionText => $"Version {_version ?? AppVersion()}";
 
     private static string AppVersion()
     {
