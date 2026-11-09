@@ -94,7 +94,7 @@ public sealed class NodeRuntime : IAsyncDisposable
     // ----- link state -----
 
     /// <summary>The most nodes that can be linked at once (each costs a UDP socket and an audio output).</summary>
-    public const int MaxLinks = 4;
+    public const int MaxLinks = 8;
 
     /// <summary>
     /// The transmit link: the live call to <see cref="TransmitNode"/>, or null when that node is between attempts or

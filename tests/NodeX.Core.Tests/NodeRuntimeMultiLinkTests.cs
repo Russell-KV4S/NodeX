@@ -11,10 +11,9 @@ public class NodeRuntimeMultiLinkTests : IDisposable
 {
     private readonly string _settingsPath = Path.Combine(Path.GetTempPath(), "nodex-ml-" + Guid.NewGuid().ToString("N") + ".json");
     private readonly InMemorySecretStore _secrets = new();
-    private readonly Dictionary<string, FakeIaxRemote> _remotes = new()
-    {
-        ["2000"] = new(), ["3000"] = new(), ["4000"] = new(), ["5000"] = new(), ["6000"] = new()
-    };
+    // Nodes 2000, 3000 ... 10000: MaxLinks of them plus one more to prove the limit.
+    private readonly Dictionary<string, FakeIaxRemote> _remotes =
+        Enumerable.Range(2, 9).ToDictionary(i => (i * 1000).ToString(), _ => new FakeIaxRemote());
     private readonly FakeNetworkMonitor _net = new();
     private readonly List<FakeAudioDevice> _devices = [];
 
@@ -188,13 +187,12 @@ public class NodeRuntimeMultiLinkTests : IDisposable
     public async Task AtMostMaxLinks_AreAllowed()
     {
         await using var rt = await CreateAsync();
-        await LinkAsync(rt, "2000");
-        await LinkAsync(rt, "3000");
-        await LinkAsync(rt, "4000");
-        await LinkAsync(rt, "5000");
+        for (int i = 0; i < NodeRuntime.MaxLinks; i++)
+            await LinkAsync(rt, ((i + 2) * 1000).ToString());
         Assert.Equal(NodeRuntime.MaxLinks, rt.Connections.Count);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => rt.ConnectAsync("6000"));
+        string overLimit = ((NodeRuntime.MaxLinks + 2) * 1000).ToString();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => rt.ConnectAsync(overLimit));
         Assert.Equal(NodeRuntime.MaxLinks, rt.Connections.Count);
     }
 
