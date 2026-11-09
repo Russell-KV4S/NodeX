@@ -42,6 +42,7 @@ public class MainActivity : AvaloniaMainActivity
         AppServices.ExitHandler = () => AndroidAppExit.Finish(this);
         AppServices.SpeakerphoneSetter = speaker => AndroidAudioRoute.SetSpeaker(this, speaker);
         AppServices.LogSharer = ShareLogText;
+        AppServices.BleTransport ??= new AndroidBlePttTransport(this);
 
         base.OnCreate(savedInstanceState);
         RegisterBackCallback();
@@ -184,7 +185,14 @@ public class MainActivity : AvaloniaMainActivity
         if (OperatingSystem.IsAndroidVersionAtLeast(33))
             wanted.Add(global::Android.Manifest.Permission.PostNotifications);
         if (OperatingSystem.IsAndroidVersionAtLeast(31))
+        {
             wanted.Add(global::Android.Manifest.Permission.BluetoothConnect);
+            wanted.Add(global::Android.Manifest.Permission.BluetoothScan);   // finding a BLE PTT button
+        }
+        else
+        {
+            wanted.Add(global::Android.Manifest.Permission.AccessFineLocation);   // Android 11 and older need it to scan
+        }
 
         var missing = wanted.FindAll(p => CheckSelfPermission(p) != Permission.Granted);
         if (missing.Count > 0)

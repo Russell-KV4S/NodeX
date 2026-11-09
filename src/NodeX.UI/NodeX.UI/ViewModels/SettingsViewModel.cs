@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
@@ -126,6 +127,120 @@ public partial class SettingsViewModel : ViewModelBase
 
     private void OnLearningChanged() => Dispatcher.UIThread.Post(() => IsLearningKey = AppServices.HardwarePtt.IsLearning);
 
+    // ----- BLE PTT button (Bluetooth push-to-talk device) -----
+
+    /// <summary>True where the head has Bluetooth LE access (Android), so Settings offers the button setup.</summary>
+    public bool BleSupported => AppServices.BlePtt.IsSupported;
+
+    private BlePttProfile? _blePttProfile;
+
+    public ObservableCollection<BleDeviceInfo> BleDevices { get; } = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanLearnBle))]
+    public partial BleDeviceInfo? SelectedBleDevice { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BleSummaryText), nameof(HasBleButton))]
+    public partial string BleButtonName { get; set; } = "";
+
+    [ObservableProperty]
+    public partial bool IsBleScanning { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanLearnBle), nameof(BleSummaryText))]
+    public partial bool IsBleLearning { get; set; }
+
+    [ObservableProperty]
+    public partial string BleLearnText { get; set; } = "";
+
+    public bool HasBleButton => _blePttProfile != null;
+
+    public bool HasBleDevices => BleDevices.Count > 0;
+
+    public bool CanLearnBle => SelectedBleDevice != null && !IsBleLearning;
+
+    public string BleSummaryText => IsBleLearning ? "Setting up…"
+        : _blePttProfile == null ? "No Bluetooth button set up"
+        : $"Button: {(string.IsNullOrWhiteSpace(_blePttProfile.DeviceName) ? _blePttProfile.DeviceAddress : _blePttProfile.DeviceName)}";
+
+    private bool _bleEventsHooked;
+
+    private void HookBleEvents()
+    {
+        if (_bleEventsHooked) return;
+        _bleEventsHooked = true;
+        var ble = AppServices.BlePtt;
+        ble.DeviceFound += d => Dispatcher.UIThread.Post(() =>
+        {
+            int i = BleDevices.ToList().FindIndex(x => string.Equals(x.Address, d.Address, StringComparison.OrdinalIgnoreCase));
+            if (i >= 0) BleDevices[i] = d; else BleDevices.Add(d);
+            OnPropertyChanged(nameof(HasBleDevices));
+        });
+        ble.LearnChanged += () => Dispatcher.UIThread.Post(OnBleLearnChanged);
+    }
+
+    private void OnBleLearnChanged()
+    {
+        var learner = AppServices.BlePtt.Learner;
+        BleLearnText = learner.Message;
+        IsBleLearning = learner.Step is BleLearnStep.Connecting or BleLearnStep.WaitPress or BleLearnStep.WaitRelease;
+        if (learner.Step == BleLearnStep.Done && learner.Result is { } profile)
+        {
+            _blePttProfile = profile;
+            BleButtonName = profile.DeviceName;
+            OnPropertyChanged(nameof(HasBleButton));
+            OnPropertyChanged(nameof(BleSummaryText));
+        }
+    }
+
+    [RelayCommand]
+    private async Task ScanBleAsync()
+    {
+        HookBleEvents();
+        BleDevices.Clear();
+        OnPropertyChanged(nameof(HasBleDevices));
+        SelectedBleDevice = null;
+        IsBleScanning = true;
+        BleLearnText = "Looking for Bluetooth devices. Turn your PTT button on (and put it in pairing mode if it has one)…";
+        try
+        {
+            await AppServices.BlePtt.StartScanningAsync();
+            await Task.Delay(TimeSpan.FromSeconds(12));
+            await AppServices.BlePtt.StopScanAsync();
+            BleLearnText = BleDevices.Count == 0
+                ? "No devices found. Check the button is on, Bluetooth is on, and NodeX has the Bluetooth permission, then scan again."
+                : "Pick your button, then press “Set up button”.";
+        }
+        catch (Exception ex)
+        {
+            BleLearnText = $"Could not scan: {ex.Message}";
+        }
+        finally
+        {
+            IsBleScanning = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task LearnBleAsync()
+    {
+        if (SelectedBleDevice is not { } device) return;
+        HookBleEvents();
+        await AppServices.BlePtt.BeginLearnAsync(device);
+    }
+
+    [RelayCommand]
+    private void ForgetBle()
+    {
+        AppServices.BlePtt.CancelLearn();
+        _blePttProfile = null;
+        BleButtonName = "";
+        BleLearnText = "";
+        OnPropertyChanged(nameof(HasBleButton));
+        OnPropertyChanged(nameof(BleSummaryText));
+    }
+
     [ObservableProperty]
     public partial string TimeOutSecondsText { get; set; } = "180";
 
@@ -225,6 +340,10 @@ public partial class SettingsViewModel : ViewModelBase
         CarPtt = s.CarPtt;
         CarWheelIndex = (int)s.CarPttWheel;
         HardwarePttKey = s.HardwarePttKey;
+        _blePttProfile = s.GetBlePttProfile();
+        BleButtonName = _blePttProfile?.DeviceName ?? "";
+        OnPropertyChanged(nameof(HasBleButton));
+        OnPropertyChanged(nameof(BleSummaryText));
         TimeOutSecondsText = s.TimeOutTimerSeconds.ToString(CultureInfo.InvariantCulture);
         MicGain = s.MicGain;
         MicProcessing = s.MicProcessing;
@@ -298,6 +417,7 @@ public partial class SettingsViewModel : ViewModelBase
     [RelayCommand]
     private async Task SaveAsync()
     {
+        if (AppServices.BlePtt.IsLearning) AppServices.BlePtt.CancelLearn();   // a half-finished setup is discarded
         StatusText = "";
         if (!TryBuild(out var settings, out var issues))
         {
@@ -333,6 +453,7 @@ public partial class SettingsViewModel : ViewModelBase
     private void Cancel()
     {
         AppServices.HardwarePtt.CancelLearn();
+        AppServices.BlePtt.CancelLearn();
         ErrorText = "";
         StatusText = "";
         Cancelled?.Invoke();
@@ -414,6 +535,11 @@ public partial class SettingsViewModel : ViewModelBase
             CarPtt = CarPtt,
             CarPttWheel = CarPtt && CarWheelIndex is >= 1 and <= 2 ? (CarWheelTalk)CarWheelIndex : CarWheelTalk.Off,
             HardwarePttKey = HardwarePttKey,
+            BlePttAddress = _blePttProfile?.DeviceAddress ?? "",
+            BlePttName = _blePttProfile?.DeviceName ?? "",
+            BlePttCharacteristic = _blePttProfile?.CharacteristicUuid ?? "",
+            BlePttPress = _blePttProfile?.PressHex ?? "",
+            BlePttRelease = _blePttProfile?.ReleaseHex ?? "",
             IdReminderEnabled = IdReminderEnabled,
             IdReminderMinutes = idMinutes,
             DetailedLogging = DetailedLogging

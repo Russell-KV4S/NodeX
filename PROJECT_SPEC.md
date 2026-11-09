@@ -43,7 +43,7 @@ Design stance: **outbound-linking only.** Carrier-grade NAT blocks unsolicited i
 | Desktop head (Linux/macOS) | Compiles; **runs silently** (no audio backend) | — |
 | Android head | Builds; **shipped to Play internal testing (§3.5, 2026-11-05) and installed on the owner's phone; owner reported 1.1 "worked great" (2026-11-06, general verdict only; specifics such as screen-off background audio, Bluetooth and handoff are not itemised and remain §13 item 7)** | Build; Play internal test |
 | iOS head | Compiles/builds; **never run on a device**; release prepared but not started, needs paid Apple account + Mac (§3.6, `docs/IOS_RELEASE.md`) | Build only |
-| Bluetooth PTT (BLE GATT, SCO audio, media key, Learn wizard) | **Not implemented** (interface + packet parser only) | Parser tests |
+| Bluetooth PTT (BLE GATT, SCO audio, media key, Learn wizard) | **Android BLE button + Learn wizard coded 2026-11-09 (builds, 14 unit tests with a fake transport); never run against a real button.** Media-key fallback, iOS and desktop transports not done | Parser + manager/learner tests |
 | Responsive/phone layout | Implemented (single-column phone layout with docked PTT bar below 720 px or below 520 px height; two-column desktop above). **Verified only by resizing the Windows app (340–1100 px wide, 860×420 landscape), not on a real phone** | Screenshots at 340 / 410 / 780 / 1100 px and 1050×760, 800×760, 420×860, 860×420 |
 | Live-node interoperability | **Verified against owner's cloud node 523800 (2026-11-05):** registration, call-token handshake, `radio` login, keep-alive, keying, DTMF `*70`, mic audio TX, re-dial (same IP). **Not verified:** different-IP handoff, TX audio quality by ear, other app_rpt versions | `tools/NodeX.LiveCheck`; log in `docs/LIVE_VALIDATION.md` |
 | Optional station-ID reminder (§17.1) | Implemented on all heads' shared UI (prompt in the hero card + activity-log line); **mobile background notification not done**; screen not visually checked | Unit tests (`IdReminderTests`), solution builds |
@@ -86,7 +86,7 @@ NodeX/
 │   │   │   └── ReconnectPolicy.cs       # timing + ReconnectStatus
 │   │   ├── Settings/
 │   │   │   ├── NodeSettings.cs  NodeSettingsValidator.cs  Stores.cs  NodeConfigService.cs
-│   │   ├── Bluetooth/IBluetoothPttService.cs  BluetoothPttPacketParser.cs   # contract + parser only
+│   │   ├── Bluetooth/IBluetoothPttService.cs  BluetoothPttPacketParser.cs  IBlePttTransport.cs  BlePttManager.cs  BlePttLearner.cs  BlePttProfile.cs
 │   │   ├── NodePttController.cs         # PTT state machine
 │   │   └── IdReminder.cs                # optional "time to identify" reminder (UI prompt only; transmits nothing)
 │   └── NodeX.UI/                    # own Directory.Packages.props (central package versions)
@@ -282,6 +282,7 @@ PTT down → control `KEY` (0x0C) then voice; PTT up → stop voice, control `UN
 ### Android (`NodeX.UI.Android`) — implemented, **not device-tested**
 - `NodeForegroundService` (types `microphone|mediaPlayback|connectedDevice`; typed `StartForeground` overload used on API ≥ 30), started/stopped from `NodeRuntime.LinkActiveChanged` (only if `RECORD_AUDIO` is granted; Android 14 refuses a microphone service otherwise). Holds a **partial wake lock** and a **Wi-Fi lock** (`FullLowLatency` on API ≥ 29, `FullHighPerf` below) via `AndroidBackgroundKeeper`.
 - **Bluetooth SCO** routing (`SetCommunicationDevice` on API ≥ 31, legacy `StartBluetoothSco` below) — switches audio mode to *in-communication* **only when a Bluetooth headset is actually present**.
+- **Notifications keep their own sounds (2026-11-09).** In communication mode Android replaces other apps' notification sounds with a generic beep. The loudspeaker route (`AndroidAudioRoute.SetSpeaker(true)`) therefore stays in `Mode.Normal` and the `AudioTrack` uses `Media` usage (rebuilt when the route changes); only the phone-earpiece route and a Bluetooth headset still use communication mode. **Not verified on a phone** (whether the generic beep is gone, and that speaker audio and echo are still fine).
 - `MainActivity` requests `RECORD_AUDIO`, `POST_NOTIFICATIONS` (API ≥ 33), `BLUETOOTH_CONNECT` (API ≥ 31) at startup. Manifest declares all required permissions and foreground-service permissions. `MainActivity.OnResume` asks **once** (pref `battery_exemption_asked`) for the battery-optimisation exemption, only after a link is up (so it appears on the next resume after the first connect). **`AndroidNetworkMonitor`** (`ConnectivityManager.RegisterDefaultNetworkCallback`, event-driven, signature = network handle + IPv4 addresses) replaces `SystemNetworkMonitor` on Android. **Battery model:** mic closed unless keyed; UI meter timer stopped while backgrounded.
 - Audio: `AudioRecord`/`AudioTrack`, 8 kHz mono, `VoiceCommunication` source/usage (platform echo cancellation); non-blocking writes; `BufferedPlayback` from playback head position.
 - Use `OperatingSystem.IsAndroidVersionAtLeast(n)` guards (the CA1416 analyzer understands them; `Build.VERSION.SdkInt` comparisons produce warnings).
@@ -293,13 +294,12 @@ PTT down → control `KEY` (0x0C) then voice; PTT up → stop voice, control `UN
 
 ---
 
-## 8. Bluetooth hardware & PTT model — **not implemented**
-Contract and parser exist; no platform implements `IBluetoothPttService`.
+## 8. Bluetooth hardware & PTT model — Android BLE button implemented, untested on hardware
 - **Audio:** OS Hands-Free Profile (HFP/SCO) appears as an ordinary mic/speaker route (Android SCO handled above; iOS via `AllowBluetooth`).
-- **PTT triggers (planned):** BLE GATT notifications — press `0x01`/`+PTT=P`, release `0x00`/`+PTT=R` (`BluetoothPttPacketParser` also supports learned patterns); **Learn mode** UI wizard (connect → subscribe to all notifying characteristics → "press and HOLD" → record press payload → "RELEASE" → record release payload → persist per device); **media-key fallback** (Play/Pause → latch toggle).
-- The header's "BLE PTT" badge is currently a static "not set up".
-
----
+- **BLE PTT button (Android, 2026-11-09).** `AndroidBlePttTransport` (scan + paired devices, GATT connect, subscribe to every notifying characteristic, raw bytes out) implements `IBlePttTransport`; `BlePttManager` (Core, shared) keeps the saved button connected (retry with back-off), turns notifications into pressed/released, and runs the Learn wizard (`BlePttLearner`). `AppServices.BlePtt` is the process-wide instance; `MainViewModel` keys **only the transmit link** (`PttSource.BluetoothBle`, follows Momentary/Toggle).
+- **Safety rules:** only the exact learned press/release packets on the learned characteristic count as PTT (no auto-detect keying; `BluetoothPttPacketParser` is unused by this path); the Battery Level characteristic is never PTT; a button with no release packet is a tap (pressed then released at once); a dropped connection always reports released and `MainViewModel` force-unkeys anything the button keyed (Toggle mode ignores a plain release); learning never keys.
+- **Settings:** `BlePttAddress/Name/Characteristic/Press/Release` (`NodeSettings.GetBlePttProfile()`); Settings has Scan, pick, "Set up button" (press and hold, release), Forget. The header badge shows connection and pressed state. Permissions: `BLUETOOTH_SCAN`/`BLUETOOTH_CONNECT` (API 31+), `ACCESS_FINE_LOCATION` (API ≤ 30), requested at start-up.
+- **Not done:** media-key fallback for headset buttons, iOS CoreBluetooth and desktop transports. **Unverified:** everything against a real button (pairing/bonding of HID-over-GATT buttons, whether subscribing to all characteristics is accepted, background reconnect with the screen off).
 
 ## 9. UI specification & known gaps
 - **Phone layout:** implemented (§4.8). **Still to verify/do on real devices:** iOS safe-area insets (notch/home indicator — Avalonia lays out inside the safe area by default, unconfirmed), Android system-bar/gesture insets, soft-keyboard behaviour when typing a node number (the PTT dock should not jump or cover the field), landscape phones (the height rule docks PTT and uses a short header; verified only by resizing the Windows app to 860×420), tablets, display scaling, and haptic feedback on PTT press (not implemented).
@@ -362,7 +362,7 @@ Contract and parser exist; no platform implements `IBluetoothPttService`.
 
 1. **Live-node validation — mostly done** (see `docs/LIVE_VALIDATION.md`). Remaining: re-dial from a genuinely different public IP (e.g. phone on cellular, then Wi-Fi) and whether the early-hangup retry budget is long enough; RX audio quality with real speech from a remote; A/B the `MicProcessor` voice clean-up on air; optional DTMF_BEGIN/END polish; parse link TEXT frames (`L …`, `T … STATUS`) for a "linked nodes" panel.
 2. ~~Phone-friendly layout~~ — **done** (§4.8, verified by resizing the desktop app). Remaining: confirm on real phones/tablets and fix landscape-phone density, insets and keyboard behaviour (§9).
-3. **Bluetooth PTT**: implement `IBluetoothPttService` for Android (BLE GATT), iOS (CoreBluetooth), desktop (Windows BLE/`InTheHand`/WinRT), plus the Learn wizard UI and media-key fallback; wire status into the BLE badge.
+3. **Bluetooth PTT**: Android BLE + Learn wizard + badge are coded (§8, test with a real button); still to do: iOS (CoreBluetooth), desktop (Windows BLE/`InTheHand`/WinRT) transports and the media-key fallback.
 4. **Cross-platform desktop audio** (Linux/macOS): add a backend (spec originally named SoundFlow/MiniAudio; OpenAL/PortAudio are alternatives) behind `IAudioDeviceService`; audio-device pickers for all platforms using `InputDeviceId`/`OutputDeviceId`.
 5. ~~Open the mic only while keyed~~ — **done on all heads** (`OpenMicOnlyWhileKeyed`, Appendix; mobile device-untested, desktop not yet checked live).
 6. ~~Android connectivity monitor~~ — **done** (`AndroidNetworkMonitor`, battery-optimisation prompt; device-untested). Remaining: permission-denied UX.

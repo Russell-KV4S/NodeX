@@ -108,6 +108,17 @@ public static class AppServices
     public static string NameKey(int code) =>
         code == 0 ? "Not set" : HardwareKeyNamer?.Invoke(code) ?? $"Key {code}";
 
+    /// <summary>Set by a head that has Bluetooth LE access (Android) before <see cref="BlePtt"/> is first used.</summary>
+    public static IBlePttTransport? BleTransport { get; set; }
+
+    private static BlePttManager? _blePtt;
+
+    /// <summary>The BLE PTT button: connection, Learn wizard and pressed/released events. Unsupported (inert) without a transport.</summary>
+    public static BlePttManager BlePtt
+    {
+        get { lock (Gate) return _blePtt ??= new BlePttManager(BleTransport); }
+    }
+
     /// <summary>Searches the public AllStarLink node list (one shared instance: it caches and paces requests).</summary>
     public static NodeDirectory Directory { get; } = new();
 

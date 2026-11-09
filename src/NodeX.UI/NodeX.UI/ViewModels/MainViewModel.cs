@@ -509,6 +509,7 @@ public partial class MainViewModel : ViewModelBase
         _runtime = runtime;
         _idReminder.DueChanged += OnIdReminderDueChanged;
         AppServices.HardwarePtt.Pressed += OnHardwarePtt;
+        HookBle();
 
         Search = new NodeSearchViewModel(
             directory ?? AppServices.Directory,
@@ -737,6 +738,60 @@ public partial class MainViewModel : ViewModelBase
         _ = link.Ptt.HandleButtonAsync(pressed, PttSource.MediaKey);
     }
 
+    // The BLE manager is process-wide. If this view model is ever recreated the old copy must stop listening, or both
+    // would handle one press (in Toggle mode that flips the key twice and cancels out).
+    private static Action? s_unhookBle;
+    private static readonly object BleHookGate = new();
+
+    private void HookBle()
+    {
+        var ble = AppServices.BlePtt;
+        Action<bool, string> lost = (connected, _) => { if (!connected) UnkeyBle(); };
+        Action status = () => OnUi(ApplyBleStatus);
+        Action<string> notice = msg => LogActivity(msg);
+
+        lock (BleHookGate)
+        {
+            s_unhookBle?.Invoke();
+            ble.PttStateChanged += OnBlePtt;
+            ble.ConnectionStateChanged += lost;
+            ble.StatusChanged += status;
+            ble.Notice += notice;
+            s_unhookBle = () =>
+            {
+                ble.PttStateChanged -= OnBlePtt;
+                ble.ConnectionStateChanged -= lost;
+                ble.StatusChanged -= status;
+                ble.Notice -= notice;
+            };
+        }
+    }
+
+    /// <summary>The BLE PTT button went down or up. Keys only the transmit link, like every other PTT source.</summary>
+    private void OnBlePtt(bool pressed)
+    {
+        var link = TxLink;
+        if (link == null) return;
+        _ = link.Ptt.HandleButtonAsync(pressed, PttSource.BluetoothBle);
+    }
+
+    /// <summary>The button dropped out: release anything it keyed (Toggle mode would otherwise ignore the release).</summary>
+    private void UnkeyBle()
+    {
+        foreach (var link in _runtime.Links)
+        {
+            if (link.Ptt.IsPttActive && link.Ptt.CurrentSource == PttSource.BluetoothBle)
+                _ = link.Ptt.SetPttStateAsync(false, PttSource.BluetoothBle);
+        }
+    }
+
+    private void ApplyBleStatus()
+    {
+        var ble = AppServices.BlePtt;
+        BleStatusText = ble.StatusText;
+        IsBleConnected = ble.IsConnected;
+    }
+
     [RelayCommand]
     public void TogglePttMode()
     {
@@ -833,6 +888,8 @@ public partial class MainViewModel : ViewModelBase
         RefreshTargetFavorite();
 
         AppServices.HardwarePtt.MappedKey = s.HardwarePttKey;
+        AppServices.BlePtt.SetProfile(s.GetBlePttProfile());
+        ApplyBleStatus();
 
         if (_watches.Count == 0)
         {

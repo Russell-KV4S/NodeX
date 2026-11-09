@@ -150,6 +150,34 @@
                                    Text="Press “Choose button”, then press a volume key or a headset button. It then works like the on-screen PTT: hold to talk, or tap to start and tap again to stop if Toggle PTT is on. It works while NodeX is on screen; a volume key used this way no longer changes the volume. Save to keep it." />
                     </StackPanel>
 
+                    <!-- Bluetooth (BLE) push-to-talk button (Android) -->
+                    <StackPanel Spacing="6" IsVisible="{Binding BleSupported}">
+                        <TextBlock Classes="label" Text="Bluetooth push-to-talk button" />
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Text="{Binding BleSummaryText}" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                            <Button Grid.Column="1" Content="Forget" Command="{Binding ForgetBleCommand}"
+                                    IsEnabled="{Binding HasBleButton}" MinHeight="44" Padding="12,0" CornerRadius="6" />
+                        </Grid>
+                        <Button Content="Scan for buttons" Command="{Binding ScanBleCommand}"
+                                IsEnabled="{Binding !IsBleScanning}" MinHeight="44" Padding="12,0" CornerRadius="6" />
+                        <ListBox ItemsSource="{Binding BleDevices}" SelectedItem="{Binding SelectedBleDevice}"
+                                 MaxHeight="160" IsVisible="{Binding HasBleDevices}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Display}" Margin="4,8" TextWrapping="Wrap" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <Button Content="Set up button" Command="{Binding LearnBleCommand}"
+                                IsEnabled="{Binding CanLearnBle}" MinHeight="44" Padding="12,0" CornerRadius="6" />
+                        <TextBlock Text="{Binding BleLearnText}" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <TextBlock Classes="hint"
+                                   Text="Turn the button on, press “Scan for buttons”, pick it, then “Set up button”: NodeX asks you to press and hold, then release, and remembers exactly what your button sends. Only that signal keys the transmitter. It works like the on-screen PTT (hold to talk, or tap to start and tap again to stop if Toggle PTT is on) and keys only the transmit node. If the button disconnects while you are talking, NodeX stops transmitting. Save to keep it." />
+                    </StackPanel>
+
                     <CheckBox Content="Clean up my voice (rumble filter, automatic level, limiter)" IsChecked="{Binding MicProcessing}" />
 
                     <StackPanel>

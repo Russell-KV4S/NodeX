@@ -111,28 +111,57 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
         lock (_gate)
         {
             if (IsPlaying) return;
-
-            int min = AudioTrack.GetMinBufferSize(AudioFormat.SampleRate, ChannelOut.Mono, Encoding.Pcm16bit);
-            int bufBytes = Math.Max(min, AudioFormat.SamplesPerFrame * 2 * 6);
-
-            _track = new AudioTrack.Builder()
-                .SetAudioAttributes(new AudioAttributes.Builder()
-                    // Car listening (Android Auto) needs normal media audio; phone use keeps the call stream.
-                    .SetUsage(CarSession.Active ? AudioUsageKind.Media : AudioUsageKind.VoiceCommunication)!
-                    .SetContentType(AudioContentType.Speech)!
-                    .Build()!)!
-                .SetAudioFormat(new global::Android.Media.AudioFormat.Builder()
-                    .SetEncoding(Encoding.Pcm16bit)!
-                    .SetSampleRate(AudioFormat.SampleRate)!
-                    .SetChannelMask(ChannelOut.Mono)!
-                    .Build()!)!
-                .SetBufferSizeInBytes(bufBytes)
-                .SetTransferMode(AudioTrackMode.Stream)
-                .Build();
-
-            Interlocked.Exchange(ref _samplesWritten, 0);
-            _track.Play();
+            AndroidAudioRoute.RouteChanged += OnRouteChanged;
+            BuildTrack();
             IsPlaying = true;
+        }
+    }
+
+    private bool _trackIsMedia;
+
+    // Loudspeaker and car listening play as ordinary media so the phone never enters communication
+    // mode (which turns other apps' notification sounds into a generic beep); the phone-earpiece and
+    // headset routes keep the call stream.
+    private static bool WantMedia => CarSession.Active || AndroidAudioRoute.SpeakerActive;
+
+    private void BuildTrack()
+    {
+        int min = AudioTrack.GetMinBufferSize(AudioFormat.SampleRate, ChannelOut.Mono, Encoding.Pcm16bit);
+        int bufBytes = Math.Max(min, AudioFormat.SamplesPerFrame * 2 * 6);
+
+        _trackIsMedia = WantMedia;
+        var track = new AudioTrack.Builder()
+            .SetAudioAttributes(new AudioAttributes.Builder()
+                .SetUsage(_trackIsMedia ? AudioUsageKind.Media : AudioUsageKind.VoiceCommunication)!
+                .SetContentType(AudioContentType.Speech)!
+                .Build()!)!
+            .SetAudioFormat(new global::Android.Media.AudioFormat.Builder()
+                .SetEncoding(Encoding.Pcm16bit)!
+                .SetSampleRate(AudioFormat.SampleRate)!
+                .SetChannelMask(ChannelOut.Mono)!
+                .Build()!)!
+            .SetBufferSizeInBytes(bufBytes)
+            .SetTransferMode(AudioTrackMode.Stream)
+            .Build();
+
+        Interlocked.Exchange(ref _samplesWritten, 0);
+        track.Play();
+        _track = track;
+    }
+
+    private void OnRouteChanged()
+    {
+        lock (_gate)
+        {
+            if (!IsPlaying || _trackIsMedia == WantMedia) return;
+            var old = _track;
+            _track = null; // EnqueuePlaybackPcm drops frames for the instant the stream is swapped
+            if (old != null)
+            {
+                try { old.Stop(); } catch (Exception) { /* already stopped */ }
+                old.Release();
+            }
+            BuildTrack();
         }
     }
 
@@ -140,6 +169,7 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
     {
         lock (_gate)
         {
+            AndroidAudioRoute.RouteChanged -= OnRouteChanged;
             if (_track == null) return;
             try { _track.Stop(); } catch (Exception) { /* already stopped */ }
             _track.Release();

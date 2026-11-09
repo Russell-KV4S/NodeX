@@ -81,6 +81,29 @@ public sealed record NodeSettings
     /// </summary>
     public int HardwarePttKey { get; init; }
 
+    // ----- BLE PTT button (learned in Settings; empty address = none) -----
+
+    /// <summary>Bluetooth address of the BLE PTT button.</summary>
+    public string BlePttAddress { get; init; } = "";
+
+    /// <summary>Display name of the BLE PTT button.</summary>
+    public string BlePttName { get; init; } = "";
+
+    /// <summary>UUID of the characteristic the button notifies on.</summary>
+    public string BlePttCharacteristic { get; init; } = "";
+
+    /// <summary>Learned "pressed" packet as hex.</summary>
+    public string BlePttPress { get; init; } = "";
+
+    /// <summary>Learned "released" packet as hex; empty for a press-only button.</summary>
+    public string BlePttRelease { get; init; } = "";
+
+    /// <summary>The learned BLE PTT button, or null when none is set up.</summary>
+    public BlePttProfile? GetBlePttProfile() =>
+        BlePttAddress.Length > 0 && BlePttCharacteristic.Length > 0 && BlePttPress.Length > 0
+            ? new BlePttProfile(BlePttAddress, BlePttName, BlePttCharacteristic, BlePttPress, BlePttRelease)
+            : null;
+
     /// <summary>
     /// Android Auto: show a Talk button on the car's now-playing screen that keys the transmit node (tap to talk, tap
     /// again to stop). Off by default; nothing in the car can transmit unless this is on.
