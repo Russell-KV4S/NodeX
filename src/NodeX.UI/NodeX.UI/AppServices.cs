@@ -41,6 +41,12 @@ public static class AppServices
     public static Action? MicrophonePermissionRequester { get; set; }
 
     /// <summary>
+    /// Set by a head whose audio backend can choose between devices (desktop): lists the microphones and speakers
+    /// for the Settings pickers. Null where the OS decides (Android/iOS), which hides the pickers.
+    /// </summary>
+    public static Func<AudioDeviceCatalog>? AudioDeviceLister { get; set; }
+
+    /// <summary>
     /// How a head ends the process after <see cref="NodeRuntime.ExitAsync"/> (Android: finish the task and kill the
     /// process). Null on desktop, where the app lifetime is shut down instead.
     /// </summary>

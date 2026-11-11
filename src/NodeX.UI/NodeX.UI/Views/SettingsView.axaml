@@ -186,6 +186,17 @@
                                    Text="Turn the button on, press “Scan for buttons”, pick it, then “Set up button”: NodeX asks you to press and hold, then release, and remembers exactly what your button sends. Only that signal keys the transmitter. It works like the on-screen PTT (hold to talk, or tap to start and tap again to stop if Toggle PTT is on) and keys only the transmit node. If the button disconnects while you are talking, NodeX stops transmitting. Save to keep it." />
                     </StackPanel>
 
+                    <!-- Microphone and speaker choice (desktop) -->
+                    <StackPanel Spacing="4" IsVisible="{Binding AudioDevicesSupported}">
+                        <TextBlock Classes="label" Text="Microphone" />
+                        <ComboBox ItemsSource="{Binding InputDevices}" SelectedItem="{Binding SelectedInputDevice}"
+                                  HorizontalAlignment="Stretch" AutomationProperties.Name="Microphone" />
+                        <TextBlock Classes="label" Text="Speaker" Margin="0,8,0,0" />
+                        <ComboBox ItemsSource="{Binding OutputDevices}" SelectedItem="{Binding SelectedOutputDevice}"
+                                  HorizontalAlignment="Stretch" AutomationProperties.Name="Speaker" />
+                        <TextBlock Classes="hint" Text="Applies the next time you connect. If a chosen device is unplugged, NodeX uses the system default." />
+                    </StackPanel>
+
                     <CheckBox Content="Clean up my voice (rumble filter, automatic level, limiter)" IsChecked="{Binding MicProcessing}" />
 
                     <StackPanel>

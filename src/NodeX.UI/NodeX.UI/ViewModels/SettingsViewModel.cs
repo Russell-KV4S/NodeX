@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using NodeX.Core;
+using NodeX.Core.Audio;
 using NodeX.Core.Settings;
 
 namespace NodeX.UI.ViewModels;
@@ -254,6 +255,47 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool MicProcessing { get; set; } = true;
 
+    // ----- microphone / speaker choice (desktop) -----
+
+    /// <summary>Pickers exist only where the head can enumerate devices (desktop).</summary>
+    public bool AudioDevicesSupported => AppServices.AudioDeviceLister != null;
+
+    public ObservableCollection<AudioDeviceOption> InputDevices { get; } = [];
+    public ObservableCollection<AudioDeviceOption> OutputDevices { get; } = [];
+
+    [ObservableProperty]
+    public partial AudioDeviceOption? SelectedInputDevice { get; set; }
+
+    [ObservableProperty]
+    public partial AudioDeviceOption? SelectedOutputDevice { get; set; }
+
+    /// <summary>Re-reads the device lists and selects the saved choices (kept, marked "not connected", if unplugged).</summary>
+    private void FillAudioDevices(string? savedInput, string? savedOutput)
+    {
+        AudioDeviceCatalog catalog;
+        try { catalog = AppServices.AudioDeviceLister?.Invoke() ?? new AudioDeviceCatalog([], []); }
+        catch (Exception) { catalog = new AudioDeviceCatalog([], []); }
+
+        SelectedInputDevice = Populate(InputDevices, catalog.Inputs, savedInput);
+        SelectedOutputDevice = Populate(OutputDevices, catalog.Outputs, savedOutput);
+
+        static AudioDeviceOption Populate(ObservableCollection<AudioDeviceOption> target,
+            IReadOnlyList<AudioDeviceOption> found, string? saved)
+        {
+            target.Clear();
+            target.Add(AudioDeviceOption.SystemDefault);
+            foreach (var d in found) target.Add(d);
+            if (string.IsNullOrEmpty(saved)) return AudioDeviceOption.SystemDefault;
+
+            var match = target.FirstOrDefault(d => d.Id == saved);
+            if (match != null) return match;
+
+            var missing = new AudioDeviceOption(saved, saved + " (not connected)");
+            target.Add(missing);
+            return missing;
+        }
+    }
+
     // ----- station ID reminder (never transmits anything) -----
 
     [ObservableProperty]
@@ -352,6 +394,7 @@ public partial class SettingsViewModel : ViewModelBase
         TimeOutSecondsText = s.TimeOutTimerSeconds.ToString(CultureInfo.InvariantCulture);
         MicGain = s.MicGain;
         MicProcessing = s.MicProcessing;
+        FillAudioDevices(s.InputDeviceId, s.OutputDeviceId);
         IdReminderEnabled = s.IdReminderEnabled;
         IdReminderMinutesText = s.IdReminderMinutes.ToString(CultureInfo.InvariantCulture);
         DetailedLogging = s.DetailedLogging;
@@ -534,6 +577,8 @@ public partial class SettingsViewModel : ViewModelBase
             AutoReconnect = AutoReconnect,
             MicGain = (float)MicGain,
             MicProcessing = MicProcessing,
+            InputDeviceId = SelectedInputDevice?.Id,
+            OutputDeviceId = SelectedOutputDevice?.Id,
             TimeOutTimerSeconds = timeout,
             TogglePtt = TogglePtt,
             DefaultToSpeaker = DefaultToSpeaker,
