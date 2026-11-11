@@ -212,7 +212,11 @@ public partial class MainViewModel : ViewModelBase
     public bool HasLinks => LinkItems.Count > 0;
     public bool HasMultipleLinks => LinkItems.Count > 1;
 
-    /// <summary>"2 / 4 linked".</summary>
+    /// <summary>Footnote under the linked nodes; follows <see cref="NodeRuntime.MaxLinks"/>.</summary>
+    public string LinkHintText =>
+        $"Up to {NodeRuntime.MaxLinks} nodes at once. Received audio from every node is mixed; your voice goes only to the transmit node.";
+
+    /// <summary>"2 / 8 linked".</summary>
     public string LinkCountText => $"{LinkItems.Count} / {NodeRuntime.MaxLinks} linked";
 
     /// <summary>"Disconnect" for one link, "Disconnect all" for several.</summary>

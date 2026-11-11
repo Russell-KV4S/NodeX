@@ -663,7 +663,7 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
-                            <TextBlock Text="Up to 4 nodes at once. Received audio from every node is mixed; your voice goes only to the transmit node."
+                            <TextBlock Text="{Binding LinkHintText}"
                                        FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}" />
                         </StackPanel>
                     </Border>
