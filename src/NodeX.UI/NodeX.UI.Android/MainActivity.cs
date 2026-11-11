@@ -54,6 +54,7 @@ public class MainActivity : AvaloniaMainActivity
     {
         base.OnResume();
         UpdateMicrophoneState();   // the user may have granted it in system settings meanwhile
+        NodeForegroundService.RetryMicrophone();   // a link dialled from the car could not get the microphone until now
         MaybeAskBatteryExemption();
     }
 

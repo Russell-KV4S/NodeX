@@ -2,13 +2,26 @@ using NodeX.Core.Settings;
 
 namespace NodeX.Core;
 
+/// <summary>The picture shown beside a car browse row (the platform head maps it to a drawable).</summary>
+public enum CarIcon
+{
+    None,
+    /// <summary>A connected node the user transmits to.</summary>
+    Transmit,
+    /// <summary>A connected listen-only node.</summary>
+    Listen,
+    /// <summary>A favourite that is not connected.</summary>
+    Favorite,
+    Disconnect
+}
+
 /// <summary>One row on the car's browse screen. <see cref="MediaId"/> is the node number or command id for a playable row.</summary>
-public sealed record CarBrowseItem(string MediaId, string Title, bool Playable, string? Subtitle = null);
+public sealed record CarBrowseItem(string MediaId, string Title, bool Playable, string? Subtitle = null, CarIcon Icon = CarIcon.None);
 
 /// <summary>
 /// Platform-neutral rules for the Android Auto listen-only media app: what the browse list shows, which favourite
-/// Next/Previous picks, how a voice query maps to a favourite, and which link a new selection replaces. Nothing here
-/// can transmit; the car only ever dials, switches and hangs up links.
+/// Next/Previous picks and how a voice query maps to a favourite. A selected favourite is added alongside the links
+/// already up; nothing is hung up to make room. Nothing here can transmit.
 /// </summary>
 public static class CarBrowse
 {
@@ -59,7 +72,8 @@ public static class CarBrowse
             string subtitle = isConnected
                 ? (node == transmitNode ? $"Node {node} • Connected (Transmit)" : $"Node {node} • Connected (Listen)")
                 : $"Node {node}";
-            items.Add(new CarBrowseItem(node, TitleFor(settings, node), true, subtitle));
+            var icon = !isConnected ? CarIcon.Favorite : node == transmitNode ? CarIcon.Transmit : CarIcon.Listen;
+            items.Add(new CarBrowseItem(node, TitleFor(settings, node), true, subtitle, icon));
         }
 
         if (items.Count == 0)
@@ -72,8 +86,10 @@ public static class CarBrowse
         BuildFavoritesItems(settings);
 
     /// <summary>
-    /// Rows for the Active Links folder: shows each connected/reconnecting node with status, a disconnect row
-    /// for each, and a disconnect-all row when multiple links exist.
+    /// Rows for the Active Links folder: one row per connected/reconnecting node ("523801 · UL Cloud Node" with a
+    /// status line such as "TRANSMIT HERE · Connected · Hearing now"), and a disconnect-all row when several links
+    /// exist. Selecting a row only shows that node on the car's now-playing screen, where its Mute, Disconnect and
+    /// "Transmit here" buttons are; it never dials, hangs up or changes the transmit node.
     /// </summary>
     public static IReadOnlyList<CarBrowseItem> BuildActiveItems(
         NodeSettings settings,
@@ -85,25 +101,12 @@ public static class CarBrowse
         foreach (var conn in connections)
         {
             string node = conn.Node;
-            string title = TitleFor(settings, node);
             bool isTx = node == transmitNode;
             bool isTalking = talkingNodes?.Contains(node) == true;
             bool isConnected = conn.Link?.Session.State == Iax2SessionState.Connected;
 
-            string role = isTx ? "Transmit" : "Listen-only";
-            string status;
-            if (!isConnected)
-                status = $"{role} • " + (conn.Reconnect.Active ? "Reconnecting…" : "Connecting…");
-            else if (isTalking)
-                status = $"{role} • Hearing now";
-            else
-                status = $"{role} • Connected";
-
-            // Row 1: The node itself (playable: selects it as now playing and makes it transmit node)
-            items.Add(new CarBrowseItem(node, title, true, status));
-
-            // Row 2: Disconnect action for this specific node
-            items.Add(new CarBrowseItem(DisconnectPrefix + node, $"Disconnect {node}", true, $"Hang up {title}"));
+            string status = StatusLine(isTx, isConnected, conn.Reconnect.Active, isTalking, conn.Muted);
+            items.Add(new CarBrowseItem(node, CardTitle(settings, node), true, status, isTx ? CarIcon.Transmit : CarIcon.Listen));
         }
 
         if (items.Count == 0)
@@ -112,10 +115,30 @@ public static class CarBrowse
         }
         else if (connections.Count > 1)
         {
-            items.Add(new CarBrowseItem(DisconnectAllId, "Disconnect all nodes", true, $"Hang up all {connections.Count} active links"));
+            items.Add(new CarBrowseItem(DisconnectAllId, "Disconnect all nodes", true, $"Hang up all {connections.Count} active links", CarIcon.Disconnect));
         }
 
         return items;
+    }
+
+    /// <summary>
+    /// One node's status as the phone's card shows it, on one line: "TRANSMIT HERE · Connected · Hearing now",
+    /// "Listen only · Reconnecting…", "Listen only · Connected · Muted".
+    /// </summary>
+    public static string StatusLine(bool isTransmit, bool connected, bool reconnecting, bool hearing, bool muted)
+    {
+        var parts = new List<string> { isTransmit ? "TRANSMIT HERE" : "Listen only" };
+        parts.Add(connected ? "Connected" : reconnecting ? "Reconnecting…" : "Connecting…");
+        if (connected && hearing) parts.Add("Hearing now");
+        if (muted) parts.Add("Muted");
+        return string.Join(" · ", parts);
+    }
+
+    /// <summary>"523801 · UL Cloud Node" like the phone's card heading, or just the node number when it has no label.</summary>
+    public static string CardTitle(NodeSettings settings, string node)
+    {
+        string label = TitleFor(settings, node);
+        return label == node ? node : $"{node} · {label}";
     }
 
     /// <summary>The favourite's label, or the node number when it has none.</summary>
@@ -164,11 +187,4 @@ public static class CarBrowse
         var partial = favorites.Where(f => TitleFor(settings, f).Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
         return partial.Count == 1 ? partial[0] : null;
     }
-
-    /// <summary>
-    /// The node to hang up when the car selects <paramref name="selected"/>: the one that was now-playing, unless it is
-    /// the same node or the selected node is already connected (in which case we are just switching focus).
-    /// </summary>
-    public static string? NodeToReplace(string? nowPlaying, string selected, bool selectedAlreadyConnected = false) =>
-        selectedAlreadyConnected || string.IsNullOrEmpty(nowPlaying) || nowPlaying == selected ? null : nowPlaying;
 }

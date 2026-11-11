@@ -16,11 +16,14 @@ using NodeX.Core.Settings;
 namespace NodeX.UI.Android;
 
 /// <summary>
-/// Android Auto (and Google Assistant) entry point: a media app. The favourites are the browse list; selecting one
-/// dials it, Stop hangs it up. It is listen-only unless the user turned on "Talk from the car" in Settings; then a
-/// Talk button (and optionally the wheel play/pause button) toggles the transmit node through <see cref="CarTransmit"/>,
-/// which enforces the safety rules. The car never changes the transmit node, and every car key is released when the
-/// car session ends, audio focus is lost or this service is destroyed.
+/// Android Auto (and Google Assistant) entry point: a media app. The browse screen has two tabs: Active Links (one
+/// row per connected node, like the phone's cards) and Favourites (selecting one dials it). The now-playing screen
+/// shows one node with its buttons: Mute, Disconnect and, for a listen-only node, "Transmit here" (the only way the
+/// car changes the transmit node, and always a deliberate tap). It is listen-only unless the user turned on "Talk
+/// from the car" in Settings; then a Talk button (and optionally a wheel button) toggles the transmit node through
+/// <see cref="CarTransmit"/>, which enforces the safety rules. While transmitting, every media button only stops
+/// the transmission. The wheel's Next/Back never dial: they step through the connected nodes. Every car key is
+/// released when the car session ends, audio focus is lost, the car time limit passes or this service is destroyed.
 /// </summary>
 [Service(Name = "com.kv4s.nodex.NodeXMediaBrowserService", Exported = true, Label = "NodeX")]
 [IntentFilter(new[] { "android.media.browse.MediaBrowserService" })]
@@ -47,6 +50,18 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
     private readonly object _gate = new();
 
     private const string TalkAction = "nodex.talk";
+    private const string MuteAction = "nodex.mute";
+    private const string DisconnectAction = "nodex.disconnect";
+    private const string TransmitHereAction = "nodex.transmit_here";
+
+    // Android Auto browse layout hints (the documented media "content style" keys): rows with pictures, as a list.
+    private const string ContentStyleSupported = "android.media.browse.CONTENT_STYLE_SUPPORTED";
+    private const string ContentStylePlayable = "android.media.browse.CONTENT_STYLE_PLAYABLE_HINT";
+    private const string ContentStyleBrowsable = "android.media.browse.CONTENT_STYLE_BROWSABLE_HINT";
+    private const int ContentStyleList = 1;
+
+    private Action? _carChanged;
+    private System.Threading.CancellationTokenSource? _carKeyLimit;  // ends a car transmission that runs too long
     private readonly RxActivity _rx = new();
     private System.Threading.Timer? _rxTimer;
     private string _talkers = "";                  // who the car screen last showed as heard
@@ -87,6 +102,19 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
 
         // Cold start: Android Auto can bind this service with no Activity, so the runtime is started here too.
         _ = StartRuntimeAsync();
+
+        // Android Auto may bind this service before the car connection is known: take the audio once it is.
+        _carChanged = () =>
+        {
+            if (!CarSession.Connected || _nowPlaying == null) return;
+            BeginCarSession();
+            PublishState();
+        };
+        CarSession.Changed += _carChanged;
+
+        // A link that was already up on the phone is shown straight away, so Talk and the wheel buttons have a node
+        // to act on without waiting for the next change.
+        OnRuntimeChanged();
     }
 
     public override void OnDestroy()
@@ -100,6 +128,10 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         _rxTimer?.Dispose();
         _rxTimer = null;
         _rx.Dispose();
+        if (_carChanged != null) CarSession.Changed -= _carChanged;
+        _carChanged = null;
+        _carKeyLimit?.Cancel();
+        _carKeyLimit = null;
 
         // The car went away: never leave the transmitter keyed. Wait briefly so the UNKEY actually leaves.
         try { Task.Run(() => CarTransmit.UnkeyCarAsync(rt)).Wait(TimeSpan.FromSeconds(1)); }
@@ -124,7 +156,11 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
     public override BrowserRoot? OnGetRoot(string clientPackageName, int clientUid, Bundle? rootHints)
     {
         if (!IsAllowedCaller(clientPackageName, clientUid)) return null;
-        return new BrowserRoot(RootId, null);
+        var extras = new Bundle();
+        extras.PutBoolean(ContentStyleSupported, true);
+        extras.PutInt(ContentStylePlayable, ContentStyleList);
+        extras.PutInt(ContentStyleBrowsable, ContentStyleList);
+        return new BrowserRoot(RootId, extras);
     }
 
     private bool IsAllowedCaller(string package, int uid)
@@ -177,14 +213,26 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         });
     }
 
-    private static MediaBrowser.MediaItem ToMediaItem(CarBrowseItem item)
+    private MediaBrowser.MediaItem ToMediaItem(CarBrowseItem item)
     {
-        var description = new MediaDescription.Builder()
+        var builder = new MediaDescription.Builder()
             .SetMediaId(item.MediaId)!
             .SetTitle(item.Title)!
-            .SetSubtitle(item.Subtitle ?? (item.Playable ? "Node " + item.MediaId : null))!
-            .Build();
-        return new MediaBrowser.MediaItem(description, item.Playable ? MediaItemFlags.Playable : MediaItemFlags.Browsable);
+            .SetSubtitle(item.Subtitle ?? (item.Playable ? "Node " + item.MediaId : null))!;
+
+        // The coloured tile beside the row (red = transmit, slate = listen-only), as on the phone's cards.
+        string? drawable = item.Icon switch
+        {
+            CarIcon.Transmit => "ic_car_node_tx",
+            CarIcon.Listen => "ic_car_node_rx",
+            CarIcon.Favorite => "ic_car_node_fav",
+            CarIcon.Disconnect => "ic_car_node_disconnect",
+            _ => null
+        };
+        if (drawable != null)
+            builder.SetIconUri(global::Android.Net.Uri.Parse($"android.resource://{PackageName}/drawable/{drawable}"));
+
+        return new MediaBrowser.MediaItem(builder.Build()!, item.Playable ? MediaItemFlags.Playable : MediaItemFlags.Browsable);
     }
 
     private void NotifyChanges()
@@ -223,33 +271,52 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
             BeginCarSession();
             Remember(node);
 
-            // Switching to an already-connected node promotes it to the transmit target so the Talk button keys it!
-            if (alreadyUp && rt.TransmitNode != node)
-            {
-                rt.SetTransmitNode(node);
-            }
-
+            // Selecting an already-connected node only shows it. It does not move the transmit node: that takes a
+            // deliberate tap on "Transmit here" on the now-playing screen.
             PublishState();
             NotifyChanges();
 
+            // A favourite is added alongside the links that are already up: NodeX is built around several nodes at
+            // once, so the car never hangs one up to make room. Hanging up is always the Disconnect button.
             if (!alreadyUp)
             {
-                var info = await rt.ConnectAsync(node);
-                if (info == null)
+                try
                 {
-                    Fail($"Could not find node {node}.");
-                    return;
+                    var info = await rt.ConnectAsync(node);
+                    if (info == null) FailConnect($"Could not find node {node}.", previous);
+                }
+                catch (Exception ex)
+                {
+                    FailConnect(ex is InvalidOperationException or ArgumentException
+                        ? ex.Message
+                        : $"Could not connect: {ex.Message}", previous);
                 }
             }
-
-            // The new node is up; now drop the car's previous one. If switching between already-connected nodes, keep both!
-            string? replace = CarBrowse.NodeToReplace(previous, node, alreadyUp);
-            if (replace != null) await rt.DisconnectAsync(replace);
         }
         catch (Exception ex)
         {
             Fail(ex is InvalidOperationException or ArgumentException ? ex.Message : $"Could not connect: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// A favourite could not be added (not found, or the link limit is reached). With other links up, the car goes
+    /// back to the node it was showing and says why; with none, it shows the error state.
+    /// </summary>
+    private void FailConnect(string message, string? previous)
+    {
+        NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", $"connect from car failed: {message}");
+        bool previousStillUp = previous != null && AppServices.Runtime.Connections.Any(c => c.Node == previous);
+        if (!previousStillUp)
+        {
+            Fail(message);
+            return;
+        }
+
+        lock (_gate) _nowPlaying = previous;
+        Beep(Tone.PropNack, 300);
+        ShowNotice(message);
+        NotifyChanges();
     }
 
     private async Task StopAsync()
@@ -313,27 +380,111 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
 
     // ----- talk (only with "Talk from the car" on; see CarTransmit for the rules) -----
 
-    private async Task TalkAsync()
+    private async Task TalkAsync(bool fromWheel)
     {
+        var log = NodeX.Core.Diagnostics.DiagnosticLog.Default;
         try
         {
-            var result = await CarTransmit.ToggleAsync(AppServices.Runtime, _nowPlaying, CarSession.MicrophoneUsable);
-            NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", result.Action == CarTalkAction.Refuse
-                ? $"talk refused: {result.Message}"
-                : $"talk {(result.Action == CarTalkAction.Key ? "keyed" : "unkeyed")} for node {_nowPlaying}");
-            if (result.Action == CarTalkAction.Refuse) ShowNotice(result.Message);
+            var rt = AppServices.Runtime;
+
+            // The wheel button always talks to the transmit node. A driver pressing it is not looking at the screen,
+            // so if the car was showing another (listen-only) node, show the transmit node first; the rule that the
+            // car only keys the node it shows still holds.
+            string? tx = rt.TransmitNode;
+            if (fromWheel && tx != null && tx != _nowPlaying && rt.Connections.Any(c => c.Node == tx && c.Link != null))
+            {
+                lock (_gate) _nowPlaying = tx;
+                BeginCarSession();
+            }
+
+            var result = await CarTransmit.ToggleAsync(rt, _nowPlaying, CarSession.MicrophoneUsable);
+            string by = fromWheel ? "wheel" : "screen";
+            log.Info("car", result.Action == CarTalkAction.Refuse
+                ? $"talk refused ({by}): {result.Message}"
+                : $"talk {(result.Action == CarTalkAction.Key ? "keyed" : "unkeyed")} ({by}) for node {_nowPlaying}");
+            if (result.Action == CarTalkAction.Refuse)
+            {
+                // A refusal must be heard, not only shown: the driver would otherwise talk to nobody.
+                Beep(Tone.PropNack, 300);
+                ShowNotice(result.Message);
+            }
         }
         catch (Exception ex)
         {
+            log.Info("car", $"talk failed: {ex.Message}");
+            Beep(Tone.PropNack, 300);
             ShowNotice("Could not talk: " + ex.Message);
         }
         PublishState();
     }
 
+    /// <summary>
+    /// While transmitting, any media button (wheel or screen: next, back, play, pause, stop) only stops the
+    /// transmission. Returns true when it did, so the button's normal job is skipped.
+    /// </summary>
+    private bool StopTalkingIfKeyed(string button)
+    {
+        var rt = AppServices.Runtime;
+        if (!CarTransmit.AnyKeyed(rt)) return false;
+
+        NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", $"unkeyed by the {button} button");
+        _ = Task.Run(async () =>
+        {
+            await CarTransmit.UnkeyAllAsync(rt);
+            PublishState();
+        });
+        return true;
+    }
+
     private bool WheelTalks(CarWheelTalk button) =>
         AppServices.Runtime.Config.Settings.CarPtt
-        && AppServices.Runtime.Config.Settings.CarPttWheel == button
-        && _nowPlaying != null;
+        && AppServices.Runtime.Config.Settings.CarPttWheel == button;
+
+    /// <summary>A car transmission that runs past <see cref="CarTransmit.MaxCarTransmit"/> is released.</summary>
+    private void WatchCarKey(bool keyed, PttSource source)
+    {
+        _carKeyLimit?.Cancel();
+        _carKeyLimit = null;
+        if (!keyed || source != PttSource.Car) return;
+
+        var cts = new System.Threading.CancellationTokenSource();
+        _carKeyLimit = cts;
+        _ = Task.Run(async () =>
+        {
+            try { await Task.Delay(CarTransmit.MaxCarTransmit, cts.Token); }
+            catch (System.OperationCanceledException) { return; }
+
+            NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", "car transmission reached the time limit; unkeyed");
+            await CarTransmit.UnkeyCarAsync(AppServices.Runtime);
+            ShowNotice("Transmission stopped: time limit.");
+        });
+    }
+
+    private void ToggleMute()
+    {
+        string? node = _nowPlaying;
+        var rt = AppServices.Runtime;
+        var conn = node == null ? null : rt.Connections.FirstOrDefault(c => c.Node == node);
+        if (conn == null) return;
+
+        _mutedForFocus.Remove(conn.Node);   // the driver's choice outlasts a navigation prompt
+        rt.SetMuted(conn.Node, !conn.Muted);
+        PublishState();
+    }
+
+    private void TransmitHere()
+    {
+        string? node = _nowPlaying;
+        if (node == null) return;
+
+        bool ok = AppServices.Runtime.SetTransmitNode(node);
+        NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", ok
+            ? $"transmit node set to {node} from the car screen"
+            : $"could not set transmit node {node}: not linked");
+        if (!ok) ShowNotice($"Node {node} is not connected.");
+        PublishState();
+        NotifyChanges();
+    }
 
     private void ShowNotice(string message)
     {
@@ -352,7 +503,9 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         Action<bool, PttSource> handler = (key, source) =>
         {
             // The audible key/unkey indication, only for the car's talk feature.
-            if (CarSession.Active && AppServices.Runtime.Config.Settings.CarPtt) Beep(key);
+            if (CarSession.Active && AppServices.Runtime.Config.Settings.CarPtt)
+                Beep(key ? Tone.PropBeep : Tone.PropAck, key ? 150 : 250);
+            WatchCarKey(key, source);
             PublishState();
         };
         _hooks[link] = handler;
@@ -389,21 +542,30 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         catch (Exception) { /* a display nicety only */ }
     }
 
-    private void Beep(bool keyed)
+    private void Beep(Tone tone, int ms)
     {
         try
         {
             _tone ??= new ToneGenerator(global::Android.Media.Stream.Music, 70);
-            _tone.StartTone(keyed ? Tone.PropBeep : Tone.PropAck, keyed ? 150 : 250);
+            _tone.StartTone(tone, ms);
         }
         catch (Exception) { /* the on-screen state still shows it */ }
     }
 
+    /// <summary>
+    /// Next/Back step the car's now-playing screen through the nodes that are already connected. They never dial a
+    /// favourite, hang anything up or move the transmit node, so a stray press on the wheel is harmless.
+    /// </summary>
     private void Step(int direction)
     {
-        var settings = AppServices.Runtime.Config.Settings;
-        string? next = CarBrowse.Neighbor(settings.FavoriteNodes, _nowPlaying, direction);
-        if (next != null) _ = PlayAsync(next);
+        var connected = AppServices.Runtime.Connections.Select(c => c.Node).ToList();
+        string? next = CarBrowse.Neighbor(connected, _nowPlaying, direction);
+        if (next == null || next == _nowPlaying) return;
+
+        lock (_gate) _nowPlaying = next;
+        BeginCarSession();
+        PublishState();
+        NotifyChanges();
     }
 
     private void PlaySearch(string? query)
@@ -427,6 +589,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
     {
         var rt = AppServices.Runtime;
         var conns = rt.Connections;
+        bool adopted = false;
 
         lock (_gate)
         {
@@ -434,7 +597,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
             {
                 // A link was already up when the car connected: show it (the transmit/first link), as the phone's.
                 string? adopt = rt.TransmitNode ?? conns.FirstOrDefault()?.Node;
-                if (adopt != null) { _nowPlaying = adopt; }
+                if (adopt != null) { _nowPlaying = adopt; adopted = true; }
             }
             else if (!conns.Any(c => c.Node == _nowPlaying) && _error == null)
             {
@@ -444,6 +607,9 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         }
 
         if (_nowPlaying == null) EndCarSession();
+        // In a car, a link adopted from the phone becomes the car's audio like one picked on the car screen, so the
+        // wheel buttons are sent to NodeX.
+        else if (adopted && CarSession.Connected) BeginCarSession();
         PublishState();
         NotifyChanges();
     }
@@ -457,6 +623,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         string? node = _nowPlaying;
         var conn = node == null ? null : rt.Connections.FirstOrDefault(c => c.Node == node);
         int activeCount = rt.Connections.Count(c => c.Link != null);
+        bool isTx = node != null && node == rt.TransmitNode;
 
         PlaybackStateCode code;
         string subtitle;
@@ -473,7 +640,8 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         else if (conn?.Link?.Session.State == Iax2SessionState.Connected)
         {
             code = PlaybackStateCode.Playing;
-            subtitle = activeCount > 1 ? $"Connected ({activeCount} links)" : "Connected";
+            subtitle = CarBrowse.StatusLine(isTx, connected: true, reconnecting: false, hearing: false, conn.Muted);
+            if (activeCount > 1) subtitle += $" ({activeCount} links)";
         }
         else
         {
@@ -485,10 +653,11 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         var actions = PlaybackState.ActionPlay | PlaybackState.ActionPause | PlaybackState.ActionStop | PlaybackState.ActionPlayFromMediaId
                       | PlaybackState.ActionPlayFromSearch | PlaybackState.ActionSkipToNext | PlaybackState.ActionSkipToPrevious;
 
-        bool keyed = rt.Link?.Ptt.IsPttActive == true;
+        bool keyed = CarTransmit.AnyKeyed(rt);
         // Who is talking: the last set RefreshTalkers decided to show (not recomputed here, so it cannot flicker).
         if (code == PlaybackStateCode.Playing && _talkers.Length > 0)
-            subtitle = activeCount > 1 ? $"Hearing {_talkers} ({activeCount} links)" : "Hearing " + _talkers;
+            subtitle = (isTx ? "TRANSMIT HERE · " : "Listen only · ") + "Hearing " + _talkers
+                       + (activeCount > 1 ? $" ({activeCount} links)" : "");
         if (keyed && code == PlaybackStateCode.Playing) subtitle = "TRANSMITTING";
         if (_notice != null && code != PlaybackStateCode.Error) subtitle = _notice;
 
@@ -496,13 +665,33 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
             .SetActions(actions)!
             .SetState(code, PlaybackState.PlaybackPositionUnknown, 1f)!;
 
-        // The Talk button, only when the user turned "Talk from the car" on and a node is showing.
-        if (node != null && _error == null && rt.Config.Settings.CarPtt)
+        // The node's buttons, in the order of the phone's card. Talk comes first so it gets the most prominent slot.
+        if (node != null && _error == null && conn != null)
         {
+            if (isTx || keyed)
+            {
+                // Only with "Talk from the car" on; "Stop talking" is offered whenever something is keyed.
+                if (rt.Config.Settings.CarPtt || keyed)
+                {
+                    builder.AddCustomAction(new PlaybackState.CustomAction.Builder(
+                        TalkAction,
+                        keyed ? "Stop talking" : "Talk",
+                        keyed ? Resource.Drawable.ic_car_talk_stop : Resource.Drawable.ic_car_talk).Build());
+                }
+            }
+            else if (conn.Link != null)
+            {
+                builder.AddCustomAction(new PlaybackState.CustomAction.Builder(
+                    TransmitHereAction, "Transmit here", Resource.Drawable.ic_car_tx_here).Build());
+            }
+
             builder.AddCustomAction(new PlaybackState.CustomAction.Builder(
-                TalkAction,
-                keyed ? "Stop talking" : "Talk",
-                keyed ? Resource.Drawable.ic_car_talk_stop : Resource.Drawable.ic_car_talk).Build());
+                MuteAction,
+                conn.Muted ? "Unmute" : "Mute",
+                conn.Muted ? Resource.Drawable.ic_car_unmute : Resource.Drawable.ic_car_mute).Build());
+
+            builder.AddCustomAction(new PlaybackState.CustomAction.Builder(
+                DisconnectAction, "Disconnect", Resource.Drawable.ic_car_disconnect).Build());
         }
 #pragma warning disable CA1422 // the string overload works on every API level we support
         if (_error != null) builder.SetErrorMessage(_error);
@@ -513,7 +702,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         {
             session.SetMetadata(new MediaMetadata.Builder()
                 .PutString(MediaMetadata.MetadataKeyMediaId, node)!
-                .PutString(MediaMetadata.MetadataKeyTitle, CarBrowse.TitleFor(rt.Config.Settings, node))!
+                .PutString(MediaMetadata.MetadataKeyTitle, CarBrowse.CardTitle(rt.Config.Settings, node))!
                 .PutString(MediaMetadata.MetadataKeyDisplaySubtitle, subtitle)!
                 .Build());
         }
@@ -535,7 +724,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
 
     private void BeginCarSession()
     {
-        CarSession.Active = true;
+        CarSession.Selected = true;
         if (GetSystemService(AudioService) is not AudioManager am || _focus != null) return;
 
         var attributes = new AudioAttributes.Builder()
@@ -557,7 +746,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         if (_focus != null && GetSystemService(AudioService) is AudioManager am)
             am.AbandonAudioFocusRequest(_focus);
         _focus = null;
-        CarSession.Active = false;
+        CarSession.Selected = false;
     }
 
     /// <summary>
@@ -637,26 +826,59 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
             }
         }
 
-        public override void OnPlay() => owner.PlaySearch(null);
+        // While transmitting, every one of these only stops the transmission (see StopTalkingIfKeyed).
+        public override void OnPlay()
+        {
+            if (owner.StopTalkingIfKeyed("play")) return;
+            // A bare Play never dials. Android Auto sends it by itself when it resumes the last media app on
+            // connecting to the car, and that must not put a node on the air unasked. Favourites are dialled by
+            // picking one, or by voice ("play ... on NodeX").
+            NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", "play ignored (nothing is dialled automatically)");
+        }
+
         public override void OnPlayFromSearch(string? query, Bundle? extras) => owner.PlaySearch(query);
-        public override void OnStop() => _ = owner.StopAsync();
-        public override void OnPause() => _ = owner.StopAsync();   // a radio link has nothing to pause
+
+        public override void OnStop()
+        {
+            if (!owner.StopTalkingIfKeyed("stop")) _ = owner.StopAsync();
+        }
+
+        public override void OnPause()
+        {
+            if (!owner.StopTalkingIfKeyed("pause")) _ = owner.StopAsync();   // a radio link has nothing to pause
+        }
 
         public override void OnCustomAction(string? action, Bundle? extras)
         {
-            if (action == TalkAction) _ = owner.TalkAsync();
+            switch (action)
+            {
+                case TalkAction:
+                    _ = owner.TalkAsync(fromWheel: false);
+                    break;
+                case MuteAction:
+                    owner.ToggleMute();
+                    break;
+                case TransmitHereAction:
+                    owner.TransmitHere();
+                    break;
+                case DisconnectAction:
+                    if (owner._nowPlaying is { } node) _ = owner.DisconnectNodeAsync(node);
+                    break;
+            }
         }
 
-        // The wheel button chosen in Settings talks; the other still steps through favourites.
+        // The wheel button chosen in Settings talks; the other steps through the connected nodes.
         public override void OnSkipToNext()
         {
-            if (owner.WheelTalks(CarWheelTalk.Next)) _ = owner.TalkAsync();
+            if (owner.StopTalkingIfKeyed("next")) return;
+            if (owner.WheelTalks(CarWheelTalk.Next)) _ = owner.TalkAsync(fromWheel: true);
             else owner.Step(+1);
         }
 
         public override void OnSkipToPrevious()
         {
-            if (owner.WheelTalks(CarWheelTalk.Back)) _ = owner.TalkAsync();
+            if (owner.StopTalkingIfKeyed("back")) return;
+            if (owner.WheelTalks(CarWheelTalk.Back)) _ = owner.TalkAsync(fromWheel: true);
             else owner.Step(-1);
         }
     }

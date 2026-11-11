@@ -53,15 +53,6 @@ public class CarBrowseTests
     }
 
     [Fact]
-    public void Selecting_replaces_only_the_cars_previous_node()
-    {
-        Assert.Equal("1111", CarBrowse.NodeToReplace("1111", "2222"));
-        Assert.Null(CarBrowse.NodeToReplace("1111", "1111"));
-        Assert.Null(CarBrowse.NodeToReplace(null, "2222"));
-        Assert.Null(CarBrowse.NodeToReplace("1111", "2222", selectedAlreadyConnected: true));
-    }
-
-    [Fact]
     public void Root_items_expose_active_links_and_favorites_tabs()
     {
         var root = CarBrowse.BuildRootItems(activeCount: 2, favoritesCount: 5);
@@ -88,37 +79,76 @@ public class CarBrowseTests
     }
 
     [Fact]
-    public void Active_items_show_nodes_disconnect_rows_and_disconnect_all()
+    public void Active_items_are_one_card_row_per_node_plus_disconnect_all()
     {
         var s = Settings("27339", "2000");
         var conn1 = new NodeConnection("27339");
         var conn2 = new NodeConnection("2000");
 
         var items = CarBrowse.BuildActiveItems(s, [conn1, conn2], transmitNode: "27339", talkingNodes: new HashSet<string> { "27339" });
-        // Expected:
-        // 1. Node 27339 item
-        // 2. Disconnect 27339 item
-        // 3. Node 2000 item
-        // 4. Disconnect 2000 item
-        // 5. Disconnect all nodes item
-        Assert.Equal(5, items.Count);
+        Assert.Equal(3, items.Count);
 
         Assert.Equal("27339", items[0].MediaId);
-        Assert.Equal("East Coast Reflector", items[0].Title);
-        Assert.Equal("Transmit • Connecting…", items[0].Subtitle);
+        Assert.Equal("27339 · East Coast Reflector", items[0].Title);
+        Assert.Equal("TRANSMIT HERE · Connecting…", items[0].Subtitle);
+        Assert.Equal(CarIcon.Transmit, items[0].Icon);
 
-        Assert.Equal(CarBrowse.DisconnectPrefix + "27339", items[1].MediaId);
-        Assert.Equal("Disconnect 27339", items[1].Title);
+        Assert.Equal("2000", items[1].MediaId);
+        Assert.Equal("2000", items[1].Title);
+        Assert.Equal("Listen only · Connecting…", items[1].Subtitle);
+        Assert.Equal(CarIcon.Listen, items[1].Icon);
 
-        Assert.Equal("2000", items[2].MediaId);
-        Assert.Equal("2000", items[2].Title);
-        Assert.Equal("Listen-only • Connecting…", items[2].Subtitle);
+        Assert.Equal(CarBrowse.DisconnectAllId, items[2].MediaId);
+        Assert.Equal("Disconnect all nodes", items[2].Title);
 
-        Assert.Equal(CarBrowse.DisconnectPrefix + "2000", items[3].MediaId);
-        Assert.Equal("Disconnect 2000", items[3].Title);
+        // No row hangs a single node up: that is a button on the now-playing screen.
+        Assert.DoesNotContain(items, i => i.MediaId.StartsWith(CarBrowse.DisconnectPrefix) && i.MediaId != CarBrowse.DisconnectAllId);
+    }
 
-        Assert.Equal(CarBrowse.DisconnectAllId, items[4].MediaId);
-        Assert.Equal("Disconnect all nodes", items[4].Title);
+    [Fact]
+    public void A_single_active_link_has_no_disconnect_all_row()
+    {
+        var items = CarBrowse.BuildActiveItems(Settings("2000"), [new NodeConnection("2000")], transmitNode: null);
+        var only = Assert.Single(items);
+        Assert.Equal("2000", only.MediaId);
+        Assert.Equal(CarIcon.Listen, only.Icon);
+    }
+
+    [Theory]
+    [InlineData(true, true, false, false, false, "TRANSMIT HERE · Connected")]
+    [InlineData(true, true, false, true, false, "TRANSMIT HERE · Connected · Hearing now")]
+    [InlineData(false, true, false, false, true, "Listen only · Connected · Muted")]
+    [InlineData(false, false, true, true, false, "Listen only · Reconnecting…")]   // not "hearing" while down
+    [InlineData(false, false, false, false, false, "Listen only · Connecting…")]
+    public void Status_line_reads_like_the_phone_card(bool tx, bool connected, bool reconnecting, bool hearing, bool muted, string expected)
+    {
+        Assert.Equal(expected, CarBrowse.StatusLine(tx, connected, reconnecting, hearing, muted));
+    }
+
+    [Fact]
+    public void Card_title_is_number_and_label_or_just_the_number()
+    {
+        var s = Settings("27339", "2000");
+        Assert.Equal("27339 · East Coast Reflector", CarBrowse.CardTitle(s, "27339"));
+        Assert.Equal("2000", CarBrowse.CardTitle(s, "2000"));
+    }
+
+    [Fact]
+    public void Favorites_icons_show_connected_role()
+    {
+        var items = CarBrowse.BuildFavoritesItems(Settings("27339", "2000", "5555"), connectedNodes: ["27339", "2000"], transmitNode: "27339");
+        Assert.Equal([CarIcon.Transmit, CarIcon.Listen, CarIcon.Favorite], items.Select(i => i.Icon));
+    }
+
+    [Fact]
+    public void Wheel_next_and_back_step_through_connected_nodes_only()
+    {
+        // The service passes the connected nodes (not the favourites), so nothing is ever dialled from the wheel.
+        string[] connected = ["523801", "53431", "43136"];
+        Assert.Equal("53431", CarBrowse.Neighbor(connected, "523801", +1));
+        Assert.Equal("43136", CarBrowse.Neighbor(connected, "523801", -1));
+        Assert.Equal("2000", CarBrowse.Neighbor(["2000"], "2000", +1));   // one link: stays where it is
+        Assert.Null(CarBrowse.Neighbor([], null, +1));                     // nothing linked: nothing happens
     }
 
     [Fact]

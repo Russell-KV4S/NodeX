@@ -67,6 +67,31 @@ public static class AndroidAudioRoute
         return true;
     }
 
+    /// <summary>
+    /// A car took over while linked: leave communication mode and any forced device so the link plays as media
+    /// through the car, and rebuild playback. The speaker/phone choice is kept for when the car goes away.
+    /// </summary>
+    public static void EnterCar(Context context)
+    {
+        if (context.GetSystemService(Context.AudioService) is AudioManager am)
+        {
+            try
+            {
+                if (OperatingSystem.IsAndroidVersionAtLeast(31)) am.ClearCommunicationDevice();
+                am.Mode = Mode.Normal;
+            }
+            catch (Exception) { /* routing stays as it was */ }
+        }
+        RouteChanged?.Invoke();
+    }
+
+    /// <summary>The car went away while linked: put the phone/headset route back (the loudspeaker needs nothing).</summary>
+    public static void LeaveCar(Context context)
+    {
+        if (SpeakerActive) RouteChanged?.Invoke();
+        else SetSpeaker(context, false);
+    }
+
     /// <summary>Back to the system's normal routing (nothing is linked any more).</summary>
     public static void Reset(Context context)
     {

@@ -43,8 +43,27 @@ public sealed class NodeForegroundService : Service
     private Action<BackgroundState>? _handler;
     private Action<NodeConfig>? _configHandler;
     private AndroidHeadsetPtt? _headset;
+    private Action? _carHandler;
+    private int? _types;          // the service types of the last successful start; null = not started
+    private bool _micGranted;
+    private bool _carMode;        // the audio route was last set up for a car
+    private static NodeForegroundService? _current;
 
     public static bool IsRunning { get; private set; }
+
+    /// <summary>
+    /// Call when NodeX comes to the front on the phone. If Android refused the microphone while the app was in the
+    /// background (a link dialled from the car screen), the service asks again now that it is allowed, so the car's
+    /// Talk button and the wheel button start working.
+    /// </summary>
+    public static void RetryMicrophone()
+    {
+        var service = _current;
+        if (service == null || !IsRunning || service._micGranted) return;
+        if (!AppServices.Runtime.Background.IsLinked) return;
+        service._types = null;
+        service.Apply(AppServices.Runtime.Background);
+    }
 
     /// <summary>Starts the service if it is not already running (call when <see cref="BackgroundState.Needed"/> turns true).</summary>
     public static void EnsureStarted(Context context)
@@ -88,6 +107,11 @@ public sealed class NodeForegroundService : Service
         // Settings saved while linked (the headset-button option) take effect without a relink.
         _configHandler = _ => { if (IsRunning) Apply(AppServices.Runtime.Background); };
         AppServices.Runtime.ConfigService.Changed += _configHandler;
+
+        // Android Auto connecting or disconnecting changes the audio route and who owns the media buttons.
+        _carHandler = () => { if (IsRunning) Apply(AppServices.Runtime.Background); };
+        CarSession.Changed += _carHandler;
+        _current = this;
     }
 
     public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
@@ -124,16 +148,31 @@ public sealed class NodeForegroundService : Service
         var notification = BuildNotification(state);
         bool micAllowed = CheckSelfPermission(global::Android.Manifest.Permission.RecordAudio) == Permission.Granted;
 
-        bool carTalk = CarSession.Active && AppServices.Runtime.Config.Settings.CarPtt;
-        bool wantMic = micAllowed && (!CarSession.Active || carTalk);
+        // The microphone type is wanted in the car too (the car's Talk button, the wheel button and a Bluetooth PTT
+        // button all need it); if Android refuses it the service falls back to listen-only below.
+        bool wantMic = micAllowed;
         bool micGranted = false;
+        bool car = CarSession.Active;
 
         try
         {
             if (OperatingSystem.IsAndroidVersionAtLeast(30))
             {
-                StartForeground(NotificationId, notification, TypesFor(state, wantMic));
-                micGranted = wantMic && state.IsLinked;
+                var types = TypesFor(state, wantMic);
+                if (IsRunning && _types == (int)types)
+                {
+                    // Nothing about the service changed, only the text. Do not start it again: from the background
+                    // (in a car, screen off) Android 14+ refuses the microphone type on a new start, which would
+                    // take the microphone away from a link that already had it.
+                    (GetSystemService(NotificationService) as NotificationManager)?.Notify(NotificationId, notification);
+                    micGranted = _micGranted;
+                }
+                else
+                {
+                    StartForeground(NotificationId, notification, types);
+                    micGranted = wantMic && state.IsLinked;
+                    _types = (int)types;
+                }
             }
             else
             {
@@ -148,12 +187,17 @@ public sealed class NodeForegroundService : Service
             // From the car with the app in the background, Android 14+ may refuse the microphone type. Keep listening
             // without it and tell the car it cannot talk, rather than losing the link.
             bool retried = false;
-            if (wantMic && state.IsLinked && CarSession.Active && OperatingSystem.IsAndroidVersionAtLeast(30))
+            if (wantMic && state.IsLinked && OperatingSystem.IsAndroidVersionAtLeast(30))
             {
                 try
                 {
-                    StartForeground(NotificationId, notification, TypesFor(state, false));
+                    var fallback = TypesFor(state, false);
+                    StartForeground(NotificationId, notification, fallback);
+                    // Remembered as "no microphone", so opening NodeX on the phone asks for it again (RetryMicrophone).
+                    _types = (int)fallback;
                     retried = true;
+                    NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car",
+                        "Android refused the microphone for the background service; listening only until NodeX is opened on the phone");
                 }
                 catch (Exception ex2)
                 {
@@ -168,15 +212,27 @@ public sealed class NodeForegroundService : Service
                 return false;
             }
         }
+        _micGranted = micGranted;
         CarSession.MicrophoneUsable = micGranted;
 
         _keeper ??= new AndroidBackgroundKeeper(this);
         if (state.IsLinked)
         {
             _keeper.Acquire();
-            // No-op when no Bluetooth headset is connected. Skipped for a car session: a car's hands-free link must
-            // not switch the phone into call-style audio.
-            if (!CarSession.Active) _keeper.StartBluetoothSco();
+            if (car)
+            {
+                // In a car the link plays as ordinary media: a car's hands-free link must not switch the phone into
+                // call-style audio (the car then treats it as a phone call and its media buttons stop working).
+                // This also covers a link that was started on the phone before the car connected.
+                _keeper.StopBluetoothSco();
+                if (!_carMode) AndroidAudioRoute.EnterCar(this);
+            }
+            else
+            {
+                if (_carMode) AndroidAudioRoute.LeaveCar(this);
+                _keeper.StartBluetoothSco();   // no-op when no Bluetooth headset is connected
+            }
+            _carMode = car;
         }
         else
         {
@@ -184,6 +240,7 @@ public sealed class NodeForegroundService : Service
             _keeper.StopBluetoothSco();
             _keeper.Release();
             AndroidAudioRoute.Reset(this);   // loudspeaker choice only lasts while linked
+            _carMode = false;
         }
 
         // A headset's Play/Pause button as push-to-talk, only while linked, only if the user turned it on, never in the car.
@@ -225,6 +282,9 @@ public sealed class NodeForegroundService : Service
         _handler = null;
         if (_configHandler != null) AppServices.Runtime.ConfigService.Changed -= _configHandler;
         _configHandler = null;
+        if (_carHandler != null) CarSession.Changed -= _carHandler;
+        _carHandler = null;
+        if (_current == this) _current = null;
         Teardown();
         base.OnDestroy();
     }
@@ -242,6 +302,9 @@ public sealed class NodeForegroundService : Service
         _headset = null;
         _keeper?.Dispose();
         _keeper = null;
+        _types = null;
+        _micGranted = false;
+        _carMode = false;
         IsRunning = false;
     }
 

@@ -65,6 +65,10 @@ namespace NodeX.UI.Android
                 if (state.Needed) NodeForegroundService.EnsureStarted(this);
                 else NodeForegroundService.Stop(this);
             };
+
+            // Know when the phone is in a car, so a link started on the phone switches to car audio and the wheel
+            // buttons work without first picking a node on the car screen.
+            CarConnectionWatcher.Start(this);
         }
     }
 }

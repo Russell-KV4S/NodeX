@@ -90,6 +90,33 @@ public static class CarTransmit
         return decision;
     }
 
+    /// <summary>
+    /// The longest one car transmission may last before it is released automatically. Shorter than the normal
+    /// time-out timer because a driver cannot watch the screen to notice a transmitter left keyed.
+    /// </summary>
+    public static readonly TimeSpan MaxCarTransmit = TimeSpan.FromSeconds(120);
+
+    /// <summary>True when any link is transmitting, whoever keyed it.</summary>
+    public static bool AnyKeyed(NodeRuntime runtime) => runtime.Links.Any(l => l.Ptt.IsPttActive);
+
+    /// <summary>
+    /// Releases every keyed link, whoever keyed it. This is what any wheel or car-screen media button does while
+    /// transmitting, so the driver can always stop a transmission without reaching for the phone. Returns true when
+    /// something was keyed.
+    /// </summary>
+    public static async Task<bool> UnkeyAllAsync(NodeRuntime runtime)
+    {
+        bool any = false;
+        foreach (var link in runtime.Links)
+        {
+            if (!link.Ptt.IsPttActive) continue;
+            any = true;
+            try { await link.Ptt.SetPttStateAsync(false, PttSource.Car); }
+            catch (Exception) { /* the link is going away anyway */ }
+        }
+        return any;
+    }
+
     /// <summary>Releases any key that came from the car (car session ended, focus lost, service stopped). Safe to call any time.</summary>
     public static async Task UnkeyCarAsync(NodeRuntime runtime)
     {
