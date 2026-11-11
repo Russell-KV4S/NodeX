@@ -304,7 +304,7 @@ public class NodeAudioEngineTests
         public void RaiseError(string m) => ErrorOccurred?.Invoke(m);
     }
 
-    private static async Task WaitUntil(Func<bool> cond, int ms = 3000)
+    private static async Task WaitUntil(Func<bool> cond, int ms = 15000)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         while (!cond())

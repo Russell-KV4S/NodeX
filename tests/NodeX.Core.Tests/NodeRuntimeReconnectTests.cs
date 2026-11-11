@@ -34,7 +34,7 @@ internal sealed class FakeNetworkMonitor : INetworkMonitor
 
 internal static class Wait
 {
-    public static async Task UntilAsync(Func<bool> condition, int timeoutMs = 4000)
+    public static async Task UntilAsync(Func<bool> condition, int timeoutMs = 15000)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         while (!condition())

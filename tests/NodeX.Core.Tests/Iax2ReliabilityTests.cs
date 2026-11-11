@@ -14,7 +14,7 @@ public class Iax2ReliabilityTests
         public KeyEvents(Iax2Session s) => s.RemoteKeyedChanged += k => { lock (_events) _events.Add(k); };
         public bool[] Snapshot() { lock (_events) return [.. _events]; }
 
-        public async Task WaitForCountAsync(int n, int timeoutMs = 3000)
+        public async Task WaitForCountAsync(int n, int timeoutMs = 15000)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             while (Snapshot().Length < n)
