@@ -119,7 +119,7 @@
                                Text="Phone only: this computer has a single audio output, so there is nothing to switch." />
 
                     <!-- Android Auto talk (Android only; off by default) -->
-                    <StackPanel Spacing="6" IsVisible="{Binding HardwareKeysSupported}">
+                    <StackPanel Spacing="6" IsVisible="{Binding CarTalkSupported}">
                         <CheckBox Content="Android Auto: show a Talk button on the car screen"
                                   IsChecked="{Binding CarPtt}" />
                         <TextBlock Classes="hint" Margin="28,-4,0,0" TextWrapping="Wrap"

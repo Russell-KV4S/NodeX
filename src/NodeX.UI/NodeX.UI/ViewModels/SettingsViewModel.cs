@@ -96,6 +96,9 @@ public partial class SettingsViewModel : ViewModelBase
 
     public bool HardwareKeysSupported => AppServices.HardwareKeysSupported;
 
+    /// <summary>The Android Auto Talk options exist only on Android and only in the full (non-Play) edition.</summary>
+    public bool CarTalkSupported => AppServices.HardwareKeysSupported && NodeX.Core.BuildFlavor.CarTalkAllowed;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HardwareKeyText), nameof(HasHardwareKey))]
     public partial int HardwarePttKey { get; set; }
@@ -362,6 +365,7 @@ public partial class SettingsViewModel : ViewModelBase
         // Platform capabilities are plain properties read at bind time; re-announce them each time Settings opens.
         OnPropertyChanged(nameof(AudioRouteSupported));
         OnPropertyChanged(nameof(HardwareKeysSupported));
+        OnPropertyChanged(nameof(CarTalkSupported));
         OnPropertyChanged(nameof(LogSharingSupported));
 
         ShowPassword = false;

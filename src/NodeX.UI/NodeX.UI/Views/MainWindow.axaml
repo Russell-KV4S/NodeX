@@ -10,7 +10,7 @@
         WindowStartupLocation="CenterScreen"
         x:Class="NodeX.UI.Views.MainWindow"
         Icon="/Assets/nodex.ico"
-        Title="NodeX — AllStarLink Console (Asterisk-Free)"
+        Title="NodeX — AllStarLink Radioless Node"
         Background="{StaticResource ConsoleBackgroundBrush}">
         <views:MainView />
 </Window>

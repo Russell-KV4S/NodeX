@@ -17,4 +17,9 @@
     <BaseIntermediateOutputPath>$(NodeXBuildRoot)obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
     <BaseOutputPath>$(NodeXBuildRoot)bin\$(MSBuildProjectName)\</BaseOutputPath>
   </PropertyGroup>
+
+  <!-- Google Play edition: dotnet publish ... -p:PlayStore=true (no transmit from the car). See docs/RELEASING.md. -->
+  <PropertyGroup Condition="'$(PlayStore)' == 'true'">
+    <DefineConstants>$(DefineConstants);PLAY_STORE</DefineConstants>
+  </PropertyGroup>
 </Project>
