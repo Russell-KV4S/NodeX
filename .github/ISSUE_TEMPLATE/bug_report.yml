@@ -1,0 +1,36 @@
+name: Bug report
+description: Something isn't working
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you expected and what you saw instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [Windows, Android, Android Auto, Linux, macOS, Other]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: NodeX version
+  - type: input
+    id: device
+    attributes:
+      label: Device / OS version
+  - type: input
+    id: node
+    attributes:
+      label: Node you were linking to (optional)
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log
+      description: Use Send logs in the app. Check it before pasting. Never post your node password.
+      render: text
