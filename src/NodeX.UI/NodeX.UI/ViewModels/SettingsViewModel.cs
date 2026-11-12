@@ -137,7 +137,7 @@ public partial class SettingsViewModel : ViewModelBase
 
     // ----- BLE PTT button (Bluetooth push-to-talk device) -----
 
-    /// <summary>True where the head has Bluetooth LE access (Android), so Settings offers the button setup.</summary>
+    /// <summary>True where the head has Bluetooth LE access (mobile and supported desktops), so Settings offers the button setup.</summary>
     public bool BleSupported => AppServices.BlePtt.IsSupported;
 
     private BlePttProfile? _blePttProfile;
@@ -322,6 +322,19 @@ public partial class SettingsViewModel : ViewModelBase
         StatusText = await AppServices.ShareLogsAsync();
     }
 
+    // ----- appearance -----
+
+    public bool PermissionsSupported => AppServices.PermissionsRequester != null;
+
+    [RelayCommand]
+    private void ReviewPermissions() => AppServices.PermissionsRequester?.Invoke();
+
+    [ObservableProperty]
+    public partial int ThemeIndex { get; set; }
+
+    [ObservableProperty]
+    public partial double TextScale { get; set; } = 1.0;
+
     // ----- advanced -----
 
     [ObservableProperty]
@@ -367,6 +380,7 @@ public partial class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(HardwareKeysSupported));
         OnPropertyChanged(nameof(CarTalkSupported));
         OnPropertyChanged(nameof(LogSharingSupported));
+        OnPropertyChanged(nameof(PermissionsSupported));
 
         ShowPassword = false;
         TransferPassphrase = "";
@@ -376,6 +390,8 @@ public partial class SettingsViewModel : ViewModelBase
 
     private void FillForm(NodeSettings s, string password)
     {
+        ThemeIndex = s.Theme == "Light" ? 1 : s.Theme == "HighContrast" ? 2 : 0;
+        TextScale = s.TextScale;
         NodeNumber = s.NodeNumber;
         Password = password;
         Callsign = s.Callsign;
@@ -567,6 +583,8 @@ public partial class SettingsViewModel : ViewModelBase
 
         settings = new NodeSettings
         {
+            Theme = ThemeIndex == 1 ? "Light" : ThemeIndex == 2 ? "HighContrast" : "Dark",
+            TextScale = TextScale,
             NodeNumber = NodeNumber,
             Callsign = Callsign,
             ListenOnly = ListenOnly,

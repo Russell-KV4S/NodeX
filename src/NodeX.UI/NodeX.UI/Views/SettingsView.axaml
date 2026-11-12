@@ -6,29 +6,29 @@
              mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="900"
              x:Class="NodeX.UI.Views.SettingsView"
              x:DataType="vm:SettingsViewModel"
-             Background="{StaticResource ConsoleBackgroundBrush}">
+             Background="{DynamicResource ConsoleBackgroundBrush}">
 
     <UserControl.Styles>
         <Style Selector="TextBlock.label">
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSize12}" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="Margin" Value="0,0,0,4" />
         </Style>
         <Style Selector="TextBlock.hint">
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSize11}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
             <Setter Property="TextWrapping" Value="Wrap" />
             <Setter Property="Margin" Value="0,4,0,0" />
         </Style>
         <Style Selector="TextBlock.sectionTitle">
-            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSize14}" />
             <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         </Style>
         <Style Selector="Border.card">
-            <Setter Property="Background" Value="{StaticResource CardBackgroundBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="12" />
             <Setter Property="Padding" Value="16" />
@@ -40,12 +40,40 @@
         <StackPanel MaxWidth="560" Margin="16" Spacing="16" HorizontalAlignment="Stretch">
 
             <StackPanel Spacing="2">
-                <TextBlock Text="Station settings" FontSize="22" FontWeight="Bold"
-                           Foreground="{StaticResource TextPrimaryBrush}" />
+                <TextBlock Text="Station settings" FontSize="{DynamicResource FontSize22}" FontWeight="Bold"
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
                 <TextBlock Classes="hint" Margin="0"
                            Text="Enter the details of the node you registered on the AllStarLink portal (allstarlink.org)." />
                 <TextBlock Classes="hint" Margin="0" Text="{Binding VersionText}" />
             </StackPanel>
+
+            <Border Classes="card">
+                <StackPanel Spacing="10">
+                    <TextBlock Classes="sectionTitle" Text="Appearance" />
+                    <TextBlock Classes="label" Text="Theme" />
+                    <ComboBox SelectedIndex="{Binding ThemeIndex}" HorizontalAlignment="Stretch"
+                              AutomationProperties.Name="Theme">
+                        <ComboBoxItem Content="Dark" />
+                        <ComboBoxItem Content="Light" />
+                        <ComboBoxItem Content="High contrast" />
+                    </ComboBox>
+                    <TextBlock Classes="label" Text="{Binding TextScale, StringFormat='Text size: {0:P0}'}" />
+                    <Slider Minimum="1" Maximum="1.5" TickFrequency="0.1" IsSnapToTickEnabled="True"
+                            Value="{Binding TextScale}" AutomationProperties.Name="Text size" />
+                    <TextBlock Classes="hint" Text="Choose 100% to 150%. Appearance changes apply when you save." />
+                </StackPanel>
+            </Border>
+
+            <Border Classes="card">
+                <StackPanel Spacing="10">
+                    <TextBlock Classes="sectionTitle" Text="Permissions and privacy" />
+                    <TextBlock Classes="hint" Text="Microphone: captures your voice only while you transmit, with a short hold-off after releasing PTT. You can deny access and keep listening." />
+                    <TextBlock Classes="hint" Text="Bluetooth: finds and connects the PTT button you choose. Setup never transmits. On Android 11 and older, Bluetooth scanning also needs the OS location permission; NodeX does not read your location." />
+                    <TextBlock Classes="hint" Text="Notifications: shows link status and optional station-ID reminders. Battery exemption is optional and helps keep a long link running with the screen off." />
+                    <Button Content="Review permissions" Command="{Binding ReviewPermissionsCommand}"
+                            IsVisible="{Binding PermissionsSupported}" />
+                </StackPanel>
+            </Border>
 
             <!-- STATION -->
             <Border Classes="card">
@@ -139,7 +167,7 @@
                         <TextBlock Classes="label" Text="Phone button for push-to-talk" />
                         <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                             <TextBlock Grid.Column="0" Text="{Binding HardwareKeyText}" VerticalAlignment="Center"
-                                       Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap"
                                        AutomationProperties.LiveSetting="Polite" />
                             <Button Grid.Column="1" Content="Choose button" Command="{Binding LearnHardwareKeyCommand}"
                                     MinHeight="44" Padding="12,0" CornerRadius="6" />
@@ -163,7 +191,7 @@
                         <TextBlock Classes="label" Text="Bluetooth push-to-talk button" />
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                             <TextBlock Grid.Column="0" Text="{Binding BleSummaryText}" VerticalAlignment="Center"
-                                       Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                                       Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
                             <Button Grid.Column="1" Content="Forget" Command="{Binding ForgetBleCommand}"
                                     IsEnabled="{Binding HasBleButton}" MinHeight="44" Padding="12,0" CornerRadius="6" />
                         </Grid>
@@ -180,7 +208,7 @@
                         <Button Content="Set up button" Command="{Binding LearnBleCommand}"
                                 IsEnabled="{Binding CanLearnBle}" MinHeight="44" Padding="12,0" CornerRadius="6" />
                         <TextBlock Text="{Binding BleLearnText}" TextWrapping="Wrap"
-                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
                                    AutomationProperties.LiveSetting="Polite" />
                         <TextBlock Classes="hint"
                                    Text="Turn the button on, press “Scan for buttons”, pick it, then “Set up button”: NodeX asks you to press and hold, then release, and remembers exactly what your button sends. Only that signal keys the transmitter. It works like the on-screen PTT (hold to talk, or tap to start and tap again to stop if Toggle PTT is on) and keys only the transmit node. If the button disconnects while you are talking, NodeX stops transmitting. Save to keep it." />
@@ -297,18 +325,18 @@
     </ScrollViewer>
 
     <!-- PINNED ACTION BAR: feedback and Save/Cancel stay on screen however far the form is scrolled -->
-    <Border Grid.Row="1" Background="{StaticResource HeaderBackgroundBrush}"
-            BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="16,12">
+    <Border Grid.Row="1" Background="{DynamicResource HeaderBackgroundBrush}"
+            BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="16,12">
         <StackPanel MaxWidth="560" Spacing="10">
             <!-- FEEDBACK -->
-    <Border IsVisible="{Binding HasError}" Background="#2A1215" BorderBrush="{StaticResource TxRedBrush}"
+    <Border IsVisible="{Binding HasError}" Background="{DynamicResource ErrorBackgroundBrush}" BorderBrush="{DynamicResource TxRedBrush}"
             BorderThickness="1" CornerRadius="8" Padding="12">
-        <TextBlock Text="{Binding ErrorText}" Foreground="#FCA5A5" TextWrapping="Wrap" FontSize="12" />
+        <TextBlock Text="{Binding ErrorText}" Foreground="{DynamicResource TxRedBrush}" TextWrapping="Wrap" FontSize="{DynamicResource FontSize12}" />
     </Border>
 
-    <Border IsVisible="{Binding HasStatus}" Background="#0F2A22" BorderBrush="{StaticResource RxGreenBrush}"
+    <Border IsVisible="{Binding HasStatus}" Background="{DynamicResource SuccessBackgroundBrush}" BorderBrush="{DynamicResource RxGreenBrush}"
             BorderThickness="1" CornerRadius="8" Padding="12">
-        <TextBlock Text="{Binding StatusText}" Foreground="#6EE7B7" TextWrapping="Wrap" FontSize="12" />
+        <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource RxGreenBrush}" TextWrapping="Wrap" FontSize="{DynamicResource FontSize12}" />
     </Border>
 
     <!-- ACTIONS -->
@@ -318,7 +346,7 @@
         <Button Grid.Column="2" Content="Cancel" Command="{Binding CancelCommand}"
                 Background="Transparent" CornerRadius="6" Padding="14,10" Margin="0,0,8,0" />
         <Button Grid.Column="3" Content="Save" Command="{Binding SaveCommand}"
-                Background="{StaticResource RxGreenBrush}" Foreground="#000000" FontWeight="Bold"
+                Background="{DynamicResource RxGreenBrush}" Foreground="{DynamicResource OnGreenBrush}" FontWeight="Bold"
                 CornerRadius="6" Padding="22,10" />
     </Grid>
         </StackPanel>

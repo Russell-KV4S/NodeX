@@ -6,6 +6,12 @@ namespace NodeX.Core.Settings;
 /// </summary>
 public sealed record NodeSettings
 {
+    /// <summary>App appearance: Dark (default), Light, or HighContrast.</summary>
+    public string Theme { get; init; } = "Dark";
+
+    /// <summary>Text size multiplier, from 1.0 through 1.5.</summary>
+    public double TextScale { get; init; } = 1.0;
+
     /// <summary>Your AllStarLink node number (from the allstarlink.org portal).</summary>
     public string NodeNumber { get; init; } = "";
 

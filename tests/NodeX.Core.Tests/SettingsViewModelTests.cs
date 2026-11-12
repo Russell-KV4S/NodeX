@@ -41,6 +41,21 @@ public class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Appearance_SaveAndReload_PreservesThemeAndTextSize()
+    {
+        var vm = Create();
+        Fill(vm);
+        vm.ThemeIndex = 2;
+        vm.TextScale = 1.4;
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.False(vm.HasError);
+        var loaded = Create();
+        await loaded.LoadAsync();
+        Assert.Equal(2, loaded.ThemeIndex);
+        Assert.Equal(1.4, loaded.TextScale);
+    }
+
+    [Fact]
     public async Task Load_FillsTheFormFromSavedConfiguration()
     {
         await _config.SaveAsync(new NodeSettings

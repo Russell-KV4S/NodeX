@@ -11,6 +11,6 @@
         x:Class="NodeX.UI.Views.MainWindow"
         Icon="/Assets/nodex.ico"
         Title="NodeX — AllStarLink Radioless Node"
-        Background="{StaticResource ConsoleBackgroundBrush}">
+        Background="{DynamicResource ConsoleBackgroundBrush}">
         <views:MainView />
 </Window>

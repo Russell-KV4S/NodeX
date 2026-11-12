@@ -40,6 +40,7 @@ public partial class AppDelegate : AvaloniaAppDelegate<App>
         AppServices.CanExit = false;
         AppServices.BleTransport ??= new IosBlePttTransport();
         AppServices.MicrophonePermissionRequester = RequestMicrophoneOrOpenSettings;
+        AppServices.PermissionsRequester = OpenPermissionSettings;
         AppServices.IdReminderNotifier = NotifyIdReminder;
         AppServices.HapticFeedback = TriggerHapticFeedback;
 
@@ -80,11 +81,16 @@ public partial class AppDelegate : AvaloniaAppDelegate<App>
                 return;
             }
 
-            var url = new NSUrl(UIApplication.OpenSettingsUrlString);
-            if (UIApplication.SharedApplication.CanOpenUrl(url))
-                UIApplication.SharedApplication.OpenUrl(url, new UIApplicationOpenUrlOptions(), null);
+            OpenPermissionSettings();
         }
         catch (Exception) { }
+    }
+
+    private static void OpenPermissionSettings()
+    {
+        var url = new NSUrl(UIApplication.OpenSettingsUrlString);
+        if (UIApplication.SharedApplication.CanOpenUrl(url))
+            UIApplication.SharedApplication.OpenUrl(url, new UIApplicationOpenUrlOptions(), null);
     }
 
     private static void NotifyIdReminder(bool due)

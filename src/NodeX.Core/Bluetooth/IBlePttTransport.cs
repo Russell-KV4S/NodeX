@@ -1,7 +1,7 @@
 namespace NodeX.Core;
 
 /// <summary>
-/// The platform's raw BLE access for PTT buttons (Android GATT today). It only moves bytes: scanning, connecting,
+/// The platform's raw BLE access for PTT buttons (Android GATT, iOS CoreBluetooth and desktop native bindings). It only moves bytes: scanning, connecting,
 /// subscribing to every notifying characteristic and reporting what arrives. What those bytes mean, learning, and
 /// keying safety live in <see cref="BlePttManager"/>, so they are shared and testable.
 /// </summary>
@@ -25,7 +25,7 @@ public interface IBlePttTransport : IAsyncDisposable
     /// <summary>The connection came up (true) or dropped (false); the text is the device name or a reason.</summary>
     event Action<bool, string>? ConnectionChanged;
 
-    /// <summary>Starts scanning; also reports devices already paired with the phone.</summary>
+    /// <summary>Starts scanning; also reports devices already paired with the operating system.</summary>
     Task StartScanAsync(CancellationToken cancellationToken = default);
 
     Task StopScanAsync();

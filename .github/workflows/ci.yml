@@ -22,6 +22,9 @@ jobs:
       - name: Unit tests
         run: dotnet test tests/NodeX.Core.Tests -c Release --nologo
 
+      - name: Headless UI tests
+        run: dotnet test tests/NodeX.UI.Tests -c Release --nologo
+
   # Compile check of the Android head, both editions, so an Android-only break (a platform API, a name clash with
   # Android.*) is caught on every push. Debug builds only: Release signing needs keystore/, which is never in the
   # repo, and nothing is packaged or published here. iOS needs a macOS runner and is not built.

@@ -25,7 +25,7 @@ public partial class MainView : UserControl
     /// </summary>
     public const double ShortHeightBreakpoint = 520;
 
-    private enum HeaderMode { Wide, Compact, Short }
+    private enum HeaderMode { Wide, Compact, Short, Spacious }
 
     private bool? _narrow;
     private bool? _short;
@@ -58,12 +58,23 @@ public partial class MainView : UserControl
 
         SizeChanged += (_, e) =>
         {
-            var isShort = e.NewSize.Height < ShortHeightBreakpoint;
-            ApplyHeaderLayout(e.NewSize.Width < CompactHeaderBreakpoint
-                ? (isShort ? HeaderMode.Short : HeaderMode.Compact)
-                : HeaderMode.Wide);
-            ApplyLayout(e.NewSize.Width < NarrowBreakpoint, isShort);
+            RefreshResponsiveLayout(e.NewSize);
         };
+        PropertyChanged += (_, e) =>
+        {
+            if (e.Property == FontSizeProperty) RefreshResponsiveLayout(Bounds.Size);
+        };
+    }
+
+    private void RefreshResponsiveLayout(Size size)
+    {
+        bool isShort = size.Height < ShortHeightBreakpoint;
+        double scale = Math.Max(1, FontSize / 14);
+        ApplyHeaderLayout(size.Width < CompactHeaderBreakpoint * scale
+            ? isShort ? HeaderMode.Short : scale > 1.1 ? HeaderMode.Spacious : HeaderMode.Compact
+            : HeaderMode.Wide);
+        ApplyLayout(size.Width < NarrowBreakpoint, isShort);
+        ApplyPttSizing(size.Width < NarrowBreakpoint || isShort, isShort);
     }
 
     private void OnRemoveFavoriteClick(object? sender, RoutedEventArgs e)
@@ -339,6 +350,21 @@ public partial class MainView : UserControl
             HeaderActions.Margin = new Thickness(0);
             BrandTagline.IsVisible = false;
         }
+        else if (mode == HeaderMode.Spacious)
+        {
+            HeaderBorder.Padding = new Thickness(12, 8);
+            HeaderGrid.ColumnDefinitions = ColumnDefinitions.Parse("*,Auto");
+            HeaderGrid.RowDefinitions = RowDefinitions.Parse("Auto,Auto,Auto");
+            Place(BrandPanel, 0, 0, 1);
+            Place(HeaderActions, 0, 1, 1);
+            Place(StationBadge, 1, 0, 2);
+            Place(BadgesPanel, 2, 0, 2);
+            StationBadge.HorizontalAlignment = HorizontalAlignment.Stretch;
+            StationBadge.Margin = new Thickness(0, 6, 0, 0);
+            BadgesPanel.Margin = new Thickness(0, 6, 0, 0);
+            HeaderActions.Margin = new Thickness(0);
+            BrandTagline.IsVisible = false;
+        }
         else if (mode == HeaderMode.Compact)
         {
             // Slim portrait phone header: Row 0 has brand + station badge + exit; Row 1 has registration/BLE badges.
@@ -456,7 +482,7 @@ public partial class MainView : UserControl
             PttInner.HorizontalAlignment = HorizontalAlignment.Stretch;
             PttButton.Width = double.NaN;
             PttButton.HorizontalAlignment = HorizontalAlignment.Stretch;
-            PttButton.Height = isShort ? 64 : phone ? 112 : 96;
+            PttButton.Height = Math.Max(isShort ? 64 : phone ? 112 : 96, 72 * Math.Max(1, FontSize / 14));
             PttInfo.Width = double.NaN;
             PttInfo.HorizontalAlignment = HorizontalAlignment.Stretch;
             PttInfo.IsVisible = !isShort && !phone;   // phones: nothing but the key and the chip (mode lives in Settings)

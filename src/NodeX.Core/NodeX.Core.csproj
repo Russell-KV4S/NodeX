@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="NodeX.Core.Tests" />
+    <InternalsVisibleTo Include="NodeX.UI.Tests" />
   </ItemGroup>
 
 </Project>

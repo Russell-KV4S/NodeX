@@ -31,4 +31,4 @@ App icon master 1024, Play Store icon 512, Play feature graphic 1024x500, horizo
 In the app: Android adaptive + themed launcher icons, notification icon, splash; Windows `.ico` (window + exe); browser favicon; header logo.
 
 ## Not done
-iOS app icon (`NodeX.UI.iOS` has no asset catalogue; use `exports/nodex-app-icon-1024.png` when one is added), Play Store listing screenshots.
+The iOS icon asset catalogue, Play icon and feature graphic exist. Demo phone-layout screenshots are in `docs/screenshots/`. Remaining: real-phone/car screenshots and verification of the iOS asset catalogue on a Mac.

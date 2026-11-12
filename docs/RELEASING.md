@@ -35,8 +35,11 @@ Play re-signs the app with its own key, so a sideloaded APK signed with the uplo
 ## GitHub Release checklist
 
 1. All tests pass on `main`; CI is green.
+   Run both `tests/NodeX.Core.Tests` and `tests/NodeX.UI.Tests`; the latter checks the UI dispatcher and renders themes/enlarged text. Confirm the actual hosted CI result separately.
 2. Bump versions, build the full APK, and test it on a phone.
 3. Tag `vX.Y` and create a GitHub Release with the APK attached, plus the Windows build (`tools/deploy-windows.ps1` shows how it is packaged).
 4. Release notes: what changed, what is still untested (copy from `PROJECT_SPEC.md` §2), the licence reminder, and the uninstall-first note above.
 5. For Play: build the Play edition, check the package with `jarsigner -verify`, and upload the `.aab` by hand.
 6. Never commit `keystore/`.
+
+Desktop packages must retain `licenses/SimpleBLE-LICENSE.md` and the separate dependency notice from `THIRD_PARTY_NOTICES.md`. macOS bundle scaffolding is in `tools/package-macos.sh`; it still needs a Mac smoke test, signing and notarization. The bundled desktop BLE library supports macOS 15+ on Apple Silicon, not Intel Macs.

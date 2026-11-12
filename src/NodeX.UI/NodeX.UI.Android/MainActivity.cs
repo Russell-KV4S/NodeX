@@ -39,6 +39,7 @@ public class MainActivity : AvaloniaMainActivity
             return name.Length == 0 ? $"Key {code}" : char.ToUpperInvariant(name[0]) + name[1..];
         };
         AppServices.MicrophonePermissionRequester = RequestMicrophoneOrOpenSettings;
+        AppServices.PermissionsRequester = () => RequestRuntimePermissions(fromSettings: true);
         AppServices.IdReminderNotifier = due => NodeForegroundService.NotifyIdReminder(ApplicationContext!, due);
         AppServices.HapticFeedback = active =>
         {
@@ -156,6 +157,22 @@ public class MainActivity : AvaloniaMainActivity
 
     private void RequestMicrophoneOrOpenSettings()
     {
+        ExplainPermissions("Microphone access",
+            "NodeX needs the microphone to send your voice while you press PTT. You can keep listening without granting access. If access was blocked permanently, Continue opens this app's system settings.", RequestMicrophoneCore);
+    }
+
+    private void ExplainPermissions(string title, string message, Action? proceed = null)
+    {
+        using var builder = new AlertDialog.Builder(this);
+        builder.SetTitle(title);
+        builder.SetMessage(message);
+        builder.SetPositiveButton(proceed == null ? "OK" : "Continue", (_, _) => proceed?.Invoke());
+        if (proceed != null) builder.SetNegativeButton("Not now", (_, _) => { });
+        builder.Show();
+    }
+
+    private void RequestMicrophoneCore()
+    {
         if (_micPermanentlyDenied)
         {
             var intent = new global::Android.Content.Intent(
@@ -193,7 +210,7 @@ public class MainActivity : AvaloniaMainActivity
     /// Microphone (to talk), notifications (the "NodeX connected" foreground-service notice) and
     /// Bluetooth (headsets and PTT buttons). Without the microphone the node can still listen.
     /// </summary>
-    private void RequestRuntimePermissions()
+    private void RequestRuntimePermissions(bool fromSettings = false)
     {
         var wanted = new List<string> { global::Android.Manifest.Permission.RecordAudio };
         if (OperatingSystem.IsAndroidVersionAtLeast(33))
@@ -211,7 +228,29 @@ public class MainActivity : AvaloniaMainActivity
         var missing = wanted.FindAll(p => CheckSelfPermission(p) != Permission.Granted);
         if (missing.Count > 0)
         {
-            RequestPermissions(missing.ToArray(), PermissionRequestCode);
+            var prefs = GetSharedPreferences("nodex_prefs", global::Android.Content.FileCreationMode.Private);
+            bool explained = prefs?.GetBoolean("permissions_explained", false) == true;
+            bool requested = prefs?.GetBoolean("permissions_requested", false) == true;
+            if (explained && !fromSettings) return;
+            prefs?.Edit()?.PutBoolean("permissions_explained", true)?.Apply();
+            ExplainPermissions("Choose NodeX permissions",
+                "Microphone lets you transmit; denying it still lets you listen. Notifications show link status and ID reminders. Bluetooth finds your PTT button; Android 11 and older also require location permission for scanning, but NodeX never reads your location. You can change these later in Settings → Permissions and privacy.", () =>
+                {
+                    if (requested && missing.Exists(p => !ShouldShowRequestPermissionRationale(p)))
+                    {
+                        StartActivity(new global::Android.Content.Intent(
+                            global::Android.Provider.Settings.ActionApplicationDetailsSettings,
+                            global::Android.Net.Uri.FromParts("package", PackageName, null)));
+                    }
+                    else
+                    {
+                        prefs?.Edit()?.PutBoolean("permissions_requested", true)?.Apply();
+                        RequestPermissions(missing.ToArray(), PermissionRequestCode);
+                    }
+                });
         }
+        else if (fromSettings)
+            ExplainPermissions("NodeX permissions",
+                "Microphone, notifications and Bluetooth permissions are allowed. You can change access in Android's app settings.");
     }
 }

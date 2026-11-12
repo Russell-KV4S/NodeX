@@ -10,6 +10,15 @@
 
     <Application.Styles>
         <FluentTheme />
+        <Style Selector="TextBlock">
+            <Setter Property="FontSize" Value="{DynamicResource FontSize14}" />
+        </Style>
+        <Style Selector="TemplatedControl">
+            <Setter Property="FontSize" Value="{DynamicResource FontSize14}" />
+        </Style>
+        <Style Selector="Button, TextBox, ComboBox">
+            <Setter Property="MinHeight" Value="{DynamicResource ControlMinHeight}" />
+        </Style>
     </Application.Styles>
 
     <Application.Resources>

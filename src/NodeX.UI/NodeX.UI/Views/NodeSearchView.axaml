@@ -6,28 +6,28 @@
              mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="800"
              x:Class="NodeX.UI.Views.NodeSearchView"
              x:DataType="vm:NodeSearchViewModel"
-             Background="{StaticResource ConsoleBackgroundBrush}">
+             Background="{DynamicResource ConsoleBackgroundBrush}">
 
     <UserControl.Styles>
         <Style Selector="TextBlock.label">
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSize12}" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="Margin" Value="0,0,0,4" />
         </Style>
         <Style Selector="TextBlock.hint">
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSize11}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
         <Style Selector="Button.chip">
-            <Setter Property="Background" Value="{StaticResource CardBackgroundBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="18" />
             <Setter Property="Padding" Value="12,0" />
             <Setter Property="MinHeight" Value="36" />
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSize13}" />
             <Setter Property="Margin" Value="0,0,6,6" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -44,13 +44,13 @@
     <Grid RowDefinitions="Auto,Auto,*,Auto">
 
         <!-- HEADER -->
-        <Border Grid.Row="0" Background="{StaticResource HeaderBackgroundBrush}"
-                BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,0,0,1" Padding="8,6">
+        <Border Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}"
+                BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,0,0,1" Padding="8,6">
             <Grid ColumnDefinitions="Auto,*">
                 <Button Grid.Column="0" Classes="iconbtn" Command="{Binding CloseCommand}"
-                        AutomationProperties.Name="Back" Content="←" FontSize="20" />
-                <TextBlock Grid.Column="1" Text="Find a node" FontSize="18" FontWeight="Bold"
-                           Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="4,0,0,0" />
+                        AutomationProperties.Name="Back" Content="←" FontSize="{DynamicResource FontSize20}" />
+                <TextBlock Grid.Column="1" Text="Find a node" FontSize="{DynamicResource FontSize18}" FontWeight="Bold"
+                           Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="4,0,0,0" />
             </Grid>
         </Border>
 
@@ -59,7 +59,7 @@
             <Grid ColumnDefinitions="*,Auto">
                 <TextBox x:Name="SearchBox" Grid.ColumnSpan="2" Text="{Binding SearchText}"
                          AutomationProperties.Name="Search nodes"
-                         PlaceholderText="Node number, callsign, city or name" FontSize="15" MinHeight="48"
+                         PlaceholderText="Node number, callsign, city or name" FontSize="{DynamicResource FontSize15}" MinHeight="48"
                          VerticalContentAlignment="Center" CornerRadius="10" Padding="12,0,52,0" />
                 <Button Grid.Column="1" Classes="iconbtn" Content="✕" Command="{Binding ClearSearchCommand}"
                         AutomationProperties.Name="Clear search" IsVisible="{Binding HasSearchText}"
@@ -86,15 +86,15 @@
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <TextBlock Text="More filters" />
                         <TextBlock Text="{Binding ActiveFilterCount, StringFormat='({0})'}" IsVisible="{Binding HasActiveFilters}"
-                                   Foreground="{StaticResource RxGreenBrush}" FontWeight="Bold" />
+                                   Foreground="{DynamicResource RxGreenBrush}" FontWeight="Bold" />
                     </StackPanel>
                 </Button>
                 <ComboBox Grid.Column="1" ItemsSource="{Binding SortChoices}" SelectedItem="{Binding SelectedSort}"
                           AutomationProperties.Name="Sort results" MinHeight="36" MinWidth="150" Margin="0,0,0,6" />
             </Grid>
 
-            <Border IsVisible="{Binding FiltersOpen}" Background="{StaticResource CardBackgroundBrush}"
-                    BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+            <Border IsVisible="{Binding FiltersOpen}" Background="{DynamicResource CardBackgroundBrush}"
+                    BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
                 <StackPanel Spacing="10">
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                         <StackPanel Grid.Column="0">
@@ -126,13 +126,13 @@
                 </StackPanel>
             </Border>
 
-            <Border IsVisible="{Binding HasNote}" Background="#2B2110" BorderBrush="{StaticResource AmberAccentBrush}"
+            <Border IsVisible="{Binding HasNote}" Background="{DynamicResource WarningBackgroundBrush}" BorderBrush="{DynamicResource AmberAccentBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="10,6">
-                <TextBlock Text="{Binding Note}" TextWrapping="Wrap" FontSize="11" Foreground="#FCD34D" />
+                <TextBlock Text="{Binding Note}" TextWrapping="Wrap" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource WarningTextBrush}" />
             </Border>
 
             <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0" Text="{Binding CountText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                <TextBlock Grid.Column="0" Text="{Binding CountText}" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondaryBrush}"
                            VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite" />
                 <ProgressBar Grid.Column="1" IsIndeterminate="True" IsVisible="{Binding IsBusy}" Width="80" Height="4" />
             </Grid>
@@ -142,17 +142,17 @@
         <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" Margin="0,4,0,0">
             <StackPanel Margin="16,4,16,12" Spacing="8" MaxWidth="720">
 
-                <Border IsVisible="{Binding HasError}" Background="#2A1215" BorderBrush="{StaticResource TxRedBrush}"
+                <Border IsVisible="{Binding HasError}" Background="{DynamicResource ErrorBackgroundBrush}" BorderBrush="{DynamicResource TxRedBrush}"
                         BorderThickness="1" CornerRadius="8" Padding="12">
                     <StackPanel Spacing="8">
-                        <TextBlock Text="{Binding ErrorText}" Foreground="#FCA5A5" TextWrapping="Wrap" FontSize="12"
+                        <TextBlock Text="{Binding ErrorText}" Foreground="{DynamicResource TxRedBrush}" TextWrapping="Wrap" FontSize="{DynamicResource FontSize12}"
                                    AutomationProperties.LiveSetting="Assertive" />
                         <Button Content="Try again" Command="{Binding RetryCommand}" HorizontalAlignment="Left"
                                 Padding="12,6" CornerRadius="6" />
                     </StackPanel>
                 </Border>
 
-                <TextBlock IsVisible="{Binding ShowEmpty}" Text="{Binding EmptyText}" Classes="hint" FontSize="13"
+                <TextBlock IsVisible="{Binding ShowEmpty}" Text="{Binding EmptyText}" Classes="hint" FontSize="{DynamicResource FontSize13}"
                            HorizontalAlignment="Center" Margin="0,16" />
 
                 <ItemsControl ItemsSource="{Binding Results}">
@@ -161,38 +161,38 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:NodeResultItem">
-                            <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                            <Border Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource CardBorderBrush}"
                                     BorderThickness="1" CornerRadius="12" Padding="12">
                                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                                     <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <TextBlock Text="{Binding NodeNumber}" FontSize="18" FontWeight="Bold"
-                                                       Foreground="{StaticResource TextPrimaryBrush}" />
-                                            <TextBlock Text="{Binding Callsign}" FontSize="13" VerticalAlignment="Bottom"
-                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding NodeNumber}" FontSize="{DynamicResource FontSize18}" FontWeight="Bold"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                            <TextBlock Text="{Binding Callsign}" FontSize="{DynamicResource FontSize13}" VerticalAlignment="Bottom"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </StackPanel>
-                                        <TextBlock Text="{Binding Title}" FontSize="13" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{StaticResource TextPrimaryBrush}" />
-                                        <TextBlock Text="{Binding Place}" FontSize="12" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                        <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSize13}" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        <TextBlock Text="{Binding Place}" FontSize="{DynamicResource FontSize12}" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Right">
                                         <StackPanel Orientation="Horizontal" Spacing="5" HorizontalAlignment="Right">
-                                            <Ellipse Width="8" Height="8" Fill="{StaticResource RxGreenBrush}" VerticalAlignment="Center"
+                                            <Ellipse Width="8" Height="8" Fill="{DynamicResource RxGreenBrush}" VerticalAlignment="Center"
                                                      IsVisible="{Binding IsActive}" />
-                                            <TextBlock Text="{Binding ActivityText}" FontSize="11"
-                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding ActivityText}" FontSize="{DynamicResource FontSize11}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </StackPanel>
                                         <Button Content="Use" FontWeight="Bold" MinHeight="44" MinWidth="64"
-                                                Background="{StaticResource RxGreenBrush}" Foreground="#000000"
+                                                Background="{DynamicResource RxGreenBrush}" Foreground="{DynamicResource OnGreenBrush}"
                                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                                 CornerRadius="8" AutomationProperties.Name="{Binding UseName}"
                                                 Command="{Binding $parent[UserControl].((vm:NodeSearchViewModel)DataContext).UseCommand}"
                                                 CommandParameter="{Binding}" />
                                     </StackPanel>
 
-                                    <Button Grid.Column="2" Classes="iconbtn" FontSize="20"
+                                    <Button Grid.Column="2" Classes="iconbtn" FontSize="{DynamicResource FontSize20}"
                                             Content="{Binding FavoriteGlyph}"
                                             AutomationProperties.Name="{Binding FavoriteName}"
                                             Command="{Binding $parent[UserControl].((vm:NodeSearchViewModel)DataContext).ToggleFavoriteCommand}"
@@ -209,8 +209,8 @@
         </ScrollViewer>
 
         <!-- FOOTER -->
-        <Border Grid.Row="3" Background="{StaticResource HeaderBackgroundBrush}"
-                BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="16,10">
+        <Border Grid.Row="3" Background="{DynamicResource HeaderBackgroundBrush}"
+                BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="16,10">
             <TextBlock Classes="hint" HorizontalAlignment="Center" MaxWidth="720"
                        Text="Results come from the public AllStarLink node list. “Use” connects to the node right away. ★ saves a favorite." />
         </Border>

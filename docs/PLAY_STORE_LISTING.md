@@ -35,11 +35,11 @@ NodeX is an independent project and is not affiliated with AllStarLink.
 **Category:** Communication. **Tags:** Communication, Tools.
 **Contact email / website:** the developer account's address / `https://github.com/Russell-KV4S/NodeX`.
 
-## Graphics still needed
-- App icon 512×512 PNG: from `branding/` (owner to confirm which export).
-- Feature graphic 1024×500: not made.
+## Graphics: existing assets and remaining checks
+- App icon: `branding/exports/nodex-play-store-icon-512.png` exists.
+- Feature graphic: `branding/exports/nodex-play-feature-graphic-1024x500.png` exists.
 - Phone screenshots (2–8, 16:9 or 9:16, 320–3840 px): see `docs/screenshots/` for the desktop-rendered set; real-phone shots are better.
-- Android Auto: if the media-category listing is wanted, screenshots of the car UI (none exist; never run on a head unit).
+- Android Auto: if the media-category listing is wanted, screenshots of the car UI (owner reports successful DHU use; screenshots and a physical-car pass are still needed).
 
 ## Foreground-service declarations
 
@@ -62,7 +62,7 @@ A short screen recording (link a node, lock the screen, audio keeps playing, not
 | Data encrypted in transit? | Registration: yes (HTTPS). Voice/IAX2 to nodes: **no** (the AllStarLink protocol is unencrypted UDP). Say so honestly; answer "No" to "all data encrypted in transit" |
 | Users can request deletion? | No data is held by the developer. State that in the policy (done) |
 | Audio: voice or sound recordings | Collected: yes, not stored; sent to the linked node at the user's request; purpose App functionality; optional (listen-only needs none) |
-| Personal info: name/user IDs | Callsign and node number: collected, shared with AllStarLink and the linked node; App functionality; required for transmitting |
+| Personal info: name/user IDs | Node number: shared with AllStarLink and the linked node; App functionality. Callsign: stored locally for the UI and required to enable transmitting; not sent by the app (see PRIVACY.md) |
 | Device or other IDs / IP address | Public IP sent to AllStarLink and linked nodes as part of the protocol; App functionality |
 | App info and performance (logs) | Stays on device unless the user shares it; not collected |
 | Location, contacts, photos, files, financial, health | Not collected |

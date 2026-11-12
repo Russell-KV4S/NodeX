@@ -27,7 +27,7 @@ public sealed record FavoriteItem(string Node, string Label)
 /// Main console. All real work is delegated to <see cref="NodeRuntime"/> (registration, the active
 /// <see cref="NodeLink"/>); this class only translates runtime events into bindable state on the UI thread.
 /// </summary>
-public partial class MainViewModel : ViewModelBase
+public partial class MainViewModel : ViewModelBase, IDisposable
 {
     private const string NotSet = "not set";
 
@@ -40,6 +40,41 @@ public partial class MainViewModel : ViewModelBase
     /// "just now" after the screen comes back.
     /// </summary>
     private DispatcherTimer? _ageTimer;
+
+    internal bool MeterTimerRunning => _timer?.IsEnabled == true;
+    internal bool AgeTimerRunning => _ageTimer?.IsEnabled == true;
+    private Action? _unhookBle;
+    private readonly Action _acknowledgeId;
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _timer?.Stop();
+        _ageTimer?.Stop();
+        _idReminder.Dispose();
+        _runtime.RegistrationChanged -= OnRegistrationChanged;
+        _runtime.LinkAdded -= OnRuntimeLinkAdded;
+        _runtime.LinkRemoved -= OnRuntimeLinkRemoved;
+        _runtime.ConnectionsChanged -= OnConnectionsChanged;
+        _runtime.ErrorOccurred -= OnRuntimeError;
+        _runtime.Notice -= LogActivity;
+        _runtime.ReconnectChanged -= OnRuntimeReconnect;
+        _runtime.ConfigService.Changed -= OnRuntimeConfigChanged;
+        _runtime.Transmit.Changed -= OnTransmitChanged;
+        _runtime.LinkActiveChanged -= OnLinkActiveChanged;
+        AppServices.HardwarePtt.Pressed -= OnHardwarePtt;
+        lock (BleHookGate)
+        {
+            _unhookBle?.Invoke();
+            if (ReferenceEquals(s_unhookBle, _unhookBle)) s_unhookBle = null;
+            _unhookBle = null;
+        }
+        if (ReferenceEquals(AppServices.AcknowledgeIdHandler, _acknowledgeId)) AppServices.AcknowledgeIdHandler = null;
+        foreach (var watch in _watches.Values) watch.Detach();
+        _watches.Clear();
+    }
 
     private void RefreshLastHeardAges()
     {
@@ -518,7 +553,8 @@ public partial class MainViewModel : ViewModelBase
     {
         _runtime = runtime;
         _idReminder.DueChanged += OnIdReminderDueChanged;
-        AppServices.AcknowledgeIdHandler = () => OnUi(AcknowledgeId);
+        _acknowledgeId = () => OnUi(AcknowledgeId);
+        AppServices.AcknowledgeIdHandler = _acknowledgeId;
         AppServices.HardwarePtt.Pressed += OnHardwarePtt;
         HookBle();
 
@@ -537,32 +573,42 @@ public partial class MainViewModel : ViewModelBase
         Settings.Saved += OnSettingsSaved;
         Settings.Cancelled += () => IsSettingsOpen = false;
 
-        runtime.RegistrationChanged += () => OnUi(ApplyRegistration);
-        runtime.LinkAdded += link => OnUi(() => AttachLink(link));
-        runtime.LinkRemoved += link => OnUi(() => DetachLink(link));
-        runtime.ConnectionsChanged += () => OnUi(RefreshLinks);
-        runtime.ErrorOccurred += msg => LogActivity($"[ERROR] {msg}");
-        runtime.Notice += msg => LogActivity(msg);
-        runtime.ReconnectChanged += status => OnUi(() => ApplyReconnect(status));
-        runtime.ConfigService.Changed += cfg => OnUi(() => ApplyConfig(cfg));
-        runtime.Transmit.Changed += () => OnUi(RefreshTransmit);
+        runtime.RegistrationChanged += OnRegistrationChanged;
+        runtime.LinkAdded += OnRuntimeLinkAdded;
+        runtime.LinkRemoved += OnRuntimeLinkRemoved;
+        runtime.ConnectionsChanged += OnConnectionsChanged;
+        runtime.ErrorOccurred += OnRuntimeError;
+        runtime.Notice += LogActivity;
+        runtime.ReconnectChanged += OnRuntimeReconnect;
+        runtime.ConfigService.Changed += OnRuntimeConfigChanged;
+        runtime.Transmit.Changed += OnTransmitChanged;
         // The OS audio route is reset when nothing is linked any more, so the button must say "phone" again.
         // When a link comes up, start on the loudspeaker if the user chose that as the default.
-        runtime.LinkActiveChanged += (active, _) => OnUi(() =>
-        {
-            if (!active) { IsSpeakerOn = false; return; }
-            if (!IsSpeakerOn && runtime.Config.Settings.DefaultToSpeaker && AppServices.SpeakerphoneSetter is { } setter && setter(true))
-            {
-                IsSpeakerOn = true;
-                LogActivity("Audio: loudspeaker (default).");
-            }
-        });
+        runtime.LinkActiveChanged += OnLinkActiveChanged;
 
         ActivityLog.CollectionChanged += (_, _) => OnPropertyChanged(nameof(LogText));
 
         ApplyConfig(runtime.Config);
         ApplyRegistration();
     }
+
+    private void OnRegistrationChanged() => OnUi(ApplyRegistration);
+    private void OnRuntimeLinkAdded(NodeLink link) => OnUi(() => AttachLink(link));
+    private void OnRuntimeLinkRemoved(NodeLink link) => OnUi(() => DetachLink(link));
+    private void OnConnectionsChanged() => OnUi(RefreshLinks);
+    private void OnRuntimeError(string message) => LogActivity($"[ERROR] {message}");
+    private void OnRuntimeReconnect(ReconnectStatus status) => OnUi(() => ApplyReconnect(status));
+    private void OnRuntimeConfigChanged(NodeConfig config) => OnUi(() => ApplyConfig(config));
+    private void OnTransmitChanged() => OnUi(RefreshTransmit);
+    private void OnLinkActiveChanged(bool active, string? node) => OnUi(() =>
+    {
+        if (!active) { IsSpeakerOn = false; return; }
+        if (!IsSpeakerOn && _runtime.Config.Settings.DefaultToSpeaker && AppServices.SpeakerphoneSetter is { } setter && setter(true))
+        {
+            IsSpeakerOn = true;
+            LogActivity("Audio: loudspeaker (default).");
+        }
+    });
 
     /// <summary>
     /// Battery: the 100 ms meter/timer refresh is only useful while the screen is showing. Mobile heads call
@@ -773,7 +819,9 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Desktop Spacebar PTT: works in both Momentary (hold Space) and Toggle (tap Space) modes.</summary>
     public async Task HandleSpacebarPttAsync(bool pressed)
     {
-        if (IsSettingsOpen || IsSearchOpen || !CanKey || TxLink is not { } link) return;
+        if (TxLink is not { } link) return;
+        // A panel opening or a permission change between key-down and key-up must never swallow the release.
+        if (pressed && (IsSettingsOpen || IsSearchOpen || !CanKey)) return;
         await link.Ptt.HandleUiPttAsync(pressed);
     }
 
@@ -804,7 +852,7 @@ public partial class MainViewModel : ViewModelBase
             ble.ConnectionStateChanged += lost;
             ble.StatusChanged += status;
             ble.Notice += notice;
-            s_unhookBle = () =>
+            s_unhookBle = _unhookBle = () =>
             {
                 ble.PttStateChanged -= OnBlePtt;
                 ble.ConnectionStateChanged -= lost;
@@ -1287,10 +1335,11 @@ public partial class MainViewModel : ViewModelBase
 
     // --- helpers ---
 
-    private static void OnUi(Action action)
+    private void OnUi(Action action)
     {
+        if (_disposed) return;
         if (Dispatcher.UIThread.CheckAccess()) action();
-        else Dispatcher.UIThread.Post(action);
+        else Dispatcher.UIThread.Post(() => { if (!_disposed) action(); });
     }
 
     /// <summary>

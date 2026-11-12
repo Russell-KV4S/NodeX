@@ -40,6 +40,9 @@ public static class AppServices
     /// </summary>
     public static Action? MicrophonePermissionRequester { get; set; }
 
+    /// <summary>Opens permission explanations and the platform's permission controls, on user request.</summary>
+    public static Action? PermissionsRequester { get; set; }
+
     /// <summary>
     /// Set by a mobile head (Android/iOS) to post (true) or dismiss (false) an OS notification when the optional
     /// station-ID reminder becomes due while the app may be in the background.
@@ -203,9 +206,14 @@ public static class AppServices
     {
         NodeRuntime? runtime;
         lock (Gate) runtime = _runtime;
-        if (runtime == null) return;
+        var ble = _blePtt;
+        if (runtime == null && ble == null) return;
 
-        try { Task.Run(() => runtime.DisposeAsync().AsTask()).Wait(timeout); }
+        try
+        {
+            Task.Run(() => Task.WhenAll(runtime?.DisposeAsync().AsTask() ?? Task.CompletedTask,
+                ble?.DisposeAsync().AsTask() ?? Task.CompletedTask)).Wait(timeout);
+        }
         catch (Exception) { /* exiting anyway */ }
     }
 

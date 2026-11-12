@@ -26,6 +26,8 @@ It is built for a **portable node**: register once, link out to other nodes, and
 - Optional station-ID reminder (it never transmits for you)
 - Android Auto: listen-only media app, with optional steering-wheel/Talk PTT (off by default)
 - Passwords kept in the platform secret store; no telemetry
+- Dark, Light and High contrast themes, with text size from 100% to 150%
+- Permission explanations in Settings, with Android permission review and a Not now option
 
 ## Platforms and status
 
@@ -35,7 +37,7 @@ NodeX is young. This table says what has actually been tested.
 |---|---|
 | **Windows** | Works. Core protocol validated live against a real ASL3 node. |
 | **Android** | On Google Play internal testing; used on a real phone. Background behaviour, Bluetooth PTT and network handoff are still being tested on devices. |
-| **Android Auto** | Coded, **not yet tested on a head unit or in a car.** Experimental. |
+| **Android Auto** | Owner reports the Desktop Head Unit working great. Individual voice/focus/cold-start cases and a physical-car pass still need recording. |
 | **Linux / macOS** | Audio backend written (PortAudio); tested only with a small test program on a Raspberry Pi. The full app has not been run there. |
 | **iOS** | Compiles. Never run on a device; no release planned. See [`docs/IOS_RELEASE.md`](docs/IOS_RELEASE.md) if you want to pick it up. |
 
@@ -56,6 +58,7 @@ You need an AllStarLink account and a registered node number and password (from 
 ```bash
 dotnet build src/NodeX.UI/NodeX.UI.Desktop      # core, UI and desktop app
 dotnet test  tests/NodeX.Core.Tests             # unit tests
+dotnet test  tests/NodeX.UI.Tests               # headless UI and rendering tests
 dotnet run   --project src/NodeX.UI/NodeX.UI.Desktop
 ```
 
@@ -70,6 +73,9 @@ Build output is redirected to `%LOCALAPPDATA%\NodeX\build` by `Directory.Build.p
 - Moving between Wi-Fi and cellular drops and re-dials the link (an IAX2 call cannot change address). It works in day-to-day use, with a delay while the new address registers; the delay has not been measured.
 - IPv4 only.
 - Linux and macOS use the OS keyring (`secret-tool` / `libsecret` on Linux, Keychain on macOS) when available, falling back to a `0600` key file beside the ciphertext on minimal/headless systems without a keyring daemon.
+- Desktop BLE uses the existing Scan / Learn setup on Windows and glibc Linux (x64/ARM64), and macOS 15+ on Apple Silicon. It needs an enabled adapter; Linux also needs BlueZ/D-Bus. Real-button validation is still needed. Intel Macs and older macOS are unsupported by the bundled BLE library.
+
+Outbound calls use an available local UDP source port. This does not restrict the remote node's destination port; nonstandard remote ports are looked up independently.
 
 ## Documentation
 
@@ -84,3 +90,5 @@ Built with [Avalonia](https://avaloniaui.net/), [CommunityToolkit.Mvvm](https://
 ## License
 
 [MIT](LICENSE) © Russell Thomas (KV4S)
+
+NodeX source is MIT licensed. Desktop BLE includes SimpleSharpBLE/SimpleBLE under a separate noncommercial-use license; see [third-party notices](THIRD_PARTY_NOTICES.md).

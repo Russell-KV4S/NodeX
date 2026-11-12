@@ -6,7 +6,7 @@
 
 ## Tool
 
-Console harness driving the real Core engine with a decoded packet trace (`Iax2Session.PacketTrace` tap; independent frame decoder). Commands: `resolve <node>` (read-only), `register` (env `NODEX_NODE`, `NODEX_PASSWORD`), `link <target> [--ip ip[:port]] [--listen s] [--key s] [--dtmf digits] [--trace file]`. Nothing is keyed unless `--key` is given; password only via env var. Run: `dotnet %LOCALAPPDATA%\NodeX\build\bin\NodeX.LiveCheck\Debug\net10.0\NodeX.LiveCheck.dll <command>`. `register` has **not been run yet**.
+Console harness driving the real Core engine with a decoded packet trace (`Iax2Session.PacketTrace` tap; independent frame decoder). Commands: `resolve <node>` (read-only), `register` (env `NODEX_NODE`, `NODEX_PASSWORD`), `link <target> [--ip ip[:port]] [--listen s] [--key s] [--dtmf digits] [--trace file]`. Nothing is keyed unless `--key` is given; password only via env var. Run: `dotnet %LOCALAPPDATA%\NodeX\build\bin\NodeX.LiveCheck\Debug\net10.0\NodeX.LiveCheck.dll <command>`. `register` was verified later on 2026-11-05; see the results below.
 
 ## Key finding: why the first dials were hung up
 
@@ -31,3 +31,9 @@ Console harness driving the real Core engine with a decoded packet trace (`Iax2S
 ## Tool fixes
 
 - Tool bug fixed: connect wait loop must also wait through `CallTokenHandshake`.
+
+## Owner field reports, 2026-11-11
+
+These are owner observations, not instrumented traces: Android screen-off background audio works for an hour or more; Wi-Fi/cellular handoff works with a registration delay; transmitted voice clean-up sounds good. The owner subsequently reports **the Desktop Head Unit is working great**. Individual car voice-search, cold-start, audio-focus and physical-car scenarios have not been itemized in that report.
+
+The current backlog is in `PROJECT_SPEC.md` §13. Older observations above are retained with their original dates; features such as desktop device pickers and ASL text parsing have since been implemented.

@@ -22,5 +22,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\NodeX.Core\NodeX.Core.csproj" />
+    <InternalsVisibleTo Include="NodeX.UI.Tests" />
   </ItemGroup>
 </Project>

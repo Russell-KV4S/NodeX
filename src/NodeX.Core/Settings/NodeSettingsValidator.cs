@@ -71,6 +71,11 @@ public static partial class NodeSettingsValidator
         var s = Normalize(settings);
         var issues = new List<SettingsIssue>();
 
+        if (s.Theme is not ("Dark" or "Light" or "HighContrast"))
+            issues.Add(new(nameof(NodeSettings.Theme), "Choose Dark, Light or High contrast."));
+        if (!double.IsFinite(s.TextScale) || s.TextScale < 1 || s.TextScale > 1.5)
+            issues.Add(new(nameof(NodeSettings.TextScale), "Text size must be between 100% and 150%."));
+
         if (s.NodeNumber.Length == 0)
             issues.Add(new(Fields.NodeNumber, "Enter your AllStarLink node number."));
         else if (!NodeNumberPattern().IsMatch(s.NodeNumber))

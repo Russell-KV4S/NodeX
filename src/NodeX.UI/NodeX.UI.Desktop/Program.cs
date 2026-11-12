@@ -63,6 +63,7 @@ sealed class Program
     /// </summary>
     private static void ConfigureServices()
     {
+        AppServices.BleTransport = new NodeX.Core.DesktopBlePttTransport(new Bluetooth.SimpleBleCentral());
         AppServices.Initialize(
             new ProtectedFileSecretStore(),
             CreateAudioDevice,

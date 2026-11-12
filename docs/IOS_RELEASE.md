@@ -27,8 +27,8 @@ These exact property names are from the .NET iOS docs and are **unverified for t
 
 A GitHub Actions workflow was planned (build, sign from secrets, upload to TestFlight) but **not written**, because it cannot be tested without an Apple account.
 
-## Known iOS gaps (see PROJECT_SPEC.md section 7 and the appendices)
+## Known iOS gaps (see PROJECT_SPEC.md sections 7 and 20)
 - Audio (`AVAudioEngine`, `IosAudioSessionManager`) has never run on hardware; simultaneous engines for multi-node are an unverified assumption.
 - Idle background registration is **not implemented** on iOS; Apple may suspend the app despite the zero-PCM keeper.
-- Safe-area insets, `MicrophoneAllowed` reporting, and the station-ID background notification are unverified or missing on iOS.
+- `MicrophoneAllowed` reporting, CoreBluetooth transport and station-ID notifications are implemented. Their delivery, safe-area insets and real background behavior remain unverified on an iPhone.
 - No Exit menu item on iOS.

@@ -167,7 +167,7 @@ public sealed class NodeForegroundService : Service
             if (OperatingSystem.IsAndroidVersionAtLeast(30))
             {
                 var types = TypesFor(state, wantMic);
-                if (IsRunning && _types == (int)types)
+                if (!AndroidServicePlan.NeedsForegroundStart(IsRunning, _types, (int)types))
                 {
                     // Nothing about the service changed, only the text. Do not start it again: from the background
                     // (in a car, screen off) Android 14+ refuses the microphone type on a new start, which would
@@ -224,10 +224,12 @@ public sealed class NodeForegroundService : Service
         CarSession.MicrophoneUsable = micGranted;
 
         _keeper ??= new AndroidBackgroundKeeper(this);
-        if (state.IsLinked)
+        var plan = AndroidServicePlan.Create(state, (int)global::Android.OS.Build.VERSION.SdkInt,
+            micAllowed, car, AndroidAudioRoute.SpeakerActive, AppServices.Runtime.Config.Settings.MediaKeyPtt);
+        if (plan.HoldLocks)
         {
             _keeper.Acquire();
-            if (car)
+            if (plan.CarAudio)
             {
                 // In a car the link plays as ordinary media: a car's hands-free link must not switch the phone into
                 // call-style audio (the car then treats it as a phone call and its media buttons stop working).
@@ -242,7 +244,7 @@ public sealed class NodeForegroundService : Service
                 // linked, a settings save, a notification refresh), so it must not undo a loudspeaker choice:
                 // starting SCO puts the phone back in communication mode and moves the audio to the headset.
                 // Switching back to Phone picks the headset itself (AndroidAudioRoute.SetSpeaker).
-                if (!AndroidAudioRoute.SpeakerActive) _keeper.StartBluetoothSco();
+                if (plan.BluetoothSco) _keeper.StartBluetoothSco();
             }
             _carMode = car;
         }
@@ -257,7 +259,7 @@ public sealed class NodeForegroundService : Service
 
         // A headset's Play/Pause button as push-to-talk, only while linked, only if the user turned it on, never in the car.
         _headset ??= new AndroidHeadsetPtt(this);
-        _headset.Update(state.IsLinked && !CarSession.Active && AppServices.Runtime.Config.Settings.MediaKeyPtt);
+        _headset.Update(plan.HeadsetKeys);
 
         IsRunning = true;
         return true;
@@ -266,17 +268,13 @@ public sealed class NodeForegroundService : Service
     [System.Runtime.Versioning.SupportedOSPlatform("android30.0")]
     private static ForegroundService TypesFor(BackgroundState state, bool includeMic)
     {
-        if (!state.IsLinked)
-        {
-            return OperatingSystem.IsAndroidVersionAtLeast(34)
-                ? ForegroundService.TypeSpecialUse
-                : ForegroundService.TypeConnectedDevice;
-        }
-
-        var types = ForegroundService.TypeMediaPlayback | ForegroundService.TypeConnectedDevice;
-        // A car session leaves the microphone type off unless "Talk from the car" is on, because Android 14+ refuses
-        // it for a service started from the background (Apply then falls back to listen-only).
-        if (includeMic) types |= ForegroundService.TypeMicrophone;
+        var kinds = AndroidServicePlan.Create(state, (int)global::Android.OS.Build.VERSION.SdkInt,
+            includeMic, false, false, false).Kinds;
+        var types = (ForegroundService)0;
+        if (kinds.HasFlag(BackgroundServiceKinds.MediaPlayback)) types |= ForegroundService.TypeMediaPlayback;
+        if (kinds.HasFlag(BackgroundServiceKinds.ConnectedDevice)) types |= ForegroundService.TypeConnectedDevice;
+        if (kinds.HasFlag(BackgroundServiceKinds.Microphone)) types |= ForegroundService.TypeMicrophone;
+        if (kinds.HasFlag(BackgroundServiceKinds.SpecialUse) && OperatingSystem.IsAndroidVersionAtLeast(34)) types |= ForegroundService.TypeSpecialUse;
         return types;
     }
 

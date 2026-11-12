@@ -13,9 +13,12 @@ Thanks for your interest. NodeX is a small project, so please open an issue to d
 ```bash
 dotnet build src/NodeX.UI/NodeX.UI.Desktop
 dotnet test  tests/NodeX.Core.Tests --blame-hang-timeout 60s
+dotnet test  tests/NodeX.UI.Tests
 ```
 
 CI runs the same on Windows. Please make sure it passes.
+
+UI tests use a separate Avalonia Headless/Skia xUnit v3 project; Core tests remain xUnit v2. Keep those dependencies separate. Set `NODEX_SCREENSHOT_DIR` to an external directory to export the UI rendering checks. See `THIRD_PARTY_NOTICES.md` before reusing/distributing the desktop BLE dependency commercially.
 
 ## Safety rules for transmit code
 

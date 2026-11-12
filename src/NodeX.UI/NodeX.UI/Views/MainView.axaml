@@ -1,4 +1,4 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -7,7 +7,7 @@
              mc:Ignorable="d" d:DesignWidth="1050" d:DesignHeight="750"
              x:Class="NodeX.UI.Views.MainView"
              x:DataType="vm:MainViewModel"
-             Background="{StaticResource ConsoleBackgroundBrush}">
+             Background="{DynamicResource ConsoleBackgroundBrush}">
 
     <Design.DataContext>
         <vm:MainViewModel />
@@ -16,8 +16,8 @@
     <UserControl.Styles>
         <!-- Cards -->
         <Style Selector="Border.card">
-            <Setter Property="Background" Value="{StaticResource CardBackgroundBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="12" />
             <Setter Property="Padding" Value="16" />
@@ -25,10 +25,10 @@
 
         <!-- Registration dot: amber until registered, then green -->
         <Style Selector="Ellipse#AslDot">
-            <Setter Property="Fill" Value="{StaticResource AmberAccentBrush}" />
+            <Setter Property="Fill" Value="{DynamicResource AmberAccentBrush}" />
         </Style>
         <Style Selector="Ellipse#AslDot.registered">
-            <Setter Property="Fill" Value="{StaticResource RxGreenBrush}" />
+            <Setter Property="Fill" Value="{DynamicResource RxGreenBrush}" />
         </Style>
 
         <!-- Bluetooth dot: grey until a headset/speaker-mic is connected, then cyan -->
@@ -36,38 +36,45 @@
             <Setter Property="Fill" Value="#6B7280" />
         </Style>
         <Style Selector="Ellipse#BleDot.connected">
-            <Setter Property="Fill" Value="{StaticResource CyanAccentBrush}" />
+            <Setter Property="Fill" Value="{DynamicResource CyanAccentBrush}" />
         </Style>
 
         <!-- PTT button: the button itself is transparent and the visible face is a Border inside it, so the
              theme's hover/press styling can never override the keyed (red) state. Order matters below:
              later rules of equal specificity win, so the keyed rules come last. -->
         <Style Selector="Border#PttFace">
-            <Setter Property="Background" Value="#222834" />
-            <Setter Property="BorderBrush" Value="#374151" />
+            <Setter Property="Background" Value="{DynamicResource SelectedBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
         </Style>
         <Style Selector="Button#PttButton:pointerover Border#PttFace">
-            <Setter Property="Background" Value="#2D3748" />
-            <Setter Property="BorderBrush" Value="#4B5563" />
+            <Setter Property="Background" Value="{DynamicResource SelectedBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
         </Style>
         <Style Selector="Button#PttButton Border#PttFace.keyed">
-            <Setter Property="Background" Value="{StaticResource TxRedBrush}" />
-            <Setter Property="BorderBrush" Value="#FF8080" />
+            <Setter Property="Background" Value="{DynamicResource TransmitFillBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TxRedBrush}" />
         </Style>
         <!-- Transmit off: clearly inert, never red -->
         <Style Selector="Button#PttButton:disabled Border#PttFace">
-            <Setter Property="Background" Value="#161A22" />
-            <Setter Property="BorderBrush" Value="#2B3340" />
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
             <Setter Property="Opacity" Value="0.75" />
         </Style>
         <Style Selector="Button#PttButton:pointerover Border#PttFace.keyed">
-            <Setter Property="Background" Value="{StaticResource TxRedBrush}" />
-            <Setter Property="BorderBrush" Value="#FF8080" />
+            <Setter Property="Background" Value="{DynamicResource TransmitFillBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TxRedBrush}" />
+        </Style>
+
+        <Style Selector="Border#PttFace TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        </Style>
+        <Style Selector="Border#PttFace.keyed TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource OnRedBrush}" />
         </Style>
 
         <!-- Keypad -->
         <Style Selector="Button.key">
-            <Setter Property="Background" Value="#21262D" />
+            <Setter Property="Background" Value="{DynamicResource SelectedBackgroundBrush}" />
             <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Margin" Value="3" />
             <Setter Property="Height" Value="40" />
@@ -78,50 +85,50 @@
         </Style>
         <!-- Linked-node rows: the transmit node gets a red left edge and a text tag (never colour alone) -->
         <Style Selector="Border.linkRow">
-            <Setter Property="Background" Value="#0D1117" />
-            <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
+            <Setter Property="Background" Value="{DynamicResource ConsoleBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
             <Setter Property="BorderThickness" Value="1,1,1,1" />
             <Setter Property="CornerRadius" Value="10" />
             <Setter Property="Padding" Value="12" />
         </Style>
         <!-- Top-bar link chips: amber while connecting/reconnecting, green once up (text states it too) -->
         <Style Selector="Border.linkChip">
-            <Setter Property="Background" Value="#2A2410" />
-            <Setter Property="BorderBrush" Value="{StaticResource AmberAccentBrush}" />
+            <Setter Property="Background" Value="{DynamicResource WarningBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AmberAccentBrush}" />
             <Setter Property="BorderThickness" Value="1" />
         </Style>
         <Style Selector="Border.linkChip.up">
-            <Setter Property="Background" Value="#0F2A22" />
-            <Setter Property="BorderBrush" Value="{StaticResource RxGreenBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SuccessBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource RxGreenBrush}" />
         </Style>
         <Style Selector="Ellipse.chipDot">
-            <Setter Property="Fill" Value="{StaticResource AmberAccentBrush}" />
+            <Setter Property="Fill" Value="{DynamicResource AmberAccentBrush}" />
         </Style>
         <Style Selector="Ellipse.chipDot.up">
-            <Setter Property="Fill" Value="{StaticResource RxGreenBrush}" />
+            <Setter Property="Fill" Value="{DynamicResource RxGreenBrush}" />
         </Style>
         <!-- A node you are hearing: clearly green (was a 10% tint, too faint on the dark card) -->
         <Style Selector="Border.linkRow.rx">
-            <Setter Property="Background" Value="#5522C55E" />
-            <Setter Property="BorderBrush" Value="{StaticResource RxGreenBrush}" />
+            <Setter Property="Background" Value="{DynamicResource RxBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource RxGreenBrush}" />
             <Setter Property="BorderThickness" Value="2" />
         </Style>
         <Style Selector="Border.linkRow.tx">
-            <Setter Property="BorderBrush" Value="{StaticResource TxRedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TxRedBrush}" />
             <Setter Property="BorderThickness" Value="3" />
-            <Setter Property="Background" Value="#33EF4444" />
+            <Setter Property="Background" Value="{DynamicResource TxBackgroundBrush}" />
         </Style>
         <!-- The transmit node that is also being heard: keep the red border (it is where you talk) but go green
              inside. Before, the tx rule came later and hid rx entirely, so the transmit node never showed audio. -->
         <Style Selector="Border.linkRow.tx.rx">
-            <Setter Property="Background" Value="#6622C55E" />
+            <Setter Property="Background" Value="{DynamicResource RxBackgroundBrush}" />
         </Style>
         <Style Selector="Button.chip">
-            <Setter Property="Background" Value="#1F2937" />
+            <Setter Property="Background" Value="{DynamicResource SelectedBackgroundBrush}" />
             <Setter Property="CornerRadius" Value="4" />
             <Setter Property="Margin" Value="2" />
             <Setter Property="Padding" Value="4,6" />
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSize11}" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
         </Style>
@@ -135,7 +142,7 @@
         </Style>
         <Style Selector="UserControl.narrow Button.key">
             <Setter Property="Height" Value="52" />
-            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSize18}" />
         </Style>
         <Style Selector="UserControl.narrow Button#PttButton">
             <Setter Property="MinHeight" Value="0" />
@@ -150,13 +157,13 @@
             <Setter Property="MinHeight" Value="56" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
         </Style>
         <Style Selector="Button.navTab TextBlock.navLabel">
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSize11}" />
         </Style>
         <Style Selector="Button.navTab.selected">
-            <Setter Property="Foreground" Value="{StaticResource CyanAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource CyanAccentBrush}" />
         </Style>
         <Style Selector="Button.navTab.selected TextBlock.navLabel">
             <Setter Property="FontWeight" Value="Bold" />
@@ -173,8 +180,8 @@
 
         <!-- TOP APP / CONSOLE HEADER -->
         <Border x:Name="HeaderBorder" Grid.Row="0"
-                Background="{StaticResource HeaderBackgroundBrush}"
-                BorderBrush="{StaticResource CardBorderBrush}"
+                Background="{DynamicResource HeaderBackgroundBrush}"
+                BorderBrush="{DynamicResource CardBorderBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="16,12">
           <StackPanel Spacing="8">
@@ -184,22 +191,22 @@
                 <StackPanel x:Name="BrandPanel" Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                     <Image Source="avares://NodeX.UI/Assets/nodex-mark.png" Width="36" Height="36" RenderOptions.BitmapInterpolationMode="HighQuality" />
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="NodeX" FontSize="18" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" />
-                        <TextBlock x:Name="BrandTagline" Text="AllStarLink Radioless Node" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock Text="NodeX" FontSize="{DynamicResource FontSize18}" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock x:Name="BrandTagline" Text="AllStarLink Radioless Node" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" />
                     </StackPanel>
                 </StackPanel>
 
                 <!-- Station callout -->
                 <Border x:Name="StationBadge" Grid.Column="1" HorizontalAlignment="Center"
-                        Background="{StaticResource CardBackgroundBrush}"
-                        BorderBrush="{StaticResource CardBorderBrush}"
+                        Background="{DynamicResource CardBackgroundBrush}"
+                        BorderBrush="{DynamicResource CardBorderBrush}"
                         BorderThickness="1" CornerRadius="20" Padding="14,6">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBlock Text="STATION:" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding LocalCallsign}" FontWeight="Bold" FontSize="13" Foreground="{StaticResource CyanAccentBrush}" VerticalAlignment="Center" />
-                        <TextBlock Text="•" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding LocalNodeNumber, StringFormat='Node {0}'}" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                    </StackPanel>
+                    <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="4">
+                        <TextBlock Text="STATION:" FontWeight="SemiBold" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding LocalCallsign}" FontWeight="Bold" FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource CyanAccentBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="•" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding LocalNodeNumber, StringFormat='Node {0}'}" FontWeight="Bold" FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                    </WrapPanel>
                 </Border>
 
                 <!-- Registration + Bluetooth badges (wrap onto a second line when space is tight) -->
@@ -207,23 +214,23 @@
                            ItemSpacing="10" LineSpacing="6" VerticalAlignment="Center">
                     <!-- Always visible on the Radio screen while transmitting is off (listen-only setting or microphone denied) -->
                     <Border x:Name="ListenOnlyChip" IsVisible="{Binding IsTransmitBlocked}" CornerRadius="12" Padding="10,5"
-                            Background="#2B2110" BorderBrush="{StaticResource AmberAccentBrush}" BorderThickness="1"
+                            Background="{DynamicResource WarningBackgroundBrush}" BorderBrush="{DynamicResource AmberAccentBrush}" BorderThickness="1"
                             ToolTip.Tip="{Binding TransmitBlockedText}" AutomationProperties.Name="Listen only: transmitting is off">
-                        <TextBlock Text="LISTEN ONLY" FontSize="11" FontWeight="Bold" Foreground="#FCD34D" />
+                        <TextBlock Text="LISTEN ONLY" FontSize="{DynamicResource FontSize11}" FontWeight="Bold" Foreground="{DynamicResource WarningTextBrush}" />
                     </Border>
 
                     <Border Classes="card" CornerRadius="12" Padding="10,5">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <Ellipse x:Name="AslDot" Width="8" Height="8" Classes.registered="{Binding IsAslRegistered}" />
-                            <TextBlock Text="{Binding AslStatusText}" FontSize="11" MaxWidth="240"
-                                       TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextSecondaryBrush}" />
+                            <TextBlock Text="{Binding AslStatusText}" FontSize="{DynamicResource FontSize11}" MaxWidth="240"
+                                       TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
                     </Border>
 
                     <Border Classes="card" CornerRadius="12" Padding="10,5">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <Ellipse x:Name="BleDot" Width="8" Height="8" Classes.connected="{Binding IsBleConnected}" />
-                            <TextBlock Text="{Binding BleStatusText}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                            <TextBlock Text="{Binding BleStatusText}" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
                     </Border>
                 </WrapPanel>
@@ -233,21 +240,21 @@
                             Margin="10,0,0,0" VerticalAlignment="Center">
                     <Button x:Name="ExitButton" AutomationProperties.Name="Exit NodeX" Content="Exit"
                             Command="{Binding ExitCommand}" IsVisible="{Binding CanExit}"
-                            Background="{StaticResource CardBackgroundBrush}"
-                            BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1"
-                            Foreground="{StaticResource TextPrimaryBrush}"
-                            CornerRadius="12" Padding="12,5" FontSize="11" FontWeight="SemiBold" />
+                            Background="{DynamicResource CardBackgroundBrush}"
+                            BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1"
+                            Foreground="{DynamicResource TextPrimaryBrush}"
+                            CornerRadius="12" Padding="12,5" FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold" />
                 </StackPanel>
             </Grid>
 
             <!-- Links strip: always visible, so scrolling to the log never hides what you are connected to -->
             <WrapPanel x:Name="HeaderLinksStrip" Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
                 <TextBlock Text="{Binding LinkCountText, StringFormat='LINKED {0}'}" IsVisible="{Binding HasLinks}"
-                           FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"
-                           Foreground="{StaticResource TextSecondaryBrush}" />
+                           FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
                 <TextBlock Text="Not linked to any node" IsVisible="{Binding !HasLinks}"
-                           FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"
-                           Foreground="{StaticResource TextMutedBrush}" />
+                           FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextMutedBrush}" />
                 <ItemsControl ItemsSource="{Binding LinkItems}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -260,10 +267,10 @@
                                     Margin="0,0,6,4" CornerRadius="12" Padding="9,3">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <Ellipse Classes="chipDot" Classes.up="{Binding IsConnected}" Width="8" Height="8" VerticalAlignment="Center" />
-                                    <TextBlock Text="{Binding ChipTitle}" FontSize="12" FontWeight="Bold"
-                                               Foreground="{StaticResource TextPrimaryBrush}" />
-                                    <TextBlock Text="{Binding ChipStatus}" FontSize="11"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                    <TextBlock Text="{Binding ChipTitle}" FontSize="{DynamicResource FontSize12}" FontWeight="Bold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <TextBlock Text="{Binding ChipStatus}" FontSize="{DynamicResource FontSize11}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </StackPanel>
                             </Border>
                         </DataTemplate>
@@ -284,38 +291,38 @@
                     <Border x:Name="HeroCard" Classes="card" Padding="20">
                         <Grid RowDefinitions="Auto,Auto">
                             <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
-                                <Border Grid.Column="0" CornerRadius="6" Padding="8,4" Background="#1F2937">
+                                <Border Grid.Column="0" CornerRadius="6" Padding="8,4" Background="{DynamicResource SelectedBackgroundBrush}">
                                     <TextBlock Text="{Binding ConnectionStateBadgeText}"
-                                               FontWeight="Bold" FontSize="11"
-                                               Foreground="{StaticResource CyanAccentBrush}" />
+                                               FontWeight="Bold" FontSize="{DynamicResource FontSize11}"
+                                               Foreground="{DynamicResource CyanAccentBrush}" />
                                 </Border>
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <TextBlock Text="RTT:" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                    <TextBlock Text="{Binding LatencyText}" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}" />
+                                    <TextBlock Text="RTT:" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Text="{Binding LatencyText}" FontWeight="SemiBold" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextPrimaryBrush}" />
                                 </StackPanel>
                             </Grid>
 
                             <StackPanel Grid.Row="1" Margin="0,16,0,8">
                                 <TextBlock Text="{Binding ConnectedNodeDisplay}"
-                                           FontSize="32" FontWeight="Black"
-                                           Foreground="{StaticResource TextPrimaryBrush}" />
+                                           FontSize="{DynamicResource FontSize32}" FontWeight="Black"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
                                 <TextBlock Text="{Binding ConnectedNodeDetails}"
-                                           FontSize="13" TextWrapping="Wrap"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                           FontSize="{DynamicResource FontSize13}" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
 
                                 <!-- Optional station-ID reminder (text only; nothing is transmitted) -->
                                 <Border IsVisible="{Binding IsIdReminderDue}" Margin="0,12,0,0" Padding="12,8"
                                         CornerRadius="8" BorderThickness="1"
-                                        BorderBrush="{StaticResource AmberAccentBrush}" Background="#2A1F0A">
+                                        BorderBrush="{DynamicResource AmberAccentBrush}" Background="{DynamicResource WarningBackgroundBrush}">
                                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                                        <TextBlock Text="Time to identify (say your callsign)." FontSize="13" FontWeight="SemiBold"
+                                        <TextBlock Text="Time to identify (say your callsign)." FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
                                                    TextWrapping="Wrap" VerticalAlignment="Center"
-                                                   Foreground="{StaticResource AmberAccentBrush}" />
+                                                   Foreground="{DynamicResource AmberAccentBrush}" />
                                         <Button Grid.Column="1" Content="I've identified" Command="{Binding AcknowledgeIdCommand}"
-                                                Background="{StaticResource CardBackgroundBrush}"
-                                                BorderBrush="{StaticResource AmberAccentBrush}" BorderThickness="1"
-                                                Foreground="{StaticResource TextPrimaryBrush}"
-                                                CornerRadius="8" Padding="10,5" FontSize="12" FontWeight="SemiBold" />
+                                                Background="{DynamicResource CardBackgroundBrush}"
+                                                BorderBrush="{DynamicResource AmberAccentBrush}" BorderThickness="1"
+                                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                                CornerRadius="8" Padding="10,5" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" />
                                     </Grid>
                                 </Border>
                             </StackPanel>
@@ -326,18 +333,18 @@
                     <Border x:Name="MetersCard" Classes="card" CornerRadius="10">
                         <StackPanel Spacing="10">
                             <Grid ColumnDefinitions="50,*,40">
-                                <TextBlock Grid.Column="0" Text="MIC" FontWeight="Bold" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="0" Text="MIC" FontWeight="Bold" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
                                 <ProgressBar Grid.Column="1" AutomationProperties.Name="Microphone level" Minimum="0" Maximum="1" Value="{Binding MicAudioLevel}"
                                              Height="8" CornerRadius="4" Margin="8,0"
-                                             Foreground="{StaticResource TxRedBrush}" Background="#1F2937" />
-                                <TextBlock Grid.Column="2" Text="{Binding MicAudioLevel, StringFormat='{}{0:P0}'}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                             Foreground="{DynamicResource TxRedBrush}" Background="{DynamicResource SelectedBackgroundBrush}" />
+                                <TextBlock Grid.Column="2" Text="{Binding MicAudioLevel, StringFormat='{}{0:P0}'}" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
                             </Grid>
                             <Grid ColumnDefinitions="50,*,40">
-                                <TextBlock Grid.Column="0" Text="SPK" FontWeight="Bold" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="0" Text="SPK" FontWeight="Bold" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
                                 <ProgressBar Grid.Column="1" AutomationProperties.Name="Speaker level" Minimum="0" Maximum="1" Value="{Binding RxAudioLevel}"
                                              Height="8" CornerRadius="4" Margin="8,0"
-                                             Foreground="{StaticResource RxGreenBrush}" Background="#1F2937" />
-                                <TextBlock Grid.Column="2" Text="{Binding RxAudioLevel, StringFormat='{}{0:P0}'}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                             Foreground="{DynamicResource RxGreenBrush}" Background="{DynamicResource SelectedBackgroundBrush}" />
+                                <TextBlock Grid.Column="2" Text="{Binding RxAudioLevel, StringFormat='{}{0:P0}'}" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -366,12 +373,12 @@
                                 <Border x:Name="PttFace" CornerRadius="20" BorderThickness="3"
                                         Classes.keyed="{Binding IsTransmitting}">
                                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="4">
-                                        <TextBlock x:Name="PttCaption" Text="{Binding PttCaption}" FontSize="13" FontWeight="SemiBold"
-                                                   Foreground="#9CA3AF" HorizontalAlignment="Center" />
-                                        <TextBlock Text="{Binding PttHeadline}" FontSize="20" FontWeight="Black"
-                                                   Foreground="#FFFFFF" HorizontalAlignment="Center" />
-                                        <TextBlock Text="{Binding TxDurationDisplay}" FontSize="16" FontWeight="Bold"
-                                                   Foreground="#FFE4E6" HorizontalAlignment="Center" />
+                                        <TextBlock x:Name="PttCaption" Text="{Binding PttCaption}" FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
+                                                    HorizontalAlignment="Center" />
+                                        <TextBlock Classes="pttText" Text="{Binding PttHeadline}" FontSize="{DynamicResource FontSize20}" FontWeight="Black"
+                                                    HorizontalAlignment="Center" />
+                                        <TextBlock Text="{Binding TxDurationDisplay}" FontSize="{DynamicResource FontSize16}" FontWeight="Bold"
+                                                    HorizontalAlignment="Center" />
                                     </StackPanel>
                                 </Border>
                             </Button>
@@ -382,52 +389,52 @@
                                         Content="{Binding SpeakerChipText}"
                                         Width="76" Padding="4" VerticalAlignment="Stretch"
                                         HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                                        Background="#1F2937" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1"
-                                        CornerRadius="12" FontSize="12" FontWeight="SemiBold" />
+                                        Background="{DynamicResource SelectedBackgroundBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1"
+                                        CornerRadius="12" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" />
                             </Grid>
 
                             <!-- Shown when transmitting is off (listen only, or microphone access denied). Listening still works. -->
                             <Border x:Name="TxBlockedBanner" IsVisible="{Binding IsTransmitBlocked}"
-                                    Background="#2B2110" BorderBrush="{StaticResource AmberAccentBrush}" BorderThickness="1"
+                                    Background="{DynamicResource WarningBackgroundBrush}" BorderBrush="{DynamicResource AmberAccentBrush}" BorderThickness="1"
                                     CornerRadius="8" Padding="12,8">
                                 <StackPanel Spacing="6">
-                                    <TextBlock Text="{Binding TransmitBlockedText}" TextWrapping="Wrap" FontSize="12"
-                                               Foreground="#FCD34D" AutomationProperties.LiveSetting="Polite" />
+                                    <TextBlock Text="{Binding TransmitBlockedText}" TextWrapping="Wrap" FontSize="{DynamicResource FontSize12}"
+                                               Foreground="{DynamicResource WarningTextBrush}" AutomationProperties.LiveSetting="Polite" />
                                     <Button Content="Allow microphone" Command="{Binding FixMicrophoneCommand}"
                                             IsVisible="{Binding CanFixMicrophone}" HorizontalAlignment="Left"
-                                            Padding="12,6" CornerRadius="6" FontSize="12" />
+                                            Padding="12,6" CornerRadius="6" FontSize="{DynamicResource FontSize12}" />
                                     <Button Content="Add callsign" Command="{Binding AddCallsignCommand}"
                                             IsVisible="{Binding CanAddCallsign}" HorizontalAlignment="Left"
-                                            Padding="12,6" CornerRadius="6" FontSize="12" />
+                                            Padding="12,6" CornerRadius="6" FontSize="{DynamicResource FontSize12}" />
                                 </StackPanel>
                             </Border>
 
                             <!-- Nodes are linked but none is chosen for transmit: say so (the key stays inert) -->
                             <Border x:Name="ChooseTxBanner" IsVisible="{Binding NeedsTransmitNode}"
-                                    Background="#2B2110" BorderBrush="{StaticResource AmberAccentBrush}" BorderThickness="1"
+                                    Background="{DynamicResource WarningBackgroundBrush}" BorderBrush="{DynamicResource AmberAccentBrush}" BorderThickness="1"
                                     CornerRadius="8" Padding="12,8">
-                                <TextBlock Text="Pick which linked node to transmit to." TextWrapping="Wrap" FontSize="12"
-                                           Foreground="#FCD34D" AutomationProperties.LiveSetting="Polite" />
+                                <TextBlock Text="Pick which linked node to transmit to." TextWrapping="Wrap" FontSize="{DynamicResource FontSize12}"
+                                           Foreground="{DynamicResource WarningTextBrush}" AutomationProperties.LiveSetting="Polite" />
                             </Border>
 
                             <StackPanel x:Name="PttInfo" Spacing="8" Width="300">
                                 <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Grid.Column="0" Text="Time-Out Timer (TOT)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                    <TextBlock Grid.Column="1" Text="{Binding TotCounterText}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
+                                    <TextBlock Grid.Column="0" Text="Time-Out Timer (TOT)" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding TotCounterText}" FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                                 </Grid>
                                 <ProgressBar AutomationProperties.Name="Transmit time-out used" Minimum="0" Maximum="1" Value="{Binding TotProgressPercent}"
                                              Height="6" CornerRadius="3"
-                                             Foreground="{StaticResource AmberAccentBrush}" Background="#1F2937" />
+                                             Foreground="{DynamicResource AmberAccentBrush}" Background="{DynamicResource SelectedBackgroundBrush}" />
 
                                 <Button Command="{Binding TogglePttModeCommand}"
                                         AutomationProperties.Name="Switch push-to-talk mode"
                                         HorizontalAlignment="Center" Margin="0,4,0,0"
-                                        Background="#1F2937" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1"
+                                        Background="{DynamicResource SelectedBackgroundBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1"
                                         CornerRadius="14" Padding="12,4">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Text="Mode:" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                                        <TextBlock Text="{Binding PttModeLabel}" FontSize="12" FontWeight="Bold" Foreground="{StaticResource CyanAccentBrush}" VerticalAlignment="Center" />
-                                        <TextBlock x:Name="PttModeHint" Text="⇄ tap to switch" FontSize="11" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Mode:" FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding PttModeLabel}" FontSize="{DynamicResource FontSize12}" FontWeight="Bold" Foreground="{DynamicResource CyanAccentBrush}" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="PttModeHint" Text="⇄ tap to switch" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </Button>
                             </StackPanel>
@@ -441,16 +448,16 @@
                     <!-- PHONE, Radio tab: station-ID reminder (the big hero card is not shown on phones) -->
                     <Border x:Name="IdReminderCard" IsVisible="{Binding IsIdReminderDue}" Padding="12,8"
                             CornerRadius="8" BorderThickness="1"
-                            BorderBrush="{StaticResource AmberAccentBrush}" Background="#2A1F0A">
+                            BorderBrush="{DynamicResource AmberAccentBrush}" Background="{DynamicResource WarningBackgroundBrush}">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                            <TextBlock Text="Time to identify (say your callsign)." FontSize="13" FontWeight="SemiBold"
+                            <TextBlock Text="Time to identify (say your callsign)." FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
                                        TextWrapping="Wrap" VerticalAlignment="Center"
-                                       Foreground="{StaticResource AmberAccentBrush}" />
+                                       Foreground="{DynamicResource AmberAccentBrush}" />
                             <Button Grid.Column="1" Content="I've identified" Command="{Binding AcknowledgeIdCommand}"
-                                    Background="{StaticResource CardBackgroundBrush}"
-                                    BorderBrush="{StaticResource AmberAccentBrush}" BorderThickness="1"
-                                    Foreground="{StaticResource TextPrimaryBrush}"
-                                    CornerRadius="8" Padding="10,5" FontSize="12" FontWeight="SemiBold" />
+                                    Background="{DynamicResource CardBackgroundBrush}"
+                                    BorderBrush="{DynamicResource AmberAccentBrush}" BorderThickness="1"
+                                    Foreground="{DynamicResource TextPrimaryBrush}"
+                                    CornerRadius="8" Padding="10,5" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" />
                         </Grid>
                     </Border>
 
@@ -459,15 +466,15 @@
                     <Border x:Name="CompactLinksCard" Classes="card" Padding="12">
                         <StackPanel Spacing="8">
                             <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="LINKS" FontWeight="Bold" FontSize="12"
-                                           Foreground="{StaticResource CyanAccentBrush}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="1" Text="{Binding LinkCountText}" IsVisible="{Binding HasLinks}" FontSize="11"
-                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="0" Text="LINKS" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
+                                           Foreground="{DynamicResource CyanAccentBrush}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding LinkCountText}" IsVisible="{Binding HasLinks}" FontSize="{DynamicResource FontSize11}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
                             </Grid>
                             <StackPanel Spacing="8" IsVisible="{Binding !HasLinks}">
-                                <TextBlock Text="Not linked to any node." FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="Not linked to any node." FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <Button Content="Connect to a node…" Click="OnGoToNodesClick" HorizontalAlignment="Left"
-                                        Padding="14,8" CornerRadius="6" FontSize="13" FontWeight="SemiBold" />
+                                        Padding="14,8" CornerRadius="6" FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold" />
                             </StackPanel>
                             <ItemsControl ItemsSource="{Binding LinkItems}">
                                 <ItemsControl.ItemsPanel>
@@ -480,57 +487,57 @@
                                         <Border Classes="linkRow" Classes.tx="{Binding IsTransmitTarget}" Classes.rx="{Binding IsReceiving}" Padding="10,8">
                                             <StackPanel Spacing="6">
                                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                                    <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="14" FontWeight="Bold"
+                                                    <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="{DynamicResource FontSize14}" FontWeight="Bold"
                                                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                                               Foreground="{StaticResource TextPrimaryBrush}" />
+                                                               Foreground="{DynamicResource TextPrimaryBrush}" />
                                                     <Border Grid.Column="1" IsVisible="{Binding IsTransmitTarget}" VerticalAlignment="Center"
-                                                            CornerRadius="6" Padding="8,3" Background="{StaticResource TxRedBrush}">
-                                                        <TextBlock Text="TRANSMIT" FontSize="11" FontWeight="Black" Foreground="#FFFFFF" />
+                                                            CornerRadius="6" Padding="8,3" Background="{DynamicResource TransmitFillBrush}">
+                                                        <TextBlock Text="TRANSMIT" FontSize="{DynamicResource FontSize11}" FontWeight="Black" Foreground="{DynamicResource OnRedBrush}" />
                                                     </Border>
                                                     <Border Grid.Column="1" IsVisible="{Binding CanSelectTransmit}" VerticalAlignment="Center"
-                                                            CornerRadius="6" Padding="8,3" Background="#1F2937">
-                                                        <TextBlock Text="LISTEN ONLY" FontSize="11" FontWeight="Bold"
-                                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                            CornerRadius="6" Padding="8,3" Background="{DynamicResource SelectedBackgroundBrush}">
+                                                        <TextBlock Text="LISTEN ONLY" FontSize="{DynamicResource FontSize11}" FontWeight="Bold"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                                     </Border>
                                                 </Grid>
                                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                                    <TextBlock Text="{Binding StatusText}" FontSize="11" FontWeight="Bold"
-                                                               VerticalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}" />
-                                                    <TextBlock Text="{Binding RttText}" FontSize="11" VerticalAlignment="Center"
-                                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="{Binding StatusText}" FontSize="{DynamicResource FontSize11}" FontWeight="Bold"
+                                                               VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                    <TextBlock Text="{Binding RttText}" FontSize="{DynamicResource FontSize11}" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                                     <Border IsVisible="{Binding IsReceiving}" CornerRadius="8" Padding="7,1"
-                                                            Background="{StaticResource RxGreenBrush}">
-                                                        <TextBlock Text="● RX" FontSize="11" FontWeight="Black" Foreground="#04130D"
+                                                            Background="{DynamicResource RxGreenBrush}">
+                                                        <TextBlock Text="● RX" FontSize="{DynamicResource FontSize11}" FontWeight="Black" Foreground="{DynamicResource OnGreenBrush}"
                                                                    AutomationProperties.LiveSetting="Polite" />
                                                     </Border>
                                                 </StackPanel>
-                                                <TextBlock Text="{Binding LastHeardText}" FontSize="11"
-                                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding LastHeardText}" FontSize="{DynamicResource FontSize11}"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 <TextBlock Text="{Binding RemoteLinksText}" IsVisible="{Binding HasRemoteLinks}"
-                                                           FontSize="11" TextWrapping="Wrap"
-                                                           Foreground="{StaticResource CyanAccentBrush}" />
+                                                           FontSize="{DynamicResource FontSize11}" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource CyanAccentBrush}" />
                                                 <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
                                                     <Button Grid.Column="0" IsVisible="{Binding CanSelectTransmit}" Content="Transmit here"
                                                             Command="{Binding SelectTransmitCommand}"
                                                             AutomationProperties.Name="{Binding SelectAutomationName}"
-                                                            Background="#21262D" CornerRadius="6" Padding="8,6" FontSize="11" FontWeight="SemiBold" />
+                                                            Background="{DynamicResource SelectedBackgroundBrush}" CornerRadius="6" Padding="8,6" FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold" />
                                                     <Button Grid.Column="2" Command="{Binding ToggleMuteCommand}"
                                                             AutomationProperties.Name="{Binding MuteAutomationName}"
-                                                            Background="#21262D" CornerRadius="6" Padding="8,4" MinWidth="52"
+                                                            Background="{DynamicResource SelectedBackgroundBrush}" CornerRadius="6" Padding="8,4" MinWidth="52"
                                                             HorizontalContentAlignment="Center">
                                                         <StackPanel HorizontalAlignment="Center">
-                                                            <TextBlock Text="{Binding MuteGlyph}" FontSize="14" HorizontalAlignment="Center" />
-                                                            <TextBlock Text="{Binding MuteShortText}" FontSize="10" HorizontalAlignment="Center" />
+                                                            <TextBlock Text="{Binding MuteGlyph}" FontSize="{DynamicResource FontSize14}" HorizontalAlignment="Center" />
+                                                            <TextBlock Text="{Binding MuteShortText}" FontSize="{DynamicResource FontSize10}" HorizontalAlignment="Center" />
                                                         </StackPanel>
                                                     </Button>
                                                     <Button Grid.Column="3" Command="{Binding DisconnectCommand}"
                                                             AutomationProperties.Name="{Binding DisconnectAutomationName}"
-                                                            Background="{StaticResource DangerButtonBrush}" Foreground="#FFFFFF"
+                                                            Background="{DynamicResource DangerButtonBrush}" Foreground="#FFFFFF"
                                                             CornerRadius="6" Padding="8,4" MinWidth="52"
                                                             HorizontalContentAlignment="Center">
                                                         <StackPanel HorizontalAlignment="Center">
-                                                            <TextBlock Text="✕" FontSize="14" HorizontalAlignment="Center" />
-                                                            <TextBlock Text="Disconnect" FontSize="10" HorizontalAlignment="Center" />
+                                                            <TextBlock Text="✕" FontSize="{DynamicResource FontSize14}" HorizontalAlignment="Center" />
+                                                            <TextBlock Text="Disconnect" FontSize="{DynamicResource FontSize10}" HorizontalAlignment="Center" />
                                                         </StackPanel>
                                                     </Button>
                                                 </Grid>
@@ -546,15 +553,15 @@
                     <Border x:Name="LinksCard" Classes="card" IsVisible="{Binding HasLinks}">
                         <StackPanel Spacing="10">
                             <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="Linked nodes" FontWeight="Bold" FontSize="14"
-                                           Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                                <Border Grid.Column="1" CornerRadius="10" Padding="8,3" Background="#1F2937">
-                                    <TextBlock Text="{Binding LinkCountText}" FontSize="11" FontWeight="SemiBold"
-                                               Foreground="{StaticResource CyanAccentBrush}" />
+                                <TextBlock Grid.Column="0" Text="Linked nodes" FontWeight="Bold" FontSize="{DynamicResource FontSize14}"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                <Border Grid.Column="1" CornerRadius="10" Padding="8,3" Background="{DynamicResource SelectedBackgroundBrush}">
+                                    <TextBlock Text="{Binding LinkCountText}" FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource CyanAccentBrush}" />
                                 </Border>
                             </Grid>
                             <TextBlock Text="Choose one node to transmit to. All other links are listen-only."
-                                       FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" />
+                                       FontSize="{DynamicResource FontSize12}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
 
                             <ItemsControl ItemsSource="{Binding LinkItems}">
                                 <ItemsControl.ItemsPanel>
@@ -568,59 +575,59 @@
                                             <StackPanel Spacing="8">
                                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                                     <StackPanel Grid.Column="0">
-                                                        <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="Bold"
+                                                        <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSize15}" FontWeight="Bold"
                                                                    TextTrimming="CharacterEllipsis"
-                                                                   Foreground="{StaticResource TextPrimaryBrush}" />
-                                                        <TextBlock Text="{Binding Details}" FontSize="11" TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                        <TextBlock Text="{Binding Details}" FontSize="{DynamicResource FontSize11}" TextTrimming="CharacterEllipsis"
                                                                    IsVisible="{Binding HasDetails}"
-                                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,0">
-                                                            <TextBlock Text="{Binding StatusText}" FontSize="11" FontWeight="Bold"
-                                                                       Foreground="{StaticResource TextPrimaryBrush}" />
-                                                            <TextBlock Text="{Binding RttText}" FontSize="11"
-                                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                                            <TextBlock Text="{Binding StatusText}" FontSize="{DynamicResource FontSize11}" FontWeight="Bold"
+                                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                            <TextBlock Text="{Binding RttText}" FontSize="{DynamicResource FontSize11}"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                                                             <Border IsVisible="{Binding IsReceiving}" CornerRadius="8" Padding="7,1"
-                                                                    Background="{StaticResource RxGreenBrush}">
-                                                                <TextBlock Text="● RX" FontSize="11" FontWeight="Black" Foreground="#04130D" />
+                                                                    Background="{DynamicResource RxGreenBrush}">
+                                                                <TextBlock Text="● RX" FontSize="{DynamicResource FontSize11}" FontWeight="Black" Foreground="{DynamicResource OnGreenBrush}" />
                                                             </Border>
                                                         </StackPanel>
-                                                        <TextBlock Text="{Binding LastHeardText}" FontSize="11"
-                                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                        <TextBlock Text="{Binding LastHeardText}" FontSize="{DynamicResource FontSize11}"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                                         <TextBlock Text="{Binding RemoteLinksText}" IsVisible="{Binding HasRemoteLinks}"
-                                                                   FontSize="11" TextWrapping="Wrap"
-                                                                   Foreground="{StaticResource CyanAccentBrush}" />
+                                                                   FontSize="{DynamicResource FontSize11}" TextWrapping="Wrap"
+                                                                   Foreground="{DynamicResource CyanAccentBrush}" />
                                                     </StackPanel>
                                                     <!-- Text pill, so "audio is arriving from this node" is not colour-only -->
                                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Top">
                                                         <Border IsVisible="{Binding IsReceiving}" VerticalAlignment="Center"
-                                                                CornerRadius="12" Padding="8,4" Background="#1A10B981"
-                                                                BorderBrush="{StaticResource RxGreenBrush}" BorderThickness="1">
+                                                                CornerRadius="12" Padding="8,4" Background="{DynamicResource SuccessBackgroundBrush}"
+                                                                BorderBrush="{DynamicResource RxGreenBrush}" BorderThickness="1">
                                                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                                                <Ellipse Width="8" Height="8" Fill="{StaticResource RxGreenBrush}" VerticalAlignment="Center" />
-                                                                <TextBlock Text="Receiving" FontSize="11" FontWeight="Bold"
+                                                                <Ellipse Width="8" Height="8" Fill="{DynamicResource RxGreenBrush}" VerticalAlignment="Center" />
+                                                                <TextBlock Text="Receiving" FontSize="{DynamicResource FontSize11}" FontWeight="Bold"
                                                                            AutomationProperties.LiveSetting="Polite"
-                                                                           Foreground="{StaticResource RxGreenBrush}" />
+                                                                           Foreground="{DynamicResource RxGreenBrush}" />
                                                             </StackPanel>
                                                         </Border>
                                                         <!-- Favourite this node: star toggles, pencil (favourites only) renames -->
-                                                        <Button Content="✎" FontSize="14" IsVisible="{Binding IsFavorite}"
+                                                        <Button Content="✎" FontSize="{DynamicResource FontSize14}" IsVisible="{Binding IsFavorite}"
                                                                 Command="{Binding ToggleEditLabelCommand}"
                                                                 AutomationProperties.Name="{Binding RenameAutomationName}"
                                                                 MinWidth="36" MinHeight="36" Padding="0" CornerRadius="6"
                                                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
                                                         </Button>
-                                                        <Button Content="{Binding FavoriteGlyph}" FontSize="20"
+                                                        <Button Content="{Binding FavoriteGlyph}" FontSize="{DynamicResource FontSize20}"
                                                                 Command="{Binding ToggleFavoriteCommand}"
                                                                 AutomationProperties.Name="{Binding FavoriteAutomationName}"
                                                                 MinWidth="40" MinHeight="36" Padding="0" CornerRadius="6"
                                                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                                                                Foreground="{StaticResource AmberAccentBrush}" />
+                                                                Foreground="{DynamicResource AmberAccentBrush}" />
                                                     </StackPanel>
                                                 </Grid>
 
                                                 <!-- Inline rename (not a popup, which the Android keyboard would cover) -->
                                                 <StackPanel Spacing="6" IsVisible="{Binding IsEditingLabel}">
-                                                    <TextBlock Text="Favorite name" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="Favorite name" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" />
                                                     <TextBox AutomationProperties.Name="Favorite name"
                                                              Text="{Binding LabelInput}" MaxLength="40"
                                                              PlaceholderText="e.g. East Coast Reflector">
@@ -638,30 +645,30 @@
 
                                                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                                                     <Border Grid.Column="0" IsVisible="{Binding IsTransmitTarget}" VerticalAlignment="Center"
-                                                            CornerRadius="6" Padding="10,6" Background="{StaticResource TxRedBrush}">
-                                                        <TextBlock Text="TRANSMIT HERE" FontSize="11" FontWeight="Black" Foreground="#FFFFFF" />
+                                                            CornerRadius="6" Padding="10,6" Background="{DynamicResource TransmitFillBrush}">
+                                                        <TextBlock Text="TRANSMIT HERE" FontSize="{DynamicResource FontSize11}" FontWeight="Black" Foreground="{DynamicResource OnRedBrush}" />
                                                     </Border>
                                                     <Border Grid.Column="0" IsVisible="{Binding CanSelectTransmit}" VerticalAlignment="Center"
-                                                            CornerRadius="6" Padding="10,6" Background="#1F2937">
-                                                        <TextBlock Text="Listen only" FontSize="11" FontWeight="SemiBold"
-                                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                            CornerRadius="6" Padding="10,6" Background="{DynamicResource SelectedBackgroundBrush}">
+                                                        <TextBlock Text="Listen only" FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                                     </Border>
                                                     <Button Grid.Column="2" Content="Transmit here" Command="{Binding SelectTransmitCommand}"
                                                             IsVisible="{Binding CanSelectTransmit}"
                                                             AutomationProperties.Name="{Binding SelectAutomationName}"
-                                                            Background="#21262D" CornerRadius="6" Padding="12,6" FontSize="12" FontWeight="SemiBold" />
+                                                            Background="{DynamicResource SelectedBackgroundBrush}" CornerRadius="6" Padding="12,6" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" />
                                                 </Grid>
 
                                                 <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                                                     <Button Grid.Column="0" Content="{Binding MuteButtonText}" Command="{Binding ToggleMuteCommand}"
                                                             AutomationProperties.Name="{Binding MuteAutomationName}"
                                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                                            Background="#21262D" CornerRadius="6" Padding="10,6" FontSize="12" />
+                                                            Background="{DynamicResource SelectedBackgroundBrush}" CornerRadius="6" Padding="10,6" FontSize="{DynamicResource FontSize12}" />
                                                     <Button Grid.Column="1" Content="Disconnect" Command="{Binding DisconnectCommand}"
                                                             AutomationProperties.Name="{Binding DisconnectAutomationName}"
                                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                                            Background="{StaticResource DangerButtonBrush}" Foreground="#FFFFFF"
-                                                            CornerRadius="6" Padding="10,6" FontSize="12" FontWeight="SemiBold" />
+                                                            Background="{DynamicResource DangerButtonBrush}" Foreground="#FFFFFF"
+                                                            CornerRadius="6" Padding="10,6" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" />
                                                 </Grid>
                                             </StackPanel>
                                         </Border>
@@ -670,28 +677,28 @@
                             </ItemsControl>
 
                             <TextBlock Text="{Binding LinkHintText}"
-                                       FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}" />
+                                       FontSize="{DynamicResource FontSize11}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
                         </StackPanel>
                     </Border>
 
                     <!-- CONNECT / DIAL CONTROL -->
                     <Border x:Name="ConnectCard" Classes="card">
                         <StackPanel Spacing="12">
-                            <TextBlock Text="Connect to Node" FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}" />
+                            <TextBlock Text="Connect to Node" FontWeight="Bold" FontSize="{DynamicResource FontSize14}" Foreground="{DynamicResource TextPrimaryBrush}" />
                             <TextBlock Text="Connect adds another link; the nodes you are already linked to stay up."
-                                       IsVisible="{Binding HasLinks}" FontSize="11" TextWrapping="Wrap"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                       IsVisible="{Binding HasLinks}" FontSize="{DynamicResource FontSize11}" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
 
                             <Grid x:Name="ConnectGrid" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto">
                                 <!-- Star saves the number typed in the box; the pencil (favourites only) renames it -->
                                 <StackPanel x:Name="TargetFavButtons" Grid.Column="0" Orientation="Horizontal" Spacing="4" Margin="0,0,8,0">
-                                    <Button Content="{Binding TargetFavoriteGlyph}" FontSize="20"
+                                    <Button Content="{Binding TargetFavoriteGlyph}" FontSize="{DynamicResource FontSize20}"
                                             AutomationProperties.Name="{Binding TargetFavoriteName}"
                                             Command="{Binding ToggleTargetFavoriteCommand}"
                                             MinWidth="44" MinHeight="40" Padding="0" CornerRadius="6"
                                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                                            Foreground="{StaticResource AmberAccentBrush}" />
-                                    <Button Content="✎" FontSize="16" IsVisible="{Binding TargetIsFavorite}"
+                                            Foreground="{DynamicResource AmberAccentBrush}" />
+                                    <Button Content="✎" FontSize="{DynamicResource FontSize16}" IsVisible="{Binding TargetIsFavorite}"
                                             Command="{Binding ToggleEditFavoriteLabelCommand}"
                                             AutomationProperties.Name="Rename this favorite"
                                             MinWidth="36" MinHeight="40" Padding="0" CornerRadius="6"
@@ -700,20 +707,20 @@
                                 </StackPanel>
                                 <TextBox x:Name="TargetBox" AutomationProperties.Name="Node number to connect to" Grid.Column="1" Text="{Binding TargetNodeInput}"
                                          PlaceholderText="e.g. 27339" Margin="0,0,8,0"
-                                         FontSize="15" FontWeight="SemiBold"
+                                         FontSize="{DynamicResource FontSize15}" FontWeight="SemiBold"
                                          CornerRadius="6" VerticalContentAlignment="Center" />
                                 <Grid x:Name="ConnectButtons" Grid.Column="2" ColumnDefinitions="Auto,Auto" ColumnSpacing="6">
                                     <Button Grid.Column="0" Command="{Binding ConnectNodeCommand}"
                                             IsEnabled="{Binding CanConnect}"
-                                            Background="{StaticResource RxGreenBrush}"
-                                            Foreground="#000000" FontWeight="Bold"
+                                            Background="{DynamicResource RxGreenBrush}"
+                                            Foreground="{DynamicResource OnGreenBrush}" FontWeight="Bold"
                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
                                             CornerRadius="6" Padding="14,8">
                                         Connect
                                     </Button>
                                     <Button Grid.Column="1" Command="{Binding RequestDisconnectNodeCommand}"
                                             IsEnabled="{Binding CanDisconnect}"
-                                            Background="{StaticResource DangerButtonBrush}"
+                                            Background="{DynamicResource DangerButtonBrush}"
                                             Foreground="#FFFFFF" FontWeight="Bold"
                                             Content="{Binding DisconnectAllText}"
                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
@@ -723,22 +730,22 @@
 
                             <!-- Confirmation when multiple links are up so a stray tap does not drop every link -->
                             <Border IsVisible="{Binding IsConfirmingDisconnectAll}"
-                                    Background="#2A1215" BorderBrush="{StaticResource TxRedBrush}" BorderThickness="1"
+                                    Background="{DynamicResource ErrorBackgroundBrush}" BorderBrush="{DynamicResource TxRedBrush}" BorderThickness="1"
                                     CornerRadius="8" Padding="10,8">
                                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                                    <TextBlock Grid.Column="0" Text="Disconnect all linked nodes?" FontSize="12" FontWeight="SemiBold"
-                                               VerticalAlignment="Center" Foreground="#FCA5A5" TextWrapping="Wrap" />
+                                    <TextBlock Grid.Column="0" Text="Disconnect all linked nodes?" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold"
+                                               VerticalAlignment="Center" Foreground="{DynamicResource TxRedBrush}" TextWrapping="Wrap" />
                                     <Button Grid.Column="1" Content="Cancel" Command="{Binding CancelDisconnectAllCommand}"
-                                            Padding="10,4" CornerRadius="6" FontSize="12" />
+                                            Padding="10,4" CornerRadius="6" FontSize="{DynamicResource FontSize12}" />
                                     <Button Grid.Column="2" Content="Disconnect all" Command="{Binding DisconnectNodeCommand}"
-                                            Background="{StaticResource DangerButtonBrush}" Foreground="#FFFFFF"
-                                            Padding="10,4" CornerRadius="6" FontSize="12" FontWeight="Bold" />
+                                            Background="{DynamicResource DangerButtonBrush}" Foreground="#FFFFFF"
+                                            Padding="10,4" CornerRadius="6" FontSize="{DynamicResource FontSize12}" FontWeight="Bold" />
                                 </Grid>
                             </Border>
 
                             <!-- Inline rename (not a popup, which the Android keyboard would cover) -->
                             <StackPanel Spacing="6" IsVisible="{Binding IsEditingFavoriteLabel}">
-                                <TextBlock Text="Favorite name" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="Favorite name" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <TextBox AutomationProperties.Name="Favorite name"
                                          Text="{Binding FavoriteLabelInput}" MaxLength="40"
                                          PlaceholderText="e.g. East Coast Reflector">
@@ -755,12 +762,12 @@
                             </StackPanel>
 
                             <Button Command="{Binding OpenSearchCommand}" AutomationProperties.Name="Find a node"
-                                    HorizontalAlignment="Left" Padding="12,8" CornerRadius="6" FontSize="13">
+                                    HorizontalAlignment="Left" Padding="12,8" CornerRadius="6" FontSize="{DynamicResource FontSize13}">
                                 🔍 Find a node…
                             </Button>
 
                             <StackPanel Spacing="6" IsVisible="{Binding HasFavorites}">
-                                <TextBlock Text="Favorites (tap to connect, drag to reorder)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="Favorites (tap to connect, drag to reorder)" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <ItemsControl x:Name="FavoritesList" ItemsSource="{Binding FavoriteNodes}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
@@ -773,7 +780,7 @@
                                                     CommandParameter="{Binding Node}"
                                                     AutomationProperties.Name="{Binding AutomationName}"
                                                     Margin="0,0,6,6" Padding="10,6"
-                                                    Background="#21262D" CornerRadius="6" BorderThickness="0">
+                                                    Background="{DynamicResource SelectedBackgroundBrush}" CornerRadius="6" BorderThickness="0">
                                                 <Button.ContextFlyout>
                                                     <MenuFlyout>
                                                         <MenuItem Header="Remove from favorites"
@@ -781,10 +788,10 @@
                                                     </MenuFlyout>
                                                 </Button.ContextFlyout>
                                                 <StackPanel>
-                                                    <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
-                                                               Foreground="{StaticResource CyanAccentBrush}" />
-                                                    <TextBlock Text="{Binding Node}" FontSize="11" IsVisible="{Binding HasLabel}"
-                                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource CyanAccentBrush}" />
+                                                    <TextBlock Text="{Binding Node}" FontSize="{DynamicResource FontSize11}" IsVisible="{Binding HasLabel}"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 </StackPanel>
                                             </Button>
                                         </DataTemplate>
@@ -797,7 +804,7 @@
                     <!-- DTMF KEYPAD -->
                     <Border x:Name="DtmfCard" Classes="card">
                         <StackPanel Spacing="12">
-                            <TextBlock Text="DTMF Radio Commands" FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}" />
+                            <TextBlock Text="DTMF Radio Commands" FontWeight="Bold" FontSize="{DynamicResource FontSize14}" Foreground="{DynamicResource TextPrimaryBrush}" />
 
                             <ItemsControl ItemsSource="{Binding DtmfKeys}">
                                 <ItemsControl.ItemsPanel>
@@ -815,7 +822,7 @@
                             </ItemsControl>
 
                             <StackPanel Spacing="6" Margin="0,4,0,0">
-                                <TextBlock Text="AllStarLink Function Shortcuts" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="AllStarLink Function Shortcuts" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <Grid ColumnDefinitions="*,*,*" Margin="0,2,0,0">
                                     <Button Grid.Column="0" Classes="chip" Content="*3 Link" Command="{Binding SendDtmfMacroCommand}" CommandParameter="link" />
                                     <Button Grid.Column="1" Classes="chip" Content="*1 Unlink" Command="{Binding SendDtmfMacroCommand}" CommandParameter="unlink" />
@@ -829,26 +836,26 @@
                     <Border x:Name="LogCard" Classes="card" Height="220">
                         <Grid RowDefinitions="Auto,*">
                             <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
-                                <TextBlock Grid.Column="0" Text="Event Log" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" />
+                                <TextBlock Grid.Column="0" Text="Event Log" FontWeight="Bold" FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextPrimaryBrush}" />
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
                                     <Button x:Name="CopyLogButton" Content="Copy" Click="OnCopyLogClick"
                                             AutomationProperties.Name="Copy event log to clipboard"
-                                            Background="Transparent" BorderThickness="0" FontSize="11"
-                                            Foreground="{StaticResource CyanAccentBrush}" Padding="8,0" />
+                                            Background="Transparent" BorderThickness="0" FontSize="{DynamicResource FontSize11}"
+                                            Foreground="{DynamicResource CyanAccentBrush}" Padding="8,0" />
                                     <Button Content="Clear" Command="{Binding ClearLogCommand}"
-                                            Background="Transparent" BorderThickness="0" FontSize="11"
-                                            Foreground="{StaticResource CyanAccentBrush}" Padding="8,0" />
+                                            Background="Transparent" BorderThickness="0" FontSize="{DynamicResource FontSize11}"
+                                            Foreground="{DynamicResource CyanAccentBrush}" Padding="8,0" />
                                 </StackPanel>
                             </Grid>
 
                             <!-- Read-only TextBox: unlike SelectableTextBlock it gives touch selection handles on Android, and
                                  still selects with the mouse on desktop. Copy copies everything. -->
                             <TextBox x:Name="LogTextBox" Grid.Row="1" Text="{Binding LogText}" IsReadOnly="True" AcceptsReturn="True"
-                                     TextWrapping="Wrap" FontFamily="Consolas,Menlo,monospace" FontSize="11"
+                                     TextWrapping="Wrap" FontFamily="Consolas,Menlo,monospace" FontSize="{DynamicResource FontSize11}"
                                      AutomationProperties.Name="Event log text"
                                      Background="Transparent" BorderThickness="0" Padding="0"
                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                     Foreground="{StaticResource TextSecondaryBrush}" />
+                                     Foreground="{DynamicResource TextSecondaryBrush}" />
                         </Grid>
                     </Border>
                 </StackPanel>
@@ -857,19 +864,19 @@
 
         <!-- PTT DOCK: on phones the PTT card lives here, pinned to the bottom within thumb reach -->
         <Border x:Name="PttDock" Grid.Row="2" IsVisible="False"
-                Background="{StaticResource HeaderBackgroundBrush}"
-                BorderBrush="{StaticResource CardBorderBrush}"
+                Background="{DynamicResource HeaderBackgroundBrush}"
+                BorderBrush="{DynamicResource CardBorderBrush}"
                 BorderThickness="0,1,0,0" Padding="12,10" />
 
         <!-- PHONE BOTTOM NAVIGATION (narrow layout only; shown/hidden by MainView.axaml.cs) -->
         <Border x:Name="NavBar" Grid.Row="3" IsVisible="False"
-                Background="{StaticResource HeaderBackgroundBrush}"
-                BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,1,0,0">
+                Background="{DynamicResource HeaderBackgroundBrush}"
+                BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,1,0,0">
             <Grid ColumnDefinitions="*,*,*,*,*">
                 <Button x:Name="NavRadio" Grid.Column="0" Classes="navTab" Click="OnNavClick" Tag="0"
                         AutomationProperties.Name="Radio tab">
                     <StackPanel>
-                        <Border Classes="navBar" Height="3" Background="{StaticResource CyanAccentBrush}" Margin="12,0,12,4" />
+                        <Border Classes="navBar" Height="3" Background="{DynamicResource CyanAccentBrush}" Margin="12,0,12,4" />
                         <!-- Handheld ham transceiver: antenna, knob, display, speaker grille. Follows the tab's colour. -->
                         <Path Width="22" Height="22" Stretch="Uniform" HorizontalAlignment="Center"
                               Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.6"
@@ -881,24 +888,24 @@
                 <Button x:Name="NavNodes" Grid.Column="1" Classes="navTab" Click="OnNavClick" Tag="1"
                         AutomationProperties.Name="Nodes tab">
                     <StackPanel>
-                        <Border Classes="navBar" Height="3" Background="{StaticResource CyanAccentBrush}" Margin="12,0,12,4" />
-                        <TextBlock Text="🔗" FontSize="18" HorizontalAlignment="Center" />
+                        <Border Classes="navBar" Height="3" Background="{DynamicResource CyanAccentBrush}" Margin="12,0,12,4" />
+                        <TextBlock Text="🔗" FontSize="{DynamicResource FontSize18}" HorizontalAlignment="Center" />
                         <TextBlock Classes="navLabel" Text="Nodes" HorizontalAlignment="Center" />
                     </StackPanel>
                 </Button>
                 <Button x:Name="NavKeypad" Grid.Column="2" Classes="navTab" Click="OnNavClick" Tag="2"
                         AutomationProperties.Name="Keypad tab">
                     <StackPanel>
-                        <Border Classes="navBar" Height="3" Background="{StaticResource CyanAccentBrush}" Margin="12,0,12,4" />
-                        <TextBlock Text="🔢" FontSize="18" HorizontalAlignment="Center" />
+                        <Border Classes="navBar" Height="3" Background="{DynamicResource CyanAccentBrush}" Margin="12,0,12,4" />
+                        <TextBlock Text="🔢" FontSize="{DynamicResource FontSize18}" HorizontalAlignment="Center" />
                         <TextBlock Classes="navLabel" Text="Keypad" HorizontalAlignment="Center" />
                     </StackPanel>
                 </Button>
                 <Button x:Name="NavLog" Grid.Column="3" Classes="navTab" Click="OnNavClick" Tag="3"
                         AutomationProperties.Name="Log tab">
                     <StackPanel>
-                        <Border Classes="navBar" Height="3" Background="{StaticResource CyanAccentBrush}" Margin="12,0,12,4" />
-                        <TextBlock Text="📜" FontSize="18" HorizontalAlignment="Center" />
+                        <Border Classes="navBar" Height="3" Background="{DynamicResource CyanAccentBrush}" Margin="12,0,12,4" />
+                        <TextBlock Text="📜" FontSize="{DynamicResource FontSize18}" HorizontalAlignment="Center" />
                         <TextBlock Classes="navLabel" Text="Log" HorizontalAlignment="Center" />
                     </StackPanel>
                 </Button>
@@ -906,8 +913,8 @@
                 <Button x:Name="NavSettings" Grid.Column="4" Classes="navTab" Command="{Binding OpenSettingsCommand}"
                         AutomationProperties.Name="Settings">
                     <StackPanel>
-                        <Border Classes="navBar" Height="3" Background="{StaticResource CyanAccentBrush}" Margin="12,0,12,4" />
-                        <TextBlock Text="⚙" FontSize="18" HorizontalAlignment="Center" />
+                        <Border Classes="navBar" Height="3" Background="{DynamicResource CyanAccentBrush}" Margin="12,0,12,4" />
+                        <TextBlock Text="⚙" FontSize="{DynamicResource FontSize18}" HorizontalAlignment="Center" />
                         <TextBlock Classes="navLabel" Text="Settings" HorizontalAlignment="Center" />
                     </StackPanel>
                 </Button>
@@ -916,13 +923,13 @@
 
         <!-- FIND A NODE OVERLAY -->
         <Border Grid.RowSpan="4" IsVisible="{Binding IsSearchOpen}"
-                Background="{StaticResource ConsoleBackgroundBrush}">
+                Background="{DynamicResource ConsoleBackgroundBrush}">
             <views:NodeSearchView DataContext="{Binding Search}" />
         </Border>
 
         <!-- SETTINGS OVERLAY (full screen so it works on phones as well as desktop) -->
         <Border Grid.RowSpan="4" IsVisible="{Binding IsSettingsOpen}"
-                Background="{StaticResource ConsoleBackgroundBrush}">
+                Background="{DynamicResource ConsoleBackgroundBrush}">
             <views:SettingsView DataContext="{Binding Settings}" />
         </Border>
     </Grid>

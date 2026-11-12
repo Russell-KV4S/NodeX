@@ -448,6 +448,23 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         AppServices.Runtime.Config.Settings.CarPtt
         && AppServices.Runtime.Config.Settings.CarPttWheel == button;
 
+    private void HandleMediaButton(CarMediaButton button)
+    {
+        var action = CarMediaButtons.Decide(button, CarTransmit.AnyKeyed(AppServices.Runtime),
+            WheelTalks(CarWheelTalk.Next), WheelTalks(CarWheelTalk.Back));
+        switch (action)
+        {
+            case CarMediaAction.Unkey: StopTalkingIfKeyed(button.ToString()); break;
+            case CarMediaAction.Disconnect: _ = StopAsync(); break;
+            case CarMediaAction.Talk: _ = TalkAsync(fromWheel: true); break;
+            case CarMediaAction.Next: Step(+1); break;
+            case CarMediaAction.Previous: Step(-1); break;
+            case CarMediaAction.Ignore:
+                NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", "play ignored (nothing is dialled automatically)");
+                break;
+        }
+    }
+
     /// <summary>A car transmission that runs past <see cref="CarTransmit.MaxCarTransmit"/> is released.</summary>
     private void WatchCarKey(bool keyed, PttSource source)
     {
@@ -845,26 +862,13 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         }
 
         // While transmitting, every one of these only stops the transmission (see StopTalkingIfKeyed).
-        public override void OnPlay()
-        {
-            if (owner.StopTalkingIfKeyed("play")) return;
-            // A bare Play never dials. Android Auto sends it by itself when it resumes the last media app on
-            // connecting to the car, and that must not put a node on the air unasked. Favourites are dialled by
-            // picking one, or by voice ("play ... on NodeX").
-            NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", "play ignored (nothing is dialled automatically)");
-        }
+        public override void OnPlay() => owner.HandleMediaButton(CarMediaButton.Play);
 
         public override void OnPlayFromSearch(string? query, Bundle? extras) => owner.PlaySearch(query);
 
-        public override void OnStop()
-        {
-            if (!owner.StopTalkingIfKeyed("stop")) _ = owner.StopAsync();
-        }
+        public override void OnStop() => owner.HandleMediaButton(CarMediaButton.Stop);
 
-        public override void OnPause()
-        {
-            if (!owner.StopTalkingIfKeyed("pause")) _ = owner.StopAsync();   // a radio link has nothing to pause
-        }
+        public override void OnPause() => owner.HandleMediaButton(CarMediaButton.Pause);
 
         public override void OnCustomAction(string? action, Bundle? extras)
         {
@@ -886,18 +890,8 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         }
 
         // The wheel button chosen in Settings talks; the other steps through the connected nodes.
-        public override void OnSkipToNext()
-        {
-            if (owner.StopTalkingIfKeyed("next")) return;
-            if (owner.WheelTalks(CarWheelTalk.Next)) _ = owner.TalkAsync(fromWheel: true);
-            else owner.Step(+1);
-        }
+        public override void OnSkipToNext() => owner.HandleMediaButton(CarMediaButton.Next);
 
-        public override void OnSkipToPrevious()
-        {
-            if (owner.StopTalkingIfKeyed("back")) return;
-            if (owner.WheelTalks(CarWheelTalk.Back)) _ = owner.TalkAsync(fromWheel: true);
-            else owner.Step(-1);
-        }
+        public override void OnSkipToPrevious() => owner.HandleMediaButton(CarMediaButton.Previous);
     }
 }
