@@ -257,21 +257,151 @@ public class NodeRuntimeReconnectTests : IDisposable
         Assert.Equal(0, await NewCallsWithinAsync(previous, 400));      // and it stops dialling
     }
 
-    [Fact]
-    public async Task RemoteHangup_LongAfterConnecting_IsNotRetried()
+    // ----- the far node hangs up an established link -----
+    // Seen on a phone 2026-11-12: linked nodes "randomly" vanished. An established link whose far end hung up was
+    // never redialled, although app_rpt only means "stay disconnected" when it sends "!!DISCONNECT!!" first; a
+    // hang-up without it is a dropped call (its Asterisk restarted, or it gave up on packets we could not answer).
+
+    /// <summary>Waits for the next call (a NEW from a different call number), accepts it and returns its number.</summary>
+    private async Task<ushort> AcceptNextCallAsync(ushort previousCall)
     {
-        var policy = FastPolicy with { EarlyHangupWindow = TimeSpan.FromMilliseconds(50) };
+        var neu = await _remote.WaitForFrameAsync(f => f.FrameType == FrameType.IaxControl
+                                                       && f.Subclass == (byte)IaxControlSubclass.New
+                                                       && f.SourceCallNumber != previousCall, 5000);
+        await _remote.SendIaxAsync(IaxControlSubclass.Accept);
+        return neu.SourceCallNumber;
+    }
+
+    private static readonly ReconnectPolicy LateHangupPolicy = FastPolicy with { EarlyHangupWindow = TimeSpan.FromMilliseconds(50) };
+
+    [Fact]
+    public async Task RemoteHangup_OnAnEstablishedLink_IsRedialled_WhenTheFarNodeDidNotAskToDisconnect()
+    {
+        await using var rt = await CreateAsync(policy: LateHangupPolicy, configureSession: s => s.KeepAliveInterval = TimeSpan.FromSeconds(30));
+        var notices = Collect<string>(add => rt.Notice += add);
+        var errors = Collect<string>(add => rt.ErrorOccurred += add);
+        var activity = Collect<(bool, string?)>(add => rt.LinkActiveChanged += (a, n) => add((a, n)));
+
+        ushort first = await ConnectAndAcceptAsync(rt);
+        var firstLink = rt.Link;
+        await Task.Delay(200);                                          // established well past the early window
+        await _remote.SendIaxAsync(IaxControlSubclass.Hangup);          // no "!!DISCONNECT!!" before it
+
+        await AcceptNextCallAsync(first);
+        await Wait.UntilAsync(() => rt.Link != null && !ReferenceEquals(rt.Link, firstLink)
+                                    && rt.Link.Session.State == Iax2SessionState.Connected && !rt.Reconnect.Active);
+
+        lock (notices) Assert.Contains(notices, n => n.Contains("Node 2000 dropped the link") && n.Contains("try 1 of 5"));
+        lock (notices) Assert.Contains(notices, n => n.Contains("Reconnected to node 2000"));
+        lock (errors) Assert.Empty(errors);
+        lock (activity) Assert.Equal([(true, "2000")], activity);       // stayed "wanted": background services kept
+        Assert.Equal("2000", rt.TransmitNode);                          // and it is still the transmit node
+    }
+
+    [Fact]
+    public async Task RemoteHangup_AfterTheFarNodeAskedToDisconnect_IsNotRedialled_AndSaysSo()
+    {
+        await using var rt = await CreateAsync(policy: LateHangupPolicy, configureSession: s => s.KeepAliveInterval = TimeSpan.FromSeconds(30));
+        var notices = Collect<string>(add => rt.Notice += add);
+        ushort first = await ConnectAndAcceptAsync(rt);
+        await Task.Delay(200);
+
+        // app_rpt sends the text with its terminating NUL (sizeof(DISCSTR)), then hangs up.
+        await _remote.SendAsync(FrameType.Text, 0, payload: Encoding.ASCII.GetBytes("!!DISCONNECT!!\0"));
+        await _remote.SendIaxAsync(IaxControlSubclass.Hangup);
+        await Wait.UntilAsync(() => rt.Link == null);
+
+        Assert.Equal(0, await NewCallsWithinAsync(first, 400));
+        Assert.Empty(rt.Connections);
+        lock (notices) Assert.Contains(notices, n => n.Contains("Node 2000 disconnected") && n.Contains("on purpose"));
+    }
+
+    [Fact]
+    public async Task RemoteHangup_StopsBeingRedialled_AfterTheConfiguredDropsInARow()
+    {
+        var policy = LateHangupPolicy with { RemoteHangupMaxRetries = 2 };
         await using var rt = await CreateAsync(policy: policy, configureSession: s => s.KeepAliveInterval = TimeSpan.FromSeconds(30));
+        var notices = Collect<string>(add => rt.Notice += add);
+        var errors = Collect<string>(add => rt.ErrorOccurred += add);
+
+        ushort call = await ConnectAndAcceptAsync(rt);
+        for (int drop = 1; drop <= 3; drop++)                           // drops 1 and 2 are redialled, the 3rd is not
+        {
+            await Wait.UntilAsync(() => rt.Link?.Session.State == Iax2SessionState.Connected && !rt.Reconnect.Active);
+            await Task.Delay(200);
+            await _remote.SendIaxAsync(IaxControlSubclass.Hangup);
+            if (drop <= 2) call = await AcceptNextCallAsync(call);
+        }
+
+        await Wait.UntilAsync(() => rt.Connections.Count == 0);
+        Assert.Equal(0, await NewCallsWithinAsync(call, 400));
+        lock (notices) Assert.Single(notices, n => n.Contains("try 1 of 2"));
+        lock (notices) Assert.Single(notices, n => n.Contains("try 2 of 2"));
+        lock (errors) Assert.Contains(errors, e => e.Contains("Node 2000 disconnected") && e.Contains("stopped reconnecting"));
+    }
+
+    [Fact]
+    public async Task RemoteHangup_OnAnEstablishedLink_IsNotRedialled_WhenAutoReconnectIsOff()
+    {
+        await using var rt = await CreateAsync(
+            new NodeSettings { NodeNumber = "55553", Callsign = "W1AW", AutoReconnect = false },
+            policy: LateHangupPolicy, configureSession: s => s.KeepAliveInterval = TimeSpan.FromSeconds(30));
         var notices = Collect<string>(add => rt.Notice += add);
 
         ushort first = await ConnectAndAcceptAsync(rt);
-        await Task.Delay(200);                                          // established well past the window
+        await Task.Delay(200);
         await _remote.SendIaxAsync(IaxControlSubclass.Hangup);
 
         await Wait.UntilAsync(() => rt.Link == null);
-        lock (notices) Assert.Contains(notices, n => n.Contains("disconnected"));
+        lock (notices) Assert.Contains(notices, n => n.Contains("Node 2000 disconnected"));
         Assert.Equal(0, await NewCallsWithinAsync(first, 400));
     }
+
+    [Fact]
+    public async Task NetworkChange_GivesEarlyHangupsAFreshRetryBudget()
+    {
+        // A phone hopping between Wi-Fi and cellular: every hop makes the far node hang up straight after accepting
+        // until it has learned the new address. Retries spent on the previous address must not use up the next one's.
+        var policy = FastPolicy with { EarlyHangupMaxRetries = 2 };
+        await using var rt = await CreateAsync(policy: policy, configureSession: s => s.KeepAliveInterval = TimeSpan.FromSeconds(30));
+        var notices = Collect<string>(add => rt.Notice += add);
+        var errors = Collect<string>(add => rt.ErrorOccurred += add);
+
+        ushort call = await ConnectAndAcceptAsync(rt);
+        await _remote.SendIaxAsync(IaxControlSubclass.Hangup);          // retry 1 of 2
+        call = await AcceptNextCallAsync(call);
+        await Task.Delay(40);                                           // let the runtime see Connected first: a hang-up that beats its wait counts as a failed attempt, not an early hang-up
+        await _remote.SendIaxAsync(IaxControlSubclass.Hangup);          // retry 2 of 2: the budget is now used up
+        await Wait.UntilAsync(() => { lock (notices) return notices.Any(n => n.Contains("retry 2 of 2")); });
+
+        _net.Switch("cell=100.64.0.7");                                 // new address; the waiting retry dials at once
+        var neu = await _remote.WaitForFrameAsync(f => f.FrameType == FrameType.IaxControl
+                                                       && f.Subclass == (byte)IaxControlSubclass.New
+                                                       && f.SourceCallNumber != call, 5000);
+        await Task.Delay(120);                                          // let the debounced change be acted on
+        await _remote.SendIaxAsync(IaxControlSubclass.Accept);
+        await Task.Delay(40);
+        await _remote.SendIaxAsync(IaxControlSubclass.Hangup);          // still unknown at the new address
+
+        // Without the fresh budget this third hang-up in a row gave up and removed the node.
+        await AcceptNextCallAsync(neu.SourceCallNumber);
+        await Wait.UntilAsync(() => rt.Link?.Session.State == Iax2SessionState.Connected && !rt.Reconnect.Active);
+
+        lock (notices) Assert.Equal(2, notices.Count(n => n.Contains("retry 1 of 2")));
+        lock (errors) Assert.DoesNotContain(errors, e => e.Contains("keeps hanging up"));
+        Assert.Single(rt.Connections);
+    }
+
+    [Theory]
+    [InlineData("!!DISCONNECT!!", true)]
+    [InlineData("!!DISCONNECT!!\0", true)]
+    [InlineData(" !!DISCONNECT!!\r\n", true)]
+    [InlineData("!NEWKEY1!", false)]
+    [InlineData("L R2000,T2001", false)]
+    [InlineData("!!DISCONNECT!! now", false)]
+    [InlineData("", false)]
+    public void DisconnectText_IsRecognisedExactly(string text, bool expected) =>
+        Assert.Equal(expected, Iax2Session.IsDisconnectText(text));
 
     [Fact]
     public async Task EarlyHangup_IsNotRetried_WhenAutoReconnectIsOff()
@@ -302,24 +432,6 @@ public class NodeRuntimeReconnectTests : IDisposable
         Assert.Null(rt.Link);
         Assert.False(rt.Reconnect.Active);
         lock (activity) Assert.Equal([(true, "2000"), (false, null)], activity);
-    }
-
-    [Fact]
-    public async Task RemoteHangup_DoesNotReconnect_AndSaysSo()
-    {
-        // A hangup right after ACCEPT is retried (see the early-hangup tests); one on an established
-        // link is the remote ending the call on purpose.
-        var policy = FastPolicy with { EarlyHangupWindow = TimeSpan.FromMilliseconds(50) };
-        await using var rt = await CreateAsync(policy: policy, configureSession: s => s.KeepAliveInterval = TimeSpan.FromSeconds(30));
-        var notices = Collect<string>(add => rt.Notice += add);
-        ushort first = await ConnectAndAcceptAsync(rt);
-        await Task.Delay(200);
-
-        await _remote.SendIaxAsync(IaxControlSubclass.Hangup);
-        await Wait.UntilAsync(() => rt.Link == null);
-
-        Assert.Equal(0, await NewCallsWithinAsync(first, 400));
-        lock (notices) Assert.Contains(notices, n => n.Contains("Node 2000 disconnected"));
     }
 
     [Fact]

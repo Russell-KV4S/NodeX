@@ -52,6 +52,9 @@ public sealed class NodeConnection
     /// <summary>Consecutive "remote hung up right after ACCEPT" outcomes.</summary>
     internal int EarlyHangups;
 
+    /// <summary>Consecutive "far node hung up an established link without asking to disconnect" outcomes.</summary>
+    internal int RemoteDrops;
+
     internal readonly object ReconnectLock = new();
     internal CancellationTokenSource? ReconnectCts;
     internal Task ReconnectTask = Task.CompletedTask;

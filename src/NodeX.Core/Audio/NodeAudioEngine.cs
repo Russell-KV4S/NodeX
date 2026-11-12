@@ -59,7 +59,12 @@ public sealed class NodeAudioEngine : IAsyncDisposable
     private readonly short[] _decodeScratch = new short[AudioFormat.SamplesPerFrame];
     private readonly Lock _decodeLock = new();
 
-    private CancellationTokenSource? _cts;
+    // Start and Stop exclude each other. A call that is hung up straight after it is accepted starts its audio
+    // (on a worker thread) and is disposed at almost the same moment; without this the two interleaved, which
+    // surfaced as "Audio could not start: Object reference not set..." and could start a device after it was stopped.
+    private readonly Lock _lifecycle = new();
+    private bool _disposed;
+    private volatile CancellationTokenSource? _cts;
     private Task? _playoutTask;
     private Task? _sendTask;
     private bool _remoteAudioActive;
@@ -118,52 +123,71 @@ public sealed class NodeAudioEngine : IAsyncDisposable
 
     public event Action<string>? ErrorOccurred;
 
+    /// <summary>Starts playback (and capture, per the options). Does nothing once running or after disposal.</summary>
     public void Start()
     {
-        if (_cts != null) return;
-        _cts = new CancellationTokenSource();
-
-        _framer.Reset();
-        _micProcessor?.Reset();
-        JitterBuffer.Reset();
-        _inputMeter.Reset();
-        _outputMeter.Reset();
-
-        _channel.VoiceFrameReceived += OnVoiceFrameReceived;
-        _device.ErrorOccurred += OnDeviceError;
-        _device.StartPlayback();
-        if (_options.OpenMicOnlyWhileKeyed)
+        lock (_lifecycle)
         {
-            _channel.TransmittingChanged += OnTransmittingChanged;
-            if (_channel.IsTransmitting) OpenMic();
-        }
-        else
-        {
-            _device.StartCapture(OnCaptureBlock);
-            _micOpen = true;
-        }
+            if (_disposed || _cts != null) return;
+            var cts = new CancellationTokenSource();
+            _cts = cts;
 
-        var token = _cts.Token; // captured now: _cts is nulled by StopAsync
-        _sendTask = Task.Run(() => SendLoopAsync(token));
-        _playoutTask = Task.Run(() => PlayoutLoopAsync(token));
+            _framer.Reset();
+            _micProcessor?.Reset();
+            JitterBuffer.Reset();
+            _inputMeter.Reset();
+            _outputMeter.Reset();
+
+            _channel.VoiceFrameReceived += OnVoiceFrameReceived;
+            _device.ErrorOccurred += OnDeviceError;
+            _device.StartPlayback();
+            if (_options.OpenMicOnlyWhileKeyed)
+            {
+                _channel.TransmittingChanged += OnTransmittingChanged;
+                if (_channel.IsTransmitting) OpenMic();
+            }
+            else
+            {
+                _device.StartCapture(OnCaptureBlock);
+                _micOpen = true;
+            }
+
+            var token = cts.Token;
+            _sendTask = Task.Run(() => SendLoopAsync(token));
+            _playoutTask = Task.Run(() => PlayoutLoopAsync(token));
+        }
     }
 
     public async Task StopAsync()
     {
-        var cts = _cts;
-        if (cts == null) return;
-        _cts = null;
+        CancellationTokenSource? cts;
+        Task? playout, send;
+        string? stopError = null;
 
-        _channel.VoiceFrameReceived -= OnVoiceFrameReceived;
-        _channel.TransmittingChanged -= OnTransmittingChanged;
-        _device.ErrorOccurred -= OnDeviceError;
-        cts.Cancel();
+        lock (_lifecycle)
+        {
+            cts = _cts;
+            if (cts == null) return;
+            _cts = null;
 
-        CloseMic();
-        try { _device.StopPlayback(); } catch (Exception ex) { OnDeviceError(ex.Message); }
+            _channel.VoiceFrameReceived -= OnVoiceFrameReceived;
+            _channel.TransmittingChanged -= OnTransmittingChanged;
+            _device.ErrorOccurred -= OnDeviceError;
+            cts.Cancel();
 
-        if (_playoutTask != null) await _playoutTask.ConfigureAwait(false);
-        if (_sendTask != null) await _sendTask.ConfigureAwait(false);
+            CloseMic();
+            try { _device.StopPlayback(); } catch (Exception ex) { stopError = ex.Message; }
+
+            // A start that failed part-way (the device refused to open) leaves these unset.
+            playout = _playoutTask;
+            send = _sendTask;
+            _playoutTask = null;
+            _sendTask = null;
+        }
+
+        if (stopError != null) OnDeviceError(stopError);
+        if (playout != null) await playout.ConfigureAwait(false);
+        if (send != null) await send.ConfigureAwait(false);
         cts.Dispose();
 
         SetRemoteAudioActive(false);
@@ -374,6 +398,7 @@ public sealed class NodeAudioEngine : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        lock (_lifecycle) _disposed = true;      // a start still on its way to run becomes a no-op
         await StopAsync().ConfigureAwait(false);
         _sendQueue.Writer.TryComplete();
     }

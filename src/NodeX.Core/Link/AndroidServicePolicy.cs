@@ -25,9 +25,9 @@ public sealed record AndroidServicePlan(BackgroundServiceKinds Kinds, bool HoldL
 }
 
 public enum CarMediaButton { Play, Pause, Stop, Next, Previous }
-public enum CarMediaAction { Ignore, Unkey, Disconnect, Talk, Next, Previous }
+public enum CarMediaAction { Ignore, Unkey, Mute, Unmute, Talk, Next, Previous }
 
-/// <summary>Used directly by MediaSession callbacks; no media command can auto-dial a favorite.</summary>
+/// <summary>Used directly by MediaSession callbacks. Pause/Stop mute and Play unmutes (owner decision 2026-11-12: a media command must never hang a node up); no media command can auto-dial a favorite.</summary>
 public static class CarMediaButtons
 {
     public static CarMediaAction Decide(CarMediaButton button, bool anythingKeyed, bool nextTalks, bool previousTalks)
@@ -35,8 +35,8 @@ public static class CarMediaButtons
         if (anythingKeyed) return CarMediaAction.Unkey;
         return button switch
         {
-            CarMediaButton.Play => CarMediaAction.Ignore,
-            CarMediaButton.Pause or CarMediaButton.Stop => CarMediaAction.Disconnect,
+            CarMediaButton.Play => CarMediaAction.Unmute,
+            CarMediaButton.Pause or CarMediaButton.Stop => CarMediaAction.Mute,
             CarMediaButton.Next => nextTalks ? CarMediaAction.Talk : CarMediaAction.Next,
             CarMediaButton.Previous => previousTalks ? CarMediaAction.Talk : CarMediaAction.Previous,
             _ => CarMediaAction.Ignore

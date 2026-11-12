@@ -1,7 +1,7 @@
 # NodeX — Project Specification & Engineering Guide
 ### Cross-platform, Asterisk-free AllStarLink node (.NET 10 / Avalonia UI)
 
-> **Last updated:** 2026-11-12 · **Tests:** 680 Core/service tests + 18 headless UI tests. Both Android editions build; private v1.16 GitHub release published for all platforms except iOS. Package/hardware validation distinctions are recorded in `CHANGELOG.md`.
+> **Last updated:** 2026-11-12 · **Tests:** 692 Core/service tests + 18 headless UI tests. Both Android editions build. v1.16 published privately; **v1.17 (Android code 19)** adds the "nodes randomly dropping" fixes (§4.6, §5.6) and mute-instead-of-hang-up for car media commands, unit-tested only. Package/hardware validation distinctions are recorded in `CHANGELOG.md`.
 >
 > This document is written for **humans and AI coding agents** who pick the project up cold. Read §0 first.
 
@@ -214,6 +214,7 @@ Sources: UI button, Bluetooth, media key, VOX. Modes: **Momentary** (hold) / **T
 - **Format:** 8000 Hz, 16-bit, mono, 20 ms frames (160 samples) everywhere in Core (`AudioFormat`).
 - **`IAudioDeviceService`** (implemented per platform): `StartCapture(Action<ReadOnlyMemory<short>>)`, `StopCapture`, `StartPlayback`, `StopPlayback`, `EnqueuePlaybackPcm`, `BufferedPlayback`, `ErrorOccurred`. Capture callbacks arrive on the driver's audio thread with arbitrary block sizes.
 - **`NodeAudioEngine`:** capture → `PcmFramer` (exact 160-sample frames) → mic gain → level meter → (only while PTT keyed) µ-law → bounded drop-oldest queue (8) → `Session.SendAudioFrameAsync`. Receive: `VoiceFrameReceived` → µ-law decode → `JitterBuffer` → 20 ms playout clock (5 ms timer, catch-up, stall protection) → device. Skips frames if the device backlog exceeds 200 ms. `KeepAudioPipelineAlive` writes zero PCM during silence (**iOS keeps its audio session/background execution alive this way**).
+- **Start and stop never interleave (2026-11-12):** `Start`, `StopAsync` and `DisposeAsync` share one lock, and `Start` does nothing after disposal. A call hung up about 100 ms after it was accepted starts its audio on a worker thread while the runtime disposes it; the two used to interleave, which showed on a phone as "Audio could not start: Object reference not set to an instance of an object" and could open the playback device after it had been stopped. The new tests fail with that exact exception on the old code.
 - **`JitterBuffer`:** timestamp-keyed (16-bit wrap safe), prime depth 3 frames (60 ms), capacity 25, reorder, drop late/duplicate, conceal up to 3 lost frames by repeating the last frame with halving gain, re-prime after idle; thread-safe.
 - **`PcmResampler`:** streaming area-averaging resampler to 8 kHz (used on iOS capture; hardware is usually 44.1/48 kHz). **`AudioLevelMeter`:** RMS/peak with attack/release ballistics; UI maps RMS −60…0 dBFS to 0…1.
 - **Transmit voice clean-up (`MicProcessor`, added 2026-11-05 after the first on-air test sounded "mostly clear"):** G.711 does nothing to the signal (8 kHz sampling + log quantisation), and the first live test sent the raw mic at only −28 dBFS peak. Per 20 ms frame, after `MicGain` and before the VU meter/encoder (`NodeAudioEngineOptions.MicProcessing`, driven by the `MicProcessing` setting, default **on**, checkbox in Settings): (1) 2nd-order Butterworth **high-pass at 300 Hz**; (2) slow **AGC** towards −21 dBFS RMS (≈ −6 dBFS speech peaks): gain range −12…+24 dB, attack 0.5/frame, release 0.03/frame (~0.7 s), **gate at −50 dBFS** — pauses/noise never raise the gain and it drifts back to 0 dB (0.02/frame) so hiss is not left boosted; gain is ramped across each frame (no clicks); (3) **soft limiter** (tanh knee from 70% of a 0.89 FS ceiling) instead of hard clipping. Unit-tested (rumble −18 dB+, 1 kHz within 1.5 dB, quiet voice lifted to target, loud voice tamed under the ceiling, pauses not amplified, silence stays silence, ramped gain). **Owner reported good on-air voice quality on 2026-11-11.** A controlled A/B comparison is optional.
@@ -239,12 +240,18 @@ Sources: UI button, Bluetooth, media key, VOX. Modes: **Momentary** (hold) / **T
 | Keep-alive watchdog / retransmit limit / INVAL (`LinkLost`) **and** the link had been `Connected` | **Yes**, with back-off |
 | `LinkLost` but the call was **never answered** | No — error "No response from node N" |
 | Remote hung up **within `EarlyHangupWindow` (3 s) of ACCEPT** (`RemoteHangup`, `NodeLink.ConnectedDuration` below the window) | **Yes**, back-off `InitialDelay`×`Factor`^(n−1) capped at `MaxDelay`, up to `EarlyHangupMaxRetries` (30 ≈ 28 min; was 10 until 2026-11-06, when 27339 accepted only on retry 10); notice "Node N hung up straight after accepting; it probably doesn't know this node yet (a busy hub can take 10 minutes or more). Retrying in X s (retry n of 30)"; after the limit error "Node N keeps hanging up right after accepting the link…" and stop. Why: live-verified that an ASL3 node accepts, then app_rpt hangs up ~90 ms later ("Reported node N cannot be found") until its own node list has learned this node (minutes after registering or after an address change). Needs `AutoReconnect` on. The counter resets on a new user Connect and when a link stays up past the window. |
-| Remote hung up later than that (`RemoteHangup`) | No — notice "Node N disconnected" |
+| Remote hung up later than that (`RemoteHangup`) **after sending `!!DISCONNECT!!`** (`Iax2Session.RemoteRequestedDisconnect`) | No — notice "Node N disconnected …: the far node ended the link on purpose" |
+| Remote hung up later than that **without** `!!DISCONNECT!!` (its Asterisk restarted, or it gave up on packets we could not answer in a network gap shorter than our 45 s watchdog) | **Yes (2026-11-12)**, back-off `InitialDelay`×`Factor`^(n−1), up to `RemoteHangupMaxRetries` (5, app_rpt's own `MAX_RETRIES`) drops in a row; notice "Node N dropped the link … without asking to disconnect … Reconnecting in X s (try n of 5)"; a link that stayed up `StableLinkTime` (5 min) starts a fresh count, as does a user Connect; after the limit error "…has dropped the link n times in a row, so NodeX has stopped reconnecting" and the node is removed. Until 2026-11-12 this case was never redialled, which is how linked nodes "randomly" vanished (§5.6). |
 | Remote rejected / busy | No — error |
 | User pressed Disconnect | No (also cancels any reconnect cycle) |
 | `AutoReconnect` off | No — error "Link to node N lost" |
 
 Back-off (`ReconnectPolicy`): first retry after `InitialDelay` 2 s (immediately after a network change), ×`Factor` 2 per failure, capped at `MaxDelay` 60 s, each attempt must reach `Connected` within `AttemptTimeout` 12 s, `MaxAttempts` null (unlimited) by default. While there is no usable network the loop waits (re-checking every 5 s or on any network event) instead of burning attempts. Status is published as `ReconnectStatus(Active, Attempt, NextAttemptIn, Message)`.
+
+**Rules added 2026-11-12 (after a phone log of six nodes all hanging up straight after accepting when Wi-Fi came and went within 9 s):**
+- *A network change gives every node a fresh early-hangup budget.* Each new public address makes every far node hang up straight after accepting until it has learned that address, and a network event also cuts the back-off wait short, so a phone hopping between Wi-Fi and cellular spent the 30 retries far faster than the 28 minutes they were sized for. `HandleNetworkChangedAsync` zeroes `NodeConnection.EarlyHangups` on a real (signature) change.
+- *A call's end is handled exactly once* (`NodeLink.EndHandled`). A link that dropped just as its reconnect loop finished was reported both by its state event and by the loop's last look, which could count two retries for one hang-up.
+- *Every node that leaves the list logs why:* `[link] node N: no longer linked and will not be redialled: <reason>` (`RemoveConnection`). **Media commands never hang a node up (owner decision 2026-11-12):** in the Android car/media service (`NodeXMediaBrowserService`) a media **Pause or Stop** (car screen, steering wheel, headset or Bluetooth stereo) and a **permanent audio-focus loss** (another app took the audio) now **mute every linked node** and keep the links up; **Play** unmutes them (and re-requests audio focus). The mute is the driver's choice, so a later navigation prompt does not undo it. Before this they hung up the car's current node with nothing in the log, which looked like a link dropping by itself. Rules in Core `CarMediaButtons` (Pause/Stop → `Mute`, Play → `Unmute`; pinned by `AndroidServicePolicyTests`); the service side logs `[car] muting N node(s), none hung up: <why>`, `[car] unmuting …` and every `audio focus changed`. Hanging up from the car is still done with the per-node Disconnect / Disconnect all custom actions. Not tested on a car or phone.
 
 **Network handoff:** `INetworkMonitor` (default `SystemNetworkMonitor`: `NetworkChange` + `NetworkInterface`) reports changes; events are **debounced 0.5 s** (1.5 s until 2026-11-06) and compared by *signature* (set of up, non-loopback, non-tunnel, non-link-local IPv4 addresses) so DHCP renewals are ignored. On a real change: (1) **re-register immediately** (so the registry/remote nodes learn the new address; waits up to 5 s), (2) if a link was established, end it and **re-dial immediately** from the new address (an IAX2 call is bound to the source address and cannot migrate), (3) if the network vanished, wait for it to return. Where the platform restricts network enumeration (recent Android) `SystemNetworkMonitor` degrades to "assume available, signature unknown" and the keep-alive watchdog still catches the loss (~45 s). Android uses `AndroidNetworkMonitor` (ConnectivityManager callback) instead.
 
@@ -299,6 +306,13 @@ Incoming node connections land on the IAX user **`radio`** (`[radio]`: `type=use
 ### 5.5 Keying and DTMF
 PTT down → control `KEY` (0x0C) then voice; PTT up → stop voice, control `UNKEY` (0x0D). DTMF = full frame type 1 whose subclass is the ASCII digit. ASL function codes used: `*3<node>`, `*1<node>`, `*70`.
 
+### 5.6 Deliberate disconnect vs dropped call (verified in the app_rpt source 2026-11-12; **not yet seen live**)
+Read from `AllStarLink/app_rpt` `apps/app_rpt.c` (`remote_hangup_helper`, `handle_link_data`) and `apps/app_rpt/app_rpt.h`:
+- A node that ends a link **on purpose** (operator unlink, a dialplan connection time limit) first sends the text frame **`!!DISCONNECT!!`** (`DISCSTR`; sent with its terminating NUL, `sizeof(DISCSTR)`), then hangs up. The receiving node stops its retries (`rpt_link_stop_retries`).
+- A link whose far end hangs up **without** that text is treated as dropped: an outbound link that had connected is redialled, up to `MAX_RETRIES` = 5 (`MAX_RETRIES_PERM` for permanent links). No `!!DISCONNECT!!` is sent on an Asterisk shutdown or when the far side's own IAX2 retransmits time out.
+- NodeX follows the same rule (§4.6): `Iax2Session.IsDisconnectText` matches the text exactly after trimming NUL/whitespace; full frames are processed in sequence order, so the text is always seen before the `HANGUP` that follows it.
+- **Unverified:** that the nodes the owner links to (ASL3 and older app_rpt/HamVoIP builds) all send `!!DISCONNECT!!` on an operator unlink. If one does not, NodeX redials it up to 5 times after being unlinked on purpose, then stops.
+
 ---
 
 ## 6. Runtime behaviour reference (numbers in one place)
@@ -311,7 +325,8 @@ PTT down → control `KEY` (0x0C) then voice; PTT up → stop voice, control `UN
 | Reconnect delay | 2 s ×2 … cap 60 s; attempt timeout 12 s; unlimited | `ReconnectPolicy` |
 | Network-change debounce / registration wait | 0.5 s / 5 s | `ReconnectPolicy` |
 | Wait after registering before a first dial | 15 s | `ReconnectPolicy.RegistrationSettleDelay` |
-| Early-hangup window / retries | 3 s / 30 (about 28 min) | `ReconnectPolicy` |
+| Early-hangup window / retries | 3 s / 30 (about 28 min); the count restarts on a network change | `ReconnectPolicy`, `NodeRuntime.HandleNetworkChangedAsync` |
+| Redials after an unrequested far-end hang-up / healthy-link time that resets the count | 5 in a row / 5 min | `ReconnectPolicy.RemoteHangupMaxRetries`, `StableLinkTime` |
 | Registration retry after a lost request | 5 s, doubling, capped at the interval; 1 lost request tolerated while registered | `AslRegistrationConfig.RetryDelay`, `AslRegistrationService.ToleratedTransportFailures` |
 | HANGUP acknowledgment wait / re-send | 300 ms / every 100 ms (0 on a network change) | `Iax2Session.HangupAckWait`, `HangupResendInterval` |
 | Link-list text ("L ") interval | 10 s | `Iax2Session.LinkListInterval` |
@@ -370,7 +385,7 @@ PTT down → control `KEY` (0x0C) then voice; PTT up → stop voice, control `UN
 
 ## 11. Testing
 
-`tests/NodeX.Core.Tests` (xUnit v2, **664 tests**, ~10 s; the runtime fixtures set `RegistrationSettleDelay` to zero, without it the suite takes about 4 minutes). It references Core **and** `NodeX.UI` (view-model tests). `tests/NodeX.UI.Tests` adds a separate xUnit v3 Avalonia Headless/Skia host for `MainViewModel` integration and rendering tests. Keep it separate from the Core project's xUnit v2 dependencies.
+`tests/NodeX.Core.Tests` (xUnit v2, **692 tests**, ~15 s; the runtime fixtures set `RegistrationSettleDelay` to zero, without it the suite takes about 4 minutes). It references Core **and** `NodeX.UI` (view-model tests). `tests/NodeX.UI.Tests` adds a separate xUnit v3 Avalonia Headless/Skia host for `MainViewModel` integration and rendering tests. Keep it separate from the Core project's xUnit v2 dependencies.
 
 | File | Covers |
 |---|---|
@@ -412,6 +427,7 @@ PTT down → control `KEY` (0x0C) then voice; PTT up → stop voice, control `UN
 
 ## 13. Current backlog
 
+0. **"Nodes randomly dropping" (owner report 2026-11-12), open:** the fixes in §4.6/§5.6 are unit-tested only and the phone cause is unconfirmed. Needed: a phone build with them, then the **whole** log file the next time a node vanishes (§18 says what to search for). (Pause/Stop and audio-focus loss now mute instead of hanging up, §4.6; also unverified in a car.)
 1. **Hardware validation:** real BLE PTT buttons/headset media keys (including disconnect/unkey and screen-off reconnect); full Linux/macOS app with audible TX/RX, selected devices, keyring storage and the Mac bundle; iPhone behavior if iOS is resumed.
 2. **Device UI and permission checks:** safe-area/gesture insets, keyboards, screen readers, new themes/text sizes, Android permission dialogs, mobile ID notifications and settings transfer. These are implemented features awaiting device validation, not missing implementations.
 3. **Car verification details:** owner reports the Desktop Head Unit working great. Record explicit results for voice search, cold start, focus interruptions, routing and Play listen-only behavior when exercised. A physical-car pass remains separate from the DHU report.
@@ -469,6 +485,8 @@ Implementation history is in [`CHANGELOG.md`](CHANGELOG.md). Superseded proposal
 ## 18. Diagnostics
 
 `DiagnosticLog` writes a rolling local `nodex.log` plus two older files (512 KB each). Passwords/tokens are redacted; node numbers, callsigns and IPs can appear. Detailed logging is optional. Settings → Send logs opens Android's share sheet or the desktop file manager; nothing uploads automatically.
+
+**"A node disappeared" (2026-11-12):** search the log for `no longer linked and will not be redialled` (the reason follows), `[car] muting` / `[car] unmuting` and `audio focus changed`. A pasted excerpt is not enough when it starts after the event: ask for the whole file from Send logs.
 
 The receive highlight rule lives in Core `RxActivity` and is shared by the phone UI and car service. KEY-aware nodes follow KEY/UNKEY; non-KEY-aware nodes use a 500 ms voice window. A KEY without subsequent frames expires after 3 seconds. A lost UNKEY while a KEY-aware peer continues streaming remains an open limitation.
 

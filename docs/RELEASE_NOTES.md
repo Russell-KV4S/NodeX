@@ -1,16 +1,22 @@
-NodeX 1.16 fixes the Android Auto launcher icon and adds the first GitHub updater for the full Android edition.
+NodeX 1.17 fixes linked nodes disappearing and makes media commands in the car mute instead of hang up.
+
+**What changed**
+- A linked node whose far end hangs up an established call is now redialled (up to 5 times in a row) unless the far node asked to disconnect. Before, it was silently dropped.
+- A network change (Wi-Fi to cellular and back) now gives every node a fresh set of "node doesn't know this address yet" retries, so a phone that keeps hopping no longer loses nodes.
+- One hang-up can no longer be counted as two retries.
+- Fixed "Audio could not start: Object reference not set to an instance of an object" on a call that is hung up right after it connects.
+- Android Auto / media buttons: Pause and Stop (car screen, steering wheel, headset, Bluetooth stereo), and another app taking the audio, now mute the linked nodes and keep them linked. Play unmutes. Use the per-node Disconnect to hang up.
+- The troubleshooting log now says why any node leaves the list. If one vanishes, send the whole log from Settings, Send logs.
 
 Downloads:
-- **Android:** `NodeX-android.apk` is the full sideload edition, including optional Android Auto Talk and steering-wheel PTT. Enable Talk from the car and choose the wheel button in Settings.
+- **Android:** `NodeX-android.apk` is the full sideload edition, including optional Android Auto Talk and steering-wheel PTT.
 - **Windows:** extract the x64 or ARM64 ZIP and run `NodeX.UI.Desktop.exe`.
-- **Linux:** extract the x64 or ARM64 tarball and run `./NodeX.UI.Desktop`. Install the distribution's PortAudio/JACK, font, X11 and secret-service dependencies as needed. Desktop Bluetooth may require BlueZ/D-Bus permissions.
-- **macOS:** extract the Apple Silicon or Intel ZIP and move `NodeX.app` to Applications. These builds are ad-hoc signed, not Apple Developer ID signed or notarized; macOS may require explicit approval in Privacy & Security. The app targets macOS 12+, but bundled Apple Silicon Bluetooth needs macOS 15+; Intel macOS has no bundled Bluetooth backend.
+- **Linux:** extract the x64 or ARM64 tarball and run `./NodeX.UI.Desktop`. Install the distribution's PortAudio/JACK, font, X11 and secret-service dependencies as needed.
+- **macOS:** extract the Apple Silicon or Intel ZIP and move `NodeX.app` to Applications. Ad-hoc signed, not notarized; macOS may need approval in Privacy & Security.
 - **iOS:** excluded from this release pipeline.
 
-Android updates check GitHub on opening (at most daily), offer a manual check in Settings, verify downloaded size/SHA-256 and the installed signing key, then ask Android to confirm installation. Downloads and installs require a deliberate tap. Disconnect nodes and leave Android Auto before installing. Settings/passwords survive an update signed with the same key.
+**Private release:** repository access is required for downloads, and the in-app updater cannot reach a private feed.
 
-**Private release:** repository access is currently required for downloads. The app does not contain GitHub credentials, so its update feed will report unavailable until public access is enabled. Download privately through GitHub in the meantime.
+**Switching from Google Play:** Play and sideload signatures differ. Export your settings before uninstalling the Play build; you may need to re-enter the node password.
 
-**Switching from Google Play:** Play and sideload signatures can differ. Export your settings before uninstalling the Play build to switch editions; you may need to re-enter the node password. In-place sideload updates require the same signing key and an increased Android versionCode.
-
-These packages pass automated tests/builds. Full Linux/macOS operation, Android update installation and the car icon still need verification on hardware. See PROJECT_SPEC.md for the platform validation record. Desktop packages retain the SimpleBLE license and third-party notices; its noncommercial/commercial terms are separate from NodeX's MIT license.
+**Not yet verified:** these fixes are unit-tested only; they have not been run on a phone, in a car or against a live node. Full Linux/macOS operation and Android update installation also still need hardware checks. See PROJECT_SPEC.md for the validation record.

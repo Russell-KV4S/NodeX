@@ -109,6 +109,26 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
 
     /// <summary>Why the call ended. Set before <see cref="StateChanged"/> reports Disconnected.</summary>
     public Iax2DisconnectReason DisconnectReason { get; private set; }
+
+    /// <summary>
+    /// The app_rpt text a node sends just before it ends a link on purpose (operator unlink, a connection time
+    /// limit). Verified in the app_rpt source (<c>DISCSTR</c>, <c>remote_hangup_helper</c>): a node whose link
+    /// drops <b>without</b> having received this text redials it, one that received it does not.
+    /// </summary>
+    public const string DisconnectText = "!!DISCONNECT!!";
+
+    /// <summary>
+    /// True once the far node has sent <see cref="DisconnectText"/> on this call: its hang-up is deliberate, so
+    /// the link must not be redialled. A hang-up without it is a dropped call (restart, lost packets).
+    /// </summary>
+    public bool RemoteRequestedDisconnect => Volatile.Read(ref _remoteRequestedDisconnect);
+
+    private bool _remoteRequestedDisconnect;
+
+    /// <summary>True when a text frame is app_rpt's disconnect request (it is sent with its terminating NUL).</summary>
+    internal static bool IsDisconnectText(string text) =>
+        text.AsSpan().Trim("\0 \r\n\t").SequenceEqual(DisconnectText);
+
     public bool IsTransmitting { get; private set; }
 
     /// <inheritdoc/>
@@ -823,6 +843,8 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
                 if (frame.Payload.Length > 0)
                 {
                     string msg = Encoding.UTF8.GetString(frame.Payload);
+                    // Recorded before the HANGUP that follows it is processed (full frames arrive in order).
+                    if (IsDisconnectText(msg)) Volatile.Write(ref _remoteRequestedDisconnect, true);
                     NodeMessageReceived?.Invoke(msg);
                 }
                 break;

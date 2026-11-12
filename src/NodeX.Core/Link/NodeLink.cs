@@ -19,7 +19,10 @@ public sealed class NodeLink : IAsyncDisposable
 
     private readonly IAudioDeviceService _device;
     private int _audioStarted;
-    private bool _disposed;
+    private volatile bool _disposed;
+
+    /// <summary>Set by the runtime when it starts dealing with this call's end, so that happens exactly once.</summary>
+    internal int EndHandled;
 
     public NodeLink(
         NodeSettings settings,

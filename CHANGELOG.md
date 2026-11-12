@@ -1,5 +1,17 @@
 # Change log
 
+## 2026-11-12: linked nodes "randomly" dropping (1.17 / code 19)
+
+Owner report: on the latest install a linked node (523800) would later be gone. The log excerpt supplied shows six nodes all hanging up about 100 ms after accepting, straight after a network change, with Wi-Fi lost again 9 s later; it does not include the moment a node was removed, so the cause on the phone is **not confirmed**. Four ways a node could vanish or be mis-handled were found in the code and fixed or made visible:
+
+- **An established link whose far end hung up was never redialled.** It is now redialled (back-off, at most 5 drops in a row, fresh count after 5 minutes up) unless the far node sent app_rpt's `!!DISCONNECT!!` first, which is how app_rpt itself tells a deliberate unlink from a dropped call (read from the app_rpt source; PROJECT_SPEC §5.6).
+- **Early-hangup retries were shared across network changes**, so a phone hopping between Wi-Fi and cellular could run a node out of its 30 retries. A real network change now restarts the count.
+- **One hang-up could be counted as two retries** when it landed just as a reconnect finished. A call's end is now handled once.
+- **"Audio could not start: Object reference not set to an instance of an object"** (in the owner's log): the audio engine's start raced its disposal on a call that was hung up at once. Start/stop are now mutually exclusive; the new test fails with that exact exception on the old code.
+- **Logging:** every node that leaves the list now logs why, and the Android car service logs every audio-focus change.
+- **Owner decision, implemented:** a media Pause/Stop command (car screen, steering wheel, headset, Bluetooth stereo) or another app taking the audio **mutes** the linked nodes instead of hanging the car's node up (a silent hang-up looked like a node dropping by itself). Play unmutes and takes the audio back; per-node Disconnect remains the way to hang up from the car. Rules are in `CarMediaButtons` with updated tests; not tried in a car.
+- Validation: 692 Core tests pass (the runtime/audio groups five times in a row); Android head builds. **Nothing here has been run on a phone or against a live node.**
+
 ## 2026-11-12: GitHub releases, Android sideload updater, Android Auto icon (1.16 / code 18)
 
 - Android Auto now uses the color launcher icon, with a separate monochrome tintable attribution icon.

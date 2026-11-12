@@ -39,6 +39,17 @@ public sealed record ReconnectPolicy
     public int EarlyHangupMaxRetries { get; init; } = 30;
 
     /// <summary>
+    /// How many times in a row a link is redialled after the far node hangs up an established call
+    /// <b>without</b> sending app_rpt's <c>!!DISCONNECT!!</c> first (its Asterisk restarted, or it gave up on
+    /// packets we could not answer during a short network gap). 5 is app_rpt's own <c>MAX_RETRIES</c> for the same
+    /// case. A link that then stays up for <see cref="StableLinkTime"/> starts a fresh count. Zero never redials.
+    /// </summary>
+    public int RemoteHangupMaxRetries { get; init; } = 5;
+
+    /// <summary>A link that stayed up at least this long was healthy, so its next drop starts a fresh retry count.</summary>
+    public TimeSpan StableLinkTime { get; init; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
     /// A first dial made sooner than this after registering waits out the difference. Seen live 2026-11-07: dialling
     /// 5 s after registering got hung up on for ~30 s, while dialling 30 s after registering worked first time.
     /// Zero disables the wait.

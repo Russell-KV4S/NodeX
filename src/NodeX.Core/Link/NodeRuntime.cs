@@ -434,6 +434,7 @@ public sealed class NodeRuntime : IAsyncDisposable
         }
 
         Interlocked.Exchange(ref c.EarlyHangups, 0);
+        Interlocked.Exchange(ref c.RemoteDrops, 0);
         ApplyTransmitFlags();
         UpdateActive();
         ConnectionsChanged?.Invoke();
@@ -445,12 +446,12 @@ public sealed class NodeRuntime : IAsyncDisposable
         {
             await WaitForRegistrationToSettleAsync(linked.Token);
             var info = await DialAsync(c, linked.Token);
-            if (info == null) RemoveConnection(c, byUser: true);
+            if (info == null) RemoveConnection(c, byUser: true, "its address could not be looked up");
             return info;
         }
-        catch
+        catch (Exception ex)
         {
-            RemoveConnection(c, byUser: true);
+            RemoveConnection(c, byUser: true, $"the connect did not start: {ex.GetType().Name}: {ex.Message}");
             throw;
         }
     }
@@ -553,8 +554,9 @@ public sealed class NodeRuntime : IAsyncDisposable
         await StopReconnectAsync(c);
 
         var link = c.Link;
-        if (link != null) await EndLinkAsync(c, link, transient: false, byUser: true);
-        else RemoveConnection(c, byUser: true);
+        const string reason = "hung up from this device (Disconnect, the car screen or the notification)";
+        if (link != null) await EndLinkAsync(c, link, transient: false, byUser: true, reason);
+        else RemoveConnection(c, byUser: true, reason);
     }
 
     // ----- transmit target, mute -----
@@ -608,13 +610,15 @@ public sealed class NodeRuntime : IAsyncDisposable
     /// link only when the user caused it (hung up); if the far end dropped us, the choice is left empty so a
     /// transmission is never silently redirected to a different node.
     /// </summary>
-    private void RemoveConnection(NodeConnection c, bool byUser)
+    /// <param name="reason">Why, for the troubleshooting log: every node that leaves the list says what removed it.</param>
+    private void RemoveConnection(NodeConnection c, bool byUser, string reason)
     {
         bool lostTransmit = false;
         int remaining;
         lock (_connLock)
         {
             if (!_connections.Remove(c)) return;
+            Log.Info("link", $"node {c.Node}: no longer linked and will not be redialled: {reason}");
             c.Wanted = false;
             if (_transmitNode == c.Node)
             {
@@ -664,6 +668,10 @@ public sealed class NodeRuntime : IAsyncDisposable
             if (!ReferenceEquals(c.Link, link)) return;
             if (IsReconnectRunning(c)) return;           // the reconnect loop owns the links it creates
 
+            // Exactly once per call. A link that drops just as its reconnect loop finishes is reported both by its
+            // own state event and by the loop's last look; handling it twice counted two retries for one hang-up.
+            if (Interlocked.Exchange(ref link.EndHandled, 1) != 0) return;
+
             var reason = link.DisconnectReason;
             string node = link.Target.NodeNumber;
             Log.Info("link", $"node {node}: call ended, reason={reason}, wasConnected={link.WasConnected}, " +
@@ -702,11 +710,37 @@ public sealed class NodeRuntime : IAsyncDisposable
                     "recognise this node yet (its node list can take many minutes to refresh after registering). Try again later.");
                 Volatile.Write(ref c.EarlyHangups, 0);
                 c.Wanted = false;
-                await EndLinkAsync(c, link, transient: false);
+                await EndLinkAsync(c, link, transient: false,
+                    reason: $"it hung up straight after accepting {n} times in a row (retry limit {_policy.EarlyHangupMaxRetries})");
                 return;
             }
 
             if (link.WasConnected && !earlyHangup) Volatile.Write(ref c.EarlyHangups, 0);   // it really was up
+            if (link.ConnectedDuration >= _policy.StableLinkTime) Volatile.Write(ref c.RemoteDrops, 0);   // and healthy
+
+            // The far node hung up an established link without asking to disconnect. That is not somebody ending
+            // the link on purpose (app_rpt sends "!!DISCONNECT!!" first when it is): its Asterisk restarted, or it
+            // gave up on packets we could not answer during a network gap too short for our own keep-alive watchdog
+            // to notice. app_rpt redials its own links in exactly this case, so do the same, a bounded number of times.
+            bool deliberate = link.Session.RemoteRequestedDisconnect;
+            bool remoteDrop = reason == Iax2DisconnectReason.RemoteHangup && link.WasConnected && !earlyHangup && !deliberate;
+            int drops = 0;
+
+            if (remoteDrop && c.Wanted && Config.Settings.AutoReconnect)
+            {
+                drops = Interlocked.Increment(ref c.RemoteDrops);
+                if (drops <= _policy.RemoteHangupMaxRetries)
+                {
+                    var delay = BackoffDelay(drops);
+                    await EndLinkAsync(c, link, transient: true);
+                    Notice?.Invoke(
+                        $"Node {node} dropped the link{up} without asking to disconnect (a restart or a network gap). " +
+                        $"Reconnecting in {Math.Ceiling(delay.TotalSeconds):0} s (try {drops} of {_policy.RemoteHangupMaxRetries}).");
+                    StartReconnect(c, immediate: false, initialDelay: delay);
+                    return;
+                }
+                Volatile.Write(ref c.RemoteDrops, 0);
+            }
 
             // Only a link that was up and then died is worth re-dialling. A call that was never answered,
             // or that the other side ended on purpose, is not.
@@ -738,6 +772,13 @@ public sealed class NodeRuntime : IAsyncDisposable
                 case Iax2DisconnectReason.RemoteBusy:
                     ErrorOccurred?.Invoke($"Node {node} is busy.");
                     break;
+                case Iax2DisconnectReason.RemoteHangup when deliberate:
+                    Notice?.Invoke($"Node {node} disconnected{up}: the far node ended the link on purpose, so NodeX is not reconnecting.");
+                    break;
+                case Iax2DisconnectReason.RemoteHangup when drops > 1:
+                    ErrorOccurred?.Invoke(
+                        $"Node {node} disconnected{up}: it has dropped the link {drops} times in a row, so NodeX has stopped reconnecting. Connect again when you want to retry.");
+                    break;
                 case Iax2DisconnectReason.RemoteHangup:
                     Notice?.Invoke($"Node {node} disconnected{up}: the far node hung up" +
                         (link.RemoteCause.Length > 0 ? $" (reason: {link.RemoteCause})" : " (no reason given)") +
@@ -746,7 +787,12 @@ public sealed class NodeRuntime : IAsyncDisposable
             }
 
             c.Wanted = false;
-            await EndLinkAsync(c, link, transient: false);
+            await EndLinkAsync(c, link, transient: false, reason:
+                $"call ended with {reason}" +
+                (deliberate ? ", the far node asked to disconnect" : "") +
+                (drops > 0 ? $", dropped {drops} times in a row" : "") +
+                (Config.Settings.AutoReconnect ? "" : ", auto-reconnect is off") +
+                (link.WasConnected ? "" : ", never connected"));
         }
         catch (Exception ex)
         {
@@ -756,7 +802,8 @@ public sealed class NodeRuntime : IAsyncDisposable
 
     /// <param name="transient">True when another attempt follows, so the connection is kept.</param>
     /// <param name="byUser">The user hung up (see <see cref="RemoveConnection"/>).</param>
-    private async Task EndLinkAsync(NodeConnection c, NodeLink link, bool transient, bool byUser = false)
+    /// <param name="reason">Why the node is being forgotten (only used when not <paramref name="transient"/>).</param>
+    private async Task EndLinkAsync(NodeConnection c, NodeLink link, bool transient, bool byUser = false, string reason = "")
     {
         if (!c.TryClearLink(link)) return;
 
@@ -771,7 +818,7 @@ public sealed class NodeRuntime : IAsyncDisposable
 
         LinkRemoved?.Invoke(link);
         ConnectionsChanged?.Invoke();
-        if (!transient) RemoveConnection(c, byUser);
+        if (!transient) RemoveConnection(c, byUser, reason);
     }
 
     private void SetActive(bool active, string? node)
@@ -903,7 +950,7 @@ public sealed class NodeRuntime : IAsyncDisposable
                 if (_policy.MaxAttempts is { } max && attempt >= max)
                 {
                     ErrorOccurred?.Invoke($"Gave up reconnecting to node {target} after {attempt} attempts.");
-                    RemoveConnection(c, byUser: false);
+                    RemoveConnection(c, byUser: false, $"gave up reconnecting after {attempt} attempts");
                     return;
                 }
 
@@ -1063,6 +1110,11 @@ public sealed class NodeRuntime : IAsyncDisposable
         var handoffClock = Stopwatch.StartNew();
         Log.Info("net", $"network changed: \"{previousSignature}\" -> \"{signature}\", available={available}, " +
                         $"autoReconnect={Config.Settings.AutoReconnect}");
+
+        // A new address starts a new wait for every far node to learn it (each hangs up straight after accepting
+        // until it has). The retries spent learning the previous address must not count against this one: a phone
+        // that hops between Wi-Fi and cellular would otherwise run a node out of retries and lose it.
+        foreach (var c in SnapshotConnections()) Volatile.Write(ref c.EarlyHangups, 0);
 
         // 1. Tell the registry our new address right away rather than at the next 60 s cycle; remote
         //    nodes validate callers against it.
