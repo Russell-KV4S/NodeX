@@ -24,7 +24,8 @@ It is built for a **portable node**: register once, link out to other nodes, and
 - Auto-reconnect and network handoff
 - Listen-only mode (no callsign needed, PTT disabled)
 - Optional station-ID reminder (it never transmits for you)
-- Android Auto: listen-only media app, with optional steering-wheel/Talk PTT (off by default)
+- Android Auto: listen-only media app; the full GitHub edition also offers steering-wheel/Talk PTT (off by default)
+- Full Android edition: GitHub update checks and a verified download/install flow (public feed access pending)
 - Passwords kept in the platform secret store; no telemetry
 - Dark, Light and High contrast themes, with text size from 100% to 150%
 - Permission explanations in Settings, with Android permission review and a Not now option
@@ -37,7 +38,7 @@ NodeX is young. This table says what has actually been tested.
 |---|---|
 | **Windows** | Works. Core protocol validated live against a real ASL3 node. |
 | **Android** | On Google Play internal testing; used on a real phone. Background behaviour, Bluetooth PTT and network handoff are still being tested on devices. |
-| **Android Auto** | Owner reports the Desktop Head Unit working great. Individual voice/focus/cold-start cases and a physical-car pass still need recording. |
+| **Android Auto** | Earlier DHU use succeeded. The latest Play report found missing PTT (disabled in that edition) and an icon regression, fixed in 1.16 but awaiting a car check. Individual voice/focus/cold-start cases still need recording. |
 | **Linux / macOS** | Audio backend written (PortAudio); tested only with a small test program on a Raspberry Pi. The full app has not been run there. |
 | **iOS** | Compiles. Never run on a device; no release planned. See [`docs/IOS_RELEASE.md`](docs/IOS_RELEASE.md) if you want to pick it up. |
 
@@ -53,6 +54,10 @@ Respect node owners' linking policies. Don't test by keying a node you don't con
 
 You need an AllStarLink account and a registered node number and password (from the [ASL portal](https://www.allstarlink.org/)). Enter them on the first-run screen.
 
+**Downloads:** [GitHub Releases](https://github.com/Russell-KV4S/NodeX/releases) provide the full Android APK and self-contained Windows, Linux and macOS packages for x64 and ARM64. iOS is excluded. Releases are currently private, so repository access is required. See each release's installation notes and [`docs/RELEASING.md`](docs/RELEASING.md).
+
+For Android Auto PTT, use `NodeX-android.apk`, then enable Talk from the car and choose a wheel button in Settings. The Play edition omits car PTT. Switching from Play may require uninstalling because the signing keys differ; export settings first and be prepared to re-enter your node password. Future same-key sideload updates preserve app data. The full edition has Settings → App updates; in-app delivery remains unavailable while releases are private, so download through GitHub manually for now.
+
 **Build from source** (needs the [.NET 10 SDK](https://dotnet.microsoft.com/download); see `global.json`):
 
 ```bash
@@ -62,7 +67,7 @@ dotnet test  tests/NodeX.UI.Tests               # headless UI and rendering test
 dotnet run   --project src/NodeX.UI/NodeX.UI.Desktop
 ```
 
-The Android head additionally needs the .NET `android` workload (`dotnet build src/NodeX.UI/NodeX.UI.Android`). Release signing for Android is local-only and not part of the repo.
+The Android head additionally needs the .NET `android` workload (`dotnet build src/NodeX.UI/NodeX.UI.Android`). Android signing keys are excluded from the repo; release automation uses encrypted Actions secrets. Shared desktop/Android version numbers live in `Directory.Build.props`.
 
 Build output is redirected to `%LOCALAPPDATA%\NodeX\build` by `Directory.Build.props` (set `NODEX_BUILD_ROOT` to change it). On Linux you also need `libjack-jackd2-0` and ALSA libraries for sound; without them NodeX runs silently.
 

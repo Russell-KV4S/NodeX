@@ -36,6 +36,8 @@ Play re-signs the app with its own key, so a sideloaded APK signed with the uplo
 
 `.github/workflows/release.yml` builds and publishes on a version tag, or can be re-run manually for an existing tag. Releases inherit this repository's visibility: **private for now, by owner decision**. Do not change visibility as part of a release.
 
+First successful release: [v1.16 (Android code 18)](https://github.com/Russell-KV4S/NodeX/releases/tag/v1.16), built from `f10deba`; [Release workflow](https://github.com/Russell-KV4S/NodeX/actions/runs/43296269873). Signing secrets are configured. The single Android APK contains ARM64/x86-64 (the SDK's default architectures), not 32-bit ARM. All assets and published update metadata were checked; device installation/car testing remains outstanding.
+
 Configure these Actions secrets once, using the existing sideload/upload keystore (never a fresh key per build):
 
 | Secret | Value |

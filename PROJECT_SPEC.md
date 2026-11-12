@@ -1,7 +1,7 @@
 # NodeX — Project Specification & Engineering Guide
 ### Cross-platform, Asterisk-free AllStarLink node (.NET 10 / Avalonia UI)
 
-> **Last updated:** 2026-11-12 · Previous baseline: solution build, 664 Core/service tests + 18 headless UI tests. Release/updater validation is recorded in `CHANGELOG.md`.
+> **Last updated:** 2026-11-12 · **Tests:** 680 Core/service tests + 18 headless UI tests. Both Android editions build; private v1.16 GitHub release published for all platforms except iOS. Package/hardware validation distinctions are recorded in `CHANGELOG.md`.
 >
 > This document is written for **humans and AI coding agents** who pick the project up cold. Read §0 first.
 
@@ -52,6 +52,8 @@ Design stance: **outbound-linking only.** Carrier-grade NAT blocks unsolicited i
 **Owner field reports (2026-11-11, on the owner's phone/PC; owner's word, not instrumented):** screen-off background audio for 1 h or more works; Wi-Fi to cellular handoff works, with a delay while the new public IP registers with AllStarLink (so the different-IP handoff is now seen to work, with that delay); the `MicProcessor` voice clean-up sounds good on air, no adjustment needed. **Latest owner report: the Desktop Head Unit is working great.** This is a successful DHU report, not an itemized verification of every car/voice/focus scenario. **Still not tested by anyone:** BLE PTT button and headset media key (no hardware; needs a volunteer), the full Linux/macOS app (planned for community testers; Pi audio harness and Windows BLE scan already checked), itemized real-car checks and safe-area/keyboard behaviour on assorted phones (the notch/gesture-bar overlap and whether the on-screen keyboard covers the PTT bar or node field).
 
 ---
+
+**2026-11-12 car follow-up:** the owner reports that the latest Play install lost Talk/wheel PTT, showed a white icon and appeared to dial nodes on Next. Code confirms that Play deliberately disables car PTT; the 1.16 fix separates the color launcher icon from monochrome attribution. “Transmit here” is a different action shown for a non-transmit node. Current Next/Back code only changes the displayed existing link; fresh dialing was not reproduced or explained. Real-car confirmation of the icon fix and actual installed-build/log evidence for any new dialing remain outstanding.
 
 ## 3. Repository, tooling and build
 
@@ -167,6 +169,8 @@ Owner has no Mac and declined the $99/year Apple Developer Program (2026-11-06),
 **Private-feed limitation:** the app has no GitHub authentication, so private releases cannot be checked/downloaded in-app. A 404 reports that the repository may be private or have no release; it must not falsely say “up to date.” Authorized testers can download the APK from GitHub manually. Enabling anonymous public access (or designing a separately authenticated feed) is a prerequisite for in-app delivery. Switching Play ↔ sideload may require uninstalling because of different signing certificates: export settings first and be prepared to re-enter the node password. The updater never tries to replace a Play install.
 
 **Deferred:** persistent check scheduling across process restarts, background delivery, desktop update installation, Apple Developer ID signing/notarization, and private-feed user authentication. Verify the icon, permissions flow, cancelled installs, same-key upgrade with preserved settings/password, and wrong-key rejection on real Android hardware before claiming device validation. Current implementation tests cover feed/version/asset validation, corruption/size/cancellation cleanup, download consent, check throttling and the link/car installation gate.
+
+**First release:** [v1.16 / Android code 18](https://github.com/Russell-KV4S/NodeX/releases/tag/v1.16) was published privately from `f10deba`; [all release jobs passed](https://github.com/Russell-KV4S/NodeX/actions/runs/43296269873). Android's single APK includes ARM64 and x86-64, matching the current .NET Android default RIDs (not 32-bit ARM). Downloaded APK v2/v3 signatures, package/version and published manifest size/SHA-256 were verified; Windows/Mac package contents and Mac bundle version were checked. This does not validate execution, audio, installation or Android Auto on hardware.
 
 ---
 
