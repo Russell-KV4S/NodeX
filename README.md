@@ -18,17 +18,35 @@ It is built for a **portable node**: register once, link out to other nodes, and
 
 ## Features
 
-- Registers with AllStarLink and links **outbound** to other nodes (up to 8 at once; one transmit node, the rest listen-only, with per-node mute)
-- Find-a-node search, favourites, and DTMF function-code macros
-- Push-to-talk: on-screen (momentary or toggle), Bluetooth LE button with a "Learn" wizard, headset media key
-- Auto-reconnect and network handoff
+- **Multi-node linking:** register once with AllStarLink and hold up to **8 simultaneous outbound links** with live mixed audio, per-node mute, and a single explicit transmit target
+- **Android Auto integration:** browse linked nodes and favourites, switch listen/transmit focus, mute, and optionally transmit from the car screen or steering wheel (full GitHub edition)
+- Find-a-node search, favourites with custom labels, and DTMF function-code macros
+- Push-to-talk: on-screen (momentary or toggle), Bluetooth LE button with a "Learn" wizard, and headset media key
+- Auto-reconnect and seamless Wi-Fi ↔ cellular network handoff
 - Listen-only mode (no callsign needed, PTT disabled)
 - Optional station-ID reminder (it never transmits for you)
-- Android Auto: listen-only media app; the full GitHub edition also offers steering-wheel/Talk PTT (off by default)
 - Full Android edition: GitHub update checks and a verified download/install flow (public feed access pending)
 - Passwords kept in the platform secret store; no telemetry
 - Dark, Light and High contrast themes, with text size from 100% to 150%
 - Permission explanations in Settings, with Android permission review and a Not now option
+
+## Connect to multiple nodes at once
+
+NodeX is built for monitoring and operating across more than one repeater, hub, or net at the same time:
+
+- **Up to 8 simultaneous links:** stay connected to up to 8 outbound nodes at once, each with its own connection, independent auto-reconnect, live audio, per-node **Mute / Unmute**, and **Disconnect**.
+- **Safe single transmit node:** your first connected node becomes the transmit target; every other linked node stays **listen-only** until you explicitly tap **Transmit here** on another card.
+- **No accidental RF routing:** if your active transmit node drops from the far end, NodeX clears the transmit target rather than silently moving your mic to another connected node, and NodeX never cross-links or repeats audio between connected nodes.
+- **Live activity:** per-node talking indicators and parsed ASL status/link lists show which linked node is active.
+
+## Android Auto integration
+
+Take your AllStarLink node on the road as a native Android Auto media app:
+
+- **Browse & dial safely:** switch between **Active Links** and **Favourites** tabs on your car display, tap a favourite to dial, or select any active link to focus it on Now Playing.
+- **Clear car controls:** Now Playing shows who is talking, your link count, and whether you are listening or armed to transmit, with per-node **Transmit here**, **Mute / Unmute**, and **Disconnect** buttons.
+- **Car-safe media buttons:** **Next / Back** step through connected nodes without dialling new ones, **Pause / Stop** mute audio instead of dropping your links, and **Play** unmutes. Any active car transmission is immediately released if focus is lost, the car disconnects, or any media button is pressed.
+- **Play vs full GitHub edition:** the Google Play edition is **listen-only** in the car (you can still browse, switch nodes, mute, and disconnect). The full GitHub APK edition (`NodeX-android.apk`) adds an optional **Talk** screen button and optional steering-wheel **Next** or **Back** PTT trigger in **Settings** (disabled by default, with audible key/unkey confirmation tones and a car transmission time limit).
 
 ## Platforms and status
 
