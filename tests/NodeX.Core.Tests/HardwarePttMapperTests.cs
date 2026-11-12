@@ -121,7 +121,12 @@ public class HardwarePttMapperTests
 
 public class PttButtonTests
 {
-    private static Iax2Session NewSession() => new() { LocalNodeNumber = "1234", RemoteNodeNumber = "2000" };
+    private static Iax2Session NewSession()
+    {
+        var s = new Iax2Session { LocalNodeNumber = "1234", RemoteNodeNumber = "2000" };
+        s.SetStateForTests(Iax2SessionState.Connected);   // keying is refused on a call that is not up
+        return s;
+    }
 
     [Fact]
     public async Task Momentary_HoldKeys_ReleaseUnkeys()

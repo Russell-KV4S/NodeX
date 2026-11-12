@@ -81,7 +81,8 @@ public class NodeRuntimeReconnectTests : IDisposable
         Factor = 2,
         NetworkChangeDebounce = TimeSpan.FromMilliseconds(30),
         RegistrationWait = TimeSpan.FromMilliseconds(800),
-        AttemptTimeout = TimeSpan.FromMilliseconds(200)
+        AttemptTimeout = TimeSpan.FromMilliseconds(200),
+        RegistrationSettleDelay = TimeSpan.Zero   // production waits 15 s after registering; tests must not
     };
 
     private async Task<NodeRuntime> CreateAsync(

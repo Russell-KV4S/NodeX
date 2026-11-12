@@ -21,8 +21,90 @@ public class NodePttControllerTests
         public void Dispose() { }
     }
 
-    // A disconnected session: SetPttAsync is a no-op, so no network traffic is produced.
-    private static Iax2Session NewSession() => new();
+    // A session marked connected but never dialled: keying is accepted (the controller refuses it on a call that
+    // is not up) and, with no remote endpoint, no network traffic is produced.
+    private static Iax2Session NewSession()
+    {
+        var s = new Iax2Session();
+        s.SetStateForTests(Iax2SessionState.Connected);
+        return s;
+    }
+
+    [Fact]
+    public async Task Keying_IsRefused_UntilTheCallIsConnected()
+    {
+        using var s = new Iax2Session();            // never dialled: not connected
+        using var c = new NodePttController(s);
+        var warnings = new List<string>();
+        var states = new List<bool>();
+        c.WarningLogged += warnings.Add;
+        c.PttStateChanged += (k, _) => states.Add(k);
+
+        foreach (var state in new[] { Iax2SessionState.Disconnected, Iax2SessionState.Connecting,
+                     Iax2SessionState.CallTokenHandshake, Iax2SessionState.Authenticating, Iax2SessionState.Disconnecting })
+        {
+            s.SetStateForTests(state);
+            await c.SetPttStateAsync(true, PttSource.UiButton);
+            Assert.False(c.IsPttActive);
+            Assert.Equal(TimeSpan.Zero, c.CurrentTxDuration);
+        }
+
+        Assert.Empty(states);                        // the UI is never told "on air"
+        Assert.False(s.IsTransmitting);
+        Assert.All(warnings, w => Assert.Contains("not connected", w));
+        Assert.Equal(5, warnings.Count);
+
+        s.SetStateForTests(Iax2SessionState.Connected);
+        await c.SetPttStateAsync(true, PttSource.UiButton);
+        Assert.True(c.IsPttActive);
+        Assert.True(s.IsTransmitting);
+    }
+
+    [Fact]
+    public async Task Unkey_IsNeverRefused_EvenAfterTheCallHasEnded()
+    {
+        using var s = NewSession();
+        using var c = new NodePttController(s);
+        await c.SetPttStateAsync(true, PttSource.UiButton);
+
+        s.SetStateForTests(Iax2SessionState.Disconnected);
+        await c.SetPttStateAsync(false, PttSource.UiButton);
+
+        Assert.False(c.IsPttActive);
+    }
+
+    [Fact]
+    public async Task KeyAndUnkeyFromManyThreads_NeverLeaveTheSessionTransmittingWhileTheControllerIsIdle()
+    {
+        using var s = NewSession();
+        using var c = new NodePttController(s);
+
+        // Every state change is reported in order, so the last event must match both final states.
+        bool? last = null;
+        int mismatches = 0;
+        c.PttStateChanged += (k, _) =>
+        {
+            if (s.IsTransmitting != k) Interlocked.Increment(ref mismatches);
+            last = k;
+        };
+
+        for (int round = 0; round < 200; round++)
+        {
+            var start = new ManualResetEventSlim();
+            var tasks = Enumerable.Range(0, 8).Select(i => Task.Run(async () =>
+            {
+                start.Wait();
+                await c.SetPttStateAsync(i % 2 == 0, i % 4 < 2 ? PttSource.UiButton : PttSource.BluetoothBle);
+            })).ToArray();
+            start.Set();
+            await Task.WhenAll(tasks);
+
+            Assert.Equal(c.IsPttActive, s.IsTransmitting);
+        }
+
+        Assert.Equal(0, mismatches);
+        if (last is bool l) Assert.Equal(l, c.IsPttActive);
+    }
 
     private static async Task<T> WithTimeout<T>(Task<T> task, int ms = 3000)
     {

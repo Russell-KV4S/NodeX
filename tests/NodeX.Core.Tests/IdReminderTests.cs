@@ -125,6 +125,39 @@ public class IdReminderTests
     }
 
     [Fact]
+    public void AcknowledgedWhileStillTransmitting_StartsAFreshClockAtOnce()
+    {
+        var (r, t, events) = Make();
+        r.TransmissionStarted();
+        t.Advance(Ten);
+        Assert.True(r.IsDue);
+
+        // Identified on the air and tapped the button before unkeying.
+        r.Acknowledge(transmitting: true);
+        Assert.False(r.IsDue);
+
+        // No new key-up follows for a while, but the clock is already running from the acknowledgment.
+        t.Advance(Ten - TimeSpan.FromSeconds(1));
+        Assert.False(r.IsDue);
+        t.Advance(TimeSpan.FromSeconds(1));
+        Assert.True(r.IsDue);
+        Assert.Equal([true, false, true], events);
+    }
+
+    [Fact]
+    public void AcknowledgedAfterUnkeying_WaitsForTheNextTransmission()
+    {
+        var (r, t, _) = Make();
+        r.TransmissionStarted();
+        t.Advance(Ten);
+
+        r.Acknowledge(transmitting: false);
+        t.Advance(TimeSpan.FromHours(1));
+        Assert.False(r.IsDue);
+        Assert.Equal(0, t.ActiveTimers);
+    }
+
+    [Fact]
     public void Reset_ClearsDueAndCancelsTheClock()
     {
         var (r, t, events) = Make();

@@ -68,7 +68,18 @@ public sealed class IdReminder : IDisposable
     }
 
     /// <summary>The user says they have identified: clear the reminder and stop the clock.</summary>
-    public void Acknowledge() => Reset();
+    public void Acknowledge() => Acknowledge(transmitting: false);
+
+    /// <summary>
+    /// The operator has identified. Clears the reminder; when they are still transmitting (they identified on the
+    /// air and tapped the button before unkeying), a fresh clock starts now, because waiting for the next key-up
+    /// would leave the rest of this transmission and the gap before the next one uncounted.
+    /// </summary>
+    public void Acknowledge(bool transmitting)
+    {
+        Reset();
+        if (transmitting) TransmissionStarted();
+    }
 
     /// <summary>Clears everything (link ended, feature switched off).</summary>
     public void Reset()

@@ -28,7 +28,14 @@ namespace NodeX.UI.Android
             try
             {
                 var info = PackageManager?.GetPackageInfo(PackageName!, 0);
-                return info == null ? null : $"{info.VersionName} ({info.LongVersionCode})";
+                if (info == null) return null;
+                // LongVersionCode is API 28+; minSdk is 26, where only the (deprecated) int VersionCode exists.
+                long code = System.OperatingSystem.IsAndroidVersionAtLeast(28)
+                    ? info.LongVersionCode
+#pragma warning disable CA1422
+                    : info.VersionCode;
+#pragma warning restore CA1422
+                return $"{info.VersionName} ({code})";
             }
             catch (System.Exception) { return null; }
         }

@@ -131,6 +131,38 @@ public class NodeResolutionTests
     }
 
     [Fact]
+    public void DnsParser_TruncatedRecord_ReturnsNull_NotAPortFromHalfARecord()
+    {
+        // A complete SRV record, then the reply cut short inside its target name. The port bytes are there,
+        // but the record claims more data than the reply holds, so none of it is trusted.
+        byte[] rdata = [0, 10, 0, 10, 0x11, 0xF6, 5, (byte)'a', (byte)'b', (byte)'c', (byte)'d', (byte)'e', 0];
+        byte[] full = DnsReply(33, rdata);
+        Assert.Equal(4598, DnsPortLookup.ParsePort(full, 33));
+
+        byte[] cut = full[..^4];
+        Assert.Null(DnsPortLookup.ParsePort(cut, 33));
+    }
+
+    [Theory]
+    [InlineData(0x40)]   // reserved label types
+    [InlineData(0x80)]
+    public void DnsParser_ReservedLabelType_ReturnsNull(byte label)
+    {
+        byte[] reply = DnsReply(33, [0, 10, 0, 10, 0x11, 0xF6, 1, (byte)'a', 0]);
+        reply[12] = label;                     // first byte of the question name
+        Assert.Null(DnsPortLookup.ParsePort(reply, 33));
+    }
+
+    [Fact]
+    public void DnsParser_NameRunningOffTheEnd_ReturnsNull()
+    {
+        byte[] header = [0x12, 0x34, 0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0];
+        byte[] reply = [.. header, 63, (byte)'x', (byte)'y'];   // label says 63 bytes, 2 follow
+        Assert.Null(DnsPortLookup.ParsePort(reply, 33));
+        Assert.Equal(-1, DnsPortLookup.SkipName(reply, 12));
+    }
+
+    [Fact]
     public async Task ListedPortThatAnswers_IsKept_AndStandardPortIsNotProbed()
     {
         var (r, _, _) = Create(_ => Json("""{"node":{"ipaddr":"203.0.113.9","port":4579,"callsign":"W2ECR"}}"""));
@@ -328,6 +360,63 @@ public class NodeResolutionTests
         var (r, _, dns) = Create(_ => throw new HttpRequestException("offline"));
         Assert.Null(await r.ResolveNodeAsync("2000"));
         Assert.Equal(2, dns.Hosts.Count);
+    }
+
+    [Fact]
+    public async Task Invalidate_ForcesAFreshLookup_ForThatNodeOnly()
+    {
+        string ip = "203.0.113.7";
+        var (r, http, _) = Create(_ => Json("{\"node\":{\"ipaddr\":\"" + ip + "\"}}"));
+        await r.ResolveNodeAsync("2000");
+        await r.ResolveNodeAsync("3000");
+        Assert.Equal(2, http.Requests.Count);
+
+        ip = "203.0.113.99";                 // node 2000 has moved
+        r.Invalidate(" 2000 ");
+        var moved = await r.ResolveNodeAsync("2000");
+        await r.ResolveNodeAsync("3000");    // still served from the cache
+
+        Assert.Equal(IPAddress.Parse("203.0.113.99"), moved!.EndPoint.Address);
+        Assert.Equal(3, http.Requests.Count);
+        Assert.EndsWith("/2000", http.Requests[2].AbsolutePath);
+    }
+
+    [Fact]
+    public async Task LookupThatFailsAfterInvalidate_FallsBackToTheLastKnownAddress()
+    {
+        bool offline = false;
+        var (r, http, dns) = Create(_ => offline
+            ? throw new HttpRequestException("offline")
+            : Json("""{"node":{"ipaddr":"203.0.113.7","callsign":"W1AW"}}"""));
+        var first = await r.ResolveNodeAsync("2000");
+
+        offline = true;                      // directory and DNS both unreachable now
+        r.Invalidate("2000");
+        var again = await r.ResolveNodeAsync("2000");
+
+        Assert.Equal(first!.EndPoint, again!.EndPoint);      // better than refusing to try at all
+        Assert.Equal("W1AW", again.Callsign);
+        Assert.Equal(2, http.Requests.Count);                // the fresh lookup really was attempted
+        Assert.Equal(2, dns.Hosts.Count);
+
+        offline = false;                     // the fallback is not cached as if it were fresh
+        await r.ResolveNodeAsync("2000");
+        Assert.Equal(3, http.Requests.Count);
+    }
+
+    [Fact]
+    public async Task ClearCache_AlsoForgetsLastKnownAddresses()
+    {
+        bool offline = false;
+        var (r, _, _) = Create(_ => offline
+            ? throw new HttpRequestException("offline")
+            : Json("""{"node":{"ipaddr":"203.0.113.7"}}"""));
+        await r.ResolveNodeAsync("2000");
+
+        offline = true;
+        r.ClearCache();
+
+        Assert.Null(await r.ResolveNodeAsync("2000"));
     }
 
     [Fact]

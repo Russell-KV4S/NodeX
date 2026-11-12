@@ -48,10 +48,10 @@ public sealed record NodeSettings
     /// <summary>Re-dial automatically when an established link is lost or the network changes.</summary>
     public bool AutoReconnect { get; init; } = true;
 
-    /// <summary>Selected microphone (platform-specific id); null = system default.</summary>
+    /// <summary>Microphone chosen in the desktop device picker (saved by device name, since indexes shift); null = system default. Ignored on Android/iOS.</summary>
     public string? InputDeviceId { get; init; }
 
-    /// <summary>Selected speaker (platform-specific id); null = system default.</summary>
+    /// <summary>Speaker chosen in the desktop device picker (saved by device name); null = system default. Ignored on Android/iOS.</summary>
     public string? OutputDeviceId { get; init; }
 
     /// <summary>

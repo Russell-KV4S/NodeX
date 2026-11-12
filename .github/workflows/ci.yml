@@ -6,8 +6,7 @@ on:
   pull_request:
 
 jobs:
-  # Core + shared UI + desktop head, and all unit tests. The Android and iOS heads need their .NET workloads
-  # (and iOS needs a Mac runner with signing), so they are built by hand on the developer machine for now.
+  # Core + shared UI + desktop head, and all unit tests.
   build-test:
     runs-on: windows-latest
     steps:
@@ -22,3 +21,24 @@ jobs:
 
       - name: Unit tests
         run: dotnet test tests/NodeX.Core.Tests -c Release --nologo
+
+  # Compile check of the Android head, both editions, so an Android-only break (a platform API, a name clash with
+  # Android.*) is caught on every push. Debug builds only: Release signing needs keystore/, which is never in the
+  # repo, and nothing is packaged or published here. iOS needs a macOS runner and is not built.
+  android:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Install the Android workload
+        run: dotnet workload install android --nologo
+
+      - name: Build Android head (full edition)
+        run: dotnet build src/NodeX.UI/NodeX.UI.Android -c Debug --nologo
+
+      - name: Build Android head (Play edition)
+        run: dotnet build src/NodeX.UI/NodeX.UI.Android -c Debug -p:PlayStore=true --nologo

@@ -285,6 +285,10 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
                     var info = await rt.ConnectAsync(node);
                     if (info == null) FailConnect($"Could not find node {node}.", previous);
                 }
+                catch (System.OperationCanceledException)
+                {
+                    // Hung up (here or on the phone) before the call started: not a failure, no error beep.
+                }
                 catch (Exception ex)
                 {
                     FailConnect(ex is InvalidOperationException or ArgumentException
@@ -735,7 +739,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
             .SetAudioAttributes(attributes)!
             .SetOnAudioFocusChangeListener(this)!
             .SetWillPauseWhenDucked(false)!
-            .Build();
+            .Build()!;
         am.RequestAudioFocus(_focus);
     }
 

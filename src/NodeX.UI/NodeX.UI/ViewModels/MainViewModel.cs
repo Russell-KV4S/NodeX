@@ -491,7 +491,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void AcknowledgeId()
     {
-        _idReminder.Acknowledge();
+        _idReminder.Acknowledge(transmitting: IsTransmitting);
         LogActivity("Station ID acknowledged.");
     }
 
@@ -586,7 +586,10 @@ public partial class MainViewModel : ViewModelBase
         }
         else
         {
+            // Nothing on screen to update. The ages are refreshed at once on the way back (above), so the
+            // 1 s age timer has no reason to keep waking the app in the background either.
             _timer.Stop();
+            _ageTimer?.Stop();
         }
     }
 
@@ -672,6 +675,11 @@ public partial class MainViewModel : ViewModelBase
             }
 
             LogActivity($"Connecting to {info.NodeNumber} at {info.EndPoint}...");
+        }
+        catch (OperationCanceledException)
+        {
+            // Hung up before the call started (for example during the "just registered" wait): not an error.
+            LogActivity($"Connect to node {target} cancelled.");
         }
         catch (Exception ex)
         {

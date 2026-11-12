@@ -2,6 +2,40 @@ using NodeX.Core.Audio;
 
 namespace NodeX.Core.Tests;
 
+public class PlaybackBacklogTests
+{
+    private const long Wrap = 1L << 32;     // the device position is a 32-bit counter
+
+    [Theory]
+    [InlineData(0, 0, 0)]
+    [InlineData(1600, 1440, 160)]                   // the ordinary case
+    [InlineData(1600, 1600, 0)]
+    [InlineData(1600, 1700, 0)]                     // position ahead of the total (stream just rebuilt): nothing pending
+    [InlineData(Wrap - 40, Wrap - 200, 160)]        // position above int.MaxValue (negative as an int)
+    [InlineData(Wrap + 100, Wrap - 60, 160)]        // total has passed 2^32, position has not wrapped yet
+    [InlineData(Wrap + 100, Wrap + 20, 80)]         // both past the wrap: the position reads 20
+    [InlineData(5 * Wrap + 480, 5 * Wrap + 160, 320)]
+    public void PendingPlaybackSamples_StaysRightAcrossThe32BitWrap(long written, long played, int expected)
+    {
+        int devicePosition = unchecked((int)(uint)played);      // what AudioTrack.PlaybackHeadPosition reports
+
+        Assert.Equal(expected, AudioFormat.PendingPlaybackSamples(written, devicePosition));
+    }
+
+    [Fact]
+    public void AfterTheWrap_TheBacklogNoLongerLooksEndless()
+    {
+        // 150 hours of continuous audio at 8 kHz. The old sum (64-bit total minus the wrapped position) gave a
+        // backlog of days here, so every frame was dropped as "device behind".
+        long written = 150L * 3600 * AudioFormat.SampleRate;
+        int devicePosition = unchecked((int)(uint)(written - 320));
+
+        var backlog = AudioFormat.SamplesToDuration(AudioFormat.PendingPlaybackSamples(written, devicePosition));
+
+        Assert.Equal(TimeSpan.FromMilliseconds(40), backlog);
+    }
+}
+
 public class AudioLevelMeterTests
 {
     [Fact]

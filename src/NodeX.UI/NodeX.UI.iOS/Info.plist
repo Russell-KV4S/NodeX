@@ -7,13 +7,12 @@
 	<key>CFBundleIdentifier</key>
 	<string>com.kv4s.nodex</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.4</string>
+	<string>1.15</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>17</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
-		<string>bluetooth-central</string>
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>NodeX uses the microphone to transmit your voice over the AllStarLink network when you press PTT.</string>

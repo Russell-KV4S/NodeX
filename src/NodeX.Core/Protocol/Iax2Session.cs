@@ -40,7 +40,7 @@ public enum Iax2DisconnectReason
 /// <summary>
 /// Manages an IAX2 UDP connection, Call ID allocation, sequence tracking,
 /// Asterisk 20+ / ASL3 CallToken security handshakes, AllStarLink PTT keying
-/// (AST_CONTROL_KEY / AST_CONTROL_UNKEY), keep-alives (POKE/PONG), and 20ms audio Mini Frames.
+/// (AST_CONTROL_KEY / AST_CONTROL_UNKEY), keep-alives (PING/PONG), and 20ms audio Mini Frames.
 /// </summary>
 public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audio.IVoiceChannel
 {
@@ -99,6 +99,13 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
     public int MaxRetransmits { get; set; } = 4;
 
     public Iax2SessionState State { get; private set; } = Iax2SessionState.Disconnected;
+
+    /// <summary>
+    /// Test seam: puts a session that was never dialled into <paramref name="state"/> so code that needs an
+    /// established call (the PTT controller) can be exercised without a network peer. With no remote endpoint
+    /// nothing is ever sent.
+    /// </summary>
+    internal void SetStateForTests(Iax2SessionState state) => State = state;
 
     /// <summary>Why the call ended. Set before <see cref="StateChanged"/> reports Disconnected.</summary>
     public Iax2DisconnectReason DisconnectReason { get; private set; }
@@ -159,16 +166,34 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         };
         // Bind to ephemeral UDP port
         _socket.Bind(new IPEndPoint(IPAddress.Any, 0));
+
+        // Windows turns an ICMP "port unreachable" for an earlier send into WSAECONNRESET on the next receive.
+        // It tells us nothing the retransmit limit will not tell us better, so switch that behaviour off
+        // (the receive loop also tolerates the error, for platforms where this call is not available).
+        if (OperatingSystem.IsWindows())
+        {
+            try { _socket.IOControl(SioUdpConnReset, [0, 0, 0, 0], null); }
+            catch (Exception ex) when (ex is SocketException or PlatformNotSupportedException or NotSupportedException) { }
+        }
     }
+
+    /// <summary>Winsock SIO_UDP_CONNRESET control code.</summary>
+    private const int SioUdpConnReset = unchecked((int)0x9800000C);
+
+    /// <summary>Consecutive socket receive failures after which the link is declared lost (about 2 s of nothing but errors).</summary>
+    private const int MaxConsecutiveReceiveErrors = 20;
 
     /// <summary>
     /// Initiates a call session to a target AllStarLink / IAX2 node endpoint.
     /// </summary>
     public async Task ConnectAsync(IPEndPoint targetEndPoint, CancellationToken cancellationToken = default)
     {
-        if (State != Iax2SessionState.Disconnected)
+        lock (_stateGate)
         {
-            throw new InvalidOperationException($"Cannot connect while session is in {State} state.");
+            if (State != Iax2SessionState.Disconnected)
+                throw new InvalidOperationException($"Cannot connect while session is in {State} state.");
+            if (_ended)
+                throw new InvalidOperationException("An IAX2 session is single-use. Create a new one to dial again.");
         }
 
         _remoteEndPoint = targetEndPoint;
@@ -199,16 +224,25 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         {
             while (await timer.WaitForNextTickAsync(_cts.Token))
             {
-                if (State == Iax2SessionState.Connected) await SendTextAsync("L ");
+                if (State != Iax2SessionState.Connected) continue;
+
+                // One beat that cannot be sent (no route for a moment) must not end the loop: a hub hangs up a
+                // link that goes about 45 s without one. The frame is queued for retransmission anyway.
+                try { await SendTextAsync("L "); }
+                catch (SocketException) { }
             }
         }
         catch (OperationCanceledException)
         {
             // Session is closing.
         }
+        catch (ObjectDisposedException)
+        {
+            // Session was closed under us.
+        }
         catch (Exception ex)
         {
-            ErrorOccurred?.Invoke($"Link list send failed: {ex.Message}");
+            ReportError($"Link list send failed: {ex.Message}");
         }
     }
 
@@ -248,42 +282,81 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
     /// </summary>
     public async Task DisconnectAsync(string reason = "NodeX Disconnect")
     {
-        if (State == Iax2SessionState.Disconnected) return;
+        // Only the caller that moves the call into Disconnecting hangs it up; a second caller, or a call that
+        // has already ended, has nothing to do.
+        if (State == Iax2SessionState.Disconnected || !SetState(Iax2SessionState.Disconnecting)) return;
 
-        SetState(Iax2SessionState.Disconnecting);
-
-        if (_remoteEndPoint != null && _remoteCallNumber != 0)
+        try
         {
-            try
-            {
-                var ies = new List<Iax2InformationElement>
-                {
-                    Iax2InformationElement.String(Iax2Protocol.InformationElementId.Cause, reason)
-                };
-                byte[] ieBuffer = new byte[256];
-                int ieLen = Iax2Protocol.WriteInformationElements(ieBuffer, ies.ToArray());
-
-                await SendFullFrameAsync(
-                    Iax2Protocol.FrameType.IaxControl,
-                    (byte)Iax2Protocol.IaxControlSubclass.Hangup,
-                    ieBuffer.AsMemory(0, ieLen),
-                    CancellationToken.None);
-            }
-            catch
-            {
-                // Ignore socket errors during teardown
-            }
+            int seq = await SendHangupAsync(reason);
+            if (seq >= 0) await WaitForHangupAckAsync((byte)seq);
+        }
+        catch
+        {
+            // Ignore socket errors during teardown
         }
 
         SetDisconnected(Iax2DisconnectReason.LocalRequest);
     }
 
-    /// <summary>Records why the call ended, then moves to Disconnected (first reason wins).</summary>
-    private void SetDisconnected(Iax2DisconnectReason reason)
+    /// <summary>
+    /// How long <see cref="DisconnectAsync"/> waits for the remote to acknowledge our HANGUP, re-sending it in the
+    /// meantime, before closing anyway. HANGUP is the one frame that used to be sent exactly once: if it was lost
+    /// the far node kept the link up until its own timeout. An acknowledgment normally arrives within one round
+    /// trip, so this only costs time when the path is dead. Zero sends HANGUP once and does not wait (used when
+    /// the network has just changed and the old path cannot work). Set before disconnecting.
+    /// </summary>
+    public TimeSpan HangupAckWait { get; set; } = TimeSpan.FromMilliseconds(300);
+
+    /// <summary>Gap between HANGUP re-sends while waiting for its acknowledgment.</summary>
+    internal static readonly TimeSpan HangupResendInterval = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>Sends HANGUP with a CAUSE if the peer knows the call. Returns its sequence number, or -1 when nothing was sent.</summary>
+    private async Task<int> SendHangupAsync(string reason)
     {
-        if (State != Iax2SessionState.Disconnected) DisconnectReason = reason;
-        SetState(Iax2SessionState.Disconnected);
+        if (_remoteEndPoint == null || _remoteCallNumber == 0) return -1;
+
+        var ies = new List<Iax2InformationElement>
+        {
+            Iax2InformationElement.String(Iax2Protocol.InformationElementId.Cause, reason)
+        };
+        byte[] ieBuffer = new byte[256];
+        int ieLen = Iax2Protocol.WriteInformationElements(ieBuffer, ies.ToArray());
+
+        return await SendFullFrameAsync(
+            Iax2Protocol.FrameType.IaxControl,
+            (byte)Iax2Protocol.IaxControlSubclass.Hangup,
+            ieBuffer.AsMemory(0, ieLen),
+            CancellationToken.None);
     }
+
+    private async Task WaitForHangupAckAsync(byte seq)
+    {
+        if (HangupAckWait <= TimeSpan.Zero) return;
+
+        long deadline = _sessionStopwatch.ElapsedMilliseconds + (long)HangupAckWait.TotalMilliseconds;
+        long nextResend = _sessionStopwatch.ElapsedMilliseconds + (long)HangupResendInterval.TotalMilliseconds;
+
+        // The receive loop releases the frame when the peer's ACK (or an INVAL: it has already dropped the call) arrives.
+        while (_retransmit.IsPending(seq))
+        {
+            long now = _sessionStopwatch.ElapsedMilliseconds;
+            if (now >= deadline) return;
+
+            if (now >= nextResend)
+            {
+                byte[]? again = _retransmit.RetransmitCopy(seq);
+                if (again == null) return;
+                await TxAsync(again, CancellationToken.None);
+                nextResend = now + (long)HangupResendInterval.TotalMilliseconds;
+            }
+
+            await Task.Delay(10);
+        }
+    }
+
+    /// <summary>Records why the call ended, then moves to Disconnected (first reason wins). False if it had already ended.</summary>
+    private bool SetDisconnected(Iax2DisconnectReason reason) => SetState(Iax2SessionState.Disconnected, reason);
 
     /// <summary>
     /// Controls Push-To-Talk (PTT) transmit status.
@@ -405,17 +478,19 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         await SendFullFrameAsync(Iax2Protocol.FrameType.Text, 0, bytes, _cts.Token);
     }
 
-    private async Task SendFullFrameAsync(
+    /// <returns>The sequence number the frame consumed, or -1 when it was not sent or is not a sequenced frame.</returns>
+    private async Task<int> SendFullFrameAsync(
         Iax2Protocol.FrameType frameType,
         byte subclass,
         ReadOnlyMemory<byte> payload,
         CancellationToken cancellationToken,
         uint? timestamp = null)
     {
-        if (_remoteEndPoint == null) return;
+        if (_remoteEndPoint == null) return -1;
 
         uint ts = timestamp ?? (uint)_sessionStopwatch.ElapsedMilliseconds;
         byte[] buffer = new byte[Iax2Protocol.FullHeaderSize + payload.Length];
+        int sequence = -1;
 
         // Serialize sequence-number allocation: audio, PTT and keep-alive run on different threads.
         await _sendLock.WaitAsync(cancellationToken);
@@ -436,6 +511,7 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
             {
                 // Keep the frame until the peer acknowledges it (RFC 5456 section 7).
                 _retransmit.Add(_oSeqno, buffer, _sessionStopwatch.ElapsedMilliseconds, RetransmitTimeoutMs());
+                sequence = _oSeqno;
                 _oSeqno++;
             }
         }
@@ -445,6 +521,7 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         }
 
         await TxAsync(buffer, cancellationToken);
+        return sequence;
     }
 
     /// <summary>Retransmission timer for a newly sent frame: 2 x RTT once measured, else the initial value.</summary>
@@ -469,15 +546,26 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         if (_remoteEndPoint == null) return;
 
         byte[] buffer = new byte[Iax2Protocol.FullHeaderSize];
-        Iax2Protocol.WriteFullFrame(
-            buffer,
-            _localCallNumber,
-            destCallNumber,
-            timestamp,
-            _oSeqno,
-            _iSeqno,
-            Iax2Protocol.FrameType.IaxControl,
-            (byte)subclass);
+
+        // Same lock as sequenced frames: the header must carry one consistent pair of sequence numbers even while
+        // a PING, link-list text or KEY is being numbered on another thread.
+        await _sendLock.WaitAsync(CancellationToken.None);
+        try
+        {
+            Iax2Protocol.WriteFullFrame(
+                buffer,
+                _localCallNumber,
+                destCallNumber,
+                timestamp,
+                _oSeqno,
+                _iSeqno,
+                Iax2Protocol.FrameType.IaxControl,
+                (byte)subclass);
+        }
+        finally
+        {
+            _sendLock.Release();
+        }
 
         await TxAsync(buffer, _cts.Token);
     }
@@ -496,31 +584,69 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
 
                 foreach (byte[] packet in due)
                 {
-                    await TxAsync(packet, _cts.Token);
+                    // A send that fails (no route for a moment) is just a lost packet; the retry limit decides.
+                    try { await TxAsync(packet, _cts.Token); }
+                    catch (SocketException) { }
                 }
 
-                if (exceeded)
+                if (exceeded && State is not (Iax2SessionState.Disconnecting or Iax2SessionState.Disconnected))
                 {
                     // RFC 5456 section 7: no acknowledgment after the retry limit => call leg unusable.
-                    ErrorOccurred?.Invoke(
+                    ReportError(
                         $"Link lost: no acknowledgment after {MaxRetransmits} retransmissions.");
                     SetDisconnected(Iax2DisconnectReason.LinkLost);
                 }
             }
         }
         catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) { }     // the session was closed under us
+        catch (Exception ex)
+        {
+            // Retransmission must not stop silently: without it a dead call is never noticed.
+            ReportError($"Link lost: {ex.Message}");
+            SetDisconnected(Iax2DisconnectReason.LinkLost);
+        }
     }
 
+    /// <summary>
+    /// Reads datagrams for the life of the session. Nothing that happens to one packet may end the loop: a socket
+    /// error (for example an ICMP "port unreachable" surfacing as a receive failure) or a frame whose handling
+    /// throws is reported and the loop carries on, because once it stops the call can never be answered,
+    /// acknowledged or hung up. Only cancellation, disposal, or errors with nothing in between end it.
+    /// </summary>
     private async Task ReceiveLoopAsync()
     {
         byte[] buffer = new byte[2048];
         EndPoint senderEp = new IPEndPoint(IPAddress.Any, 0);
+        int consecutiveErrors = 0;
 
-        try
+        while (!_cts.IsCancellationRequested)
         {
-            while (!_cts.Token.IsCancellationRequested)
+            SocketReceiveFromResult result;
+            try
             {
-                var result = await _socket.ReceiveFromAsync(buffer, SocketFlags.None, senderEp, _cts.Token);
+                result = await _socket.ReceiveFromAsync(buffer, SocketFlags.None, senderEp, _cts.Token);
+                consecutiveErrors = 0;
+            }
+            catch (OperationCanceledException) { return; }
+            catch (ObjectDisposedException) { return; }
+            catch (SocketException ex)
+            {
+                if (_cts.IsCancellationRequested) return;
+                if (++consecutiveErrors < MaxConsecutiveReceiveErrors)
+                {
+                    try { await Task.Delay(100, _cts.Token); }
+                    catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException) { return; }
+                    continue;
+                }
+
+                ReportError($"IAX2 receive error: {ex.Message}");
+                SetDisconnected(Iax2DisconnectReason.LinkLost);
+                return;
+            }
+
+            try
+            {
                 if (result.ReceivedBytes < Iax2Protocol.MiniHeaderSize) continue;
 
                 // Outbound-linking design: only the node we dialed may talk to this socket. Anything
@@ -544,12 +670,21 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
                     HandleMiniFrame(frame);
                 }
             }
+            catch (OperationCanceledException) when (_cts.IsCancellationRequested) { return; }
+            catch (ObjectDisposedException) { return; }
+            catch (Exception ex)
+            {
+                // Usually a subscriber's handler threw. The frame is lost; the call is not.
+                ReportError($"IAX2 frame handling error: {ex.Message}");
+            }
         }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            ErrorOccurred?.Invoke($"IAX2 receive error: {ex.Message}");
-        }
+    }
+
+    /// <summary>Raises <see cref="ErrorOccurred"/>; a faulty listener must never take a session loop down.</summary>
+    private void ReportError(string message)
+    {
+        try { ErrorOccurred?.Invoke(message); }
+        catch (Exception) { /* nothing sensible left to do with it */ }
     }
 
     private async Task HandleFullFrameAsync(Iax2Frame frame)
@@ -567,8 +702,14 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
 
         if (isCallToken)
         {
-            // Stateless challenge: carries no sequencing and acknowledges nothing.
-            await HandleIaxControlFrameAsync(Iax2Protocol.IaxControlSubclass.CallToken, frame.Payload, frame.Timestamp);
+            // Stateless challenge: carries no sequencing and acknowledges nothing. It is only meaningful before
+            // the peer has answered our NEW; it skips the call-number check above, so once a call exists it must
+            // not be allowed to reset the sequence numbers and re-send NEW.
+            if (_remoteCallNumber == 0
+                && State is Iax2SessionState.Connecting or Iax2SessionState.CallTokenHandshake)
+            {
+                await HandleIaxControlFrameAsync(Iax2Protocol.IaxControlSubclass.CallToken, frame.Payload, frame.Timestamp);
+            }
             return;
         }
 
@@ -594,7 +735,15 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
                     return;
 
                 case Iax2Protocol.IaxControlSubclass.Inval:
-                    ErrorOccurred?.Invoke("Remote node does not recognise this call (INVAL).");
+                    if (State == Iax2SessionState.Disconnecting)
+                    {
+                        // We are hanging up and the peer has already dropped the call: as good as an ACK.
+                        _retransmit.Clear();
+                        return;
+                    }
+                    if (State == Iax2SessionState.Disconnected) return;
+
+                    ReportError("Remote node does not recognise this call (INVAL).");
                     SetDisconnected(Iax2DisconnectReason.LinkLost);
                     return;
             }
@@ -614,10 +763,18 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         }
 
         _remoteCallNumber = frame.SourceCallNumber;
-        _iSeqno++;
+
+        // Under the send lock, so a frame being numbered on another thread never sees half of this step.
+        await _sendLock.WaitAsync(CancellationToken.None);
+        try { _iSeqno++; }
+        finally { _sendLock.Release(); }
 
         // Acknowledge received Full Frame
         await SendAckAsync(frame.SourceCallNumber, frame.Timestamp);
+
+        // A call that is being hung up or has ended still acknowledges what the peer sends (so it stops
+        // retransmitting), but nothing in those frames is acted on or passed to listeners.
+        if (State is Iax2SessionState.Disconnecting or Iax2SessionState.Disconnected) return;
 
         switch (frame.FrameType)
         {
@@ -681,7 +838,8 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
                 break;
 
             case Iax2Protocol.IaxControlSubclass.Accept:
-                SetState(Iax2SessionState.Connected);
+                // Only a call that is still being set up can be accepted (a repeated ACCEPT changes nothing).
+                if (!IsSettingUp(State) || !SetState(Iax2SessionState.Connected)) break;
                 // Answer the app_rpt "new key" handshake straight away, as a real node does.
                 if (SendNewKeyOnAccept && !_newKeySent)
                 {
@@ -691,6 +849,7 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
                 break;
 
             case Iax2Protocol.IaxControlSubclass.AuthReq:
+                if (!IsSettingUp(State)) break;
                 SetState(Iax2SessionState.Authenticating);
                 await HandleAuthRequestAsync(payload);
                 break;
@@ -779,7 +938,7 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
                 break;
 
             case Iax2Protocol.ControlSubclass.Answer:
-                SetState(Iax2SessionState.Connected);
+                if (IsSettingUp(State)) SetState(Iax2SessionState.Connected);
                 break;
 
             case Iax2Protocol.ControlSubclass.Hangup:
@@ -795,8 +954,10 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
 
     private void HandleMiniFrame(Iax2Frame frame)
     {
-        // Mini frames carry the sender's call number; ignore anything not from our established peer.
+        // Mini frames carry the sender's call number; ignore anything not from our established peer, and anything
+        // that arrives once the call is being hung up or has ended.
         if (_remoteCallNumber == 0 || frame.SourceCallNumber != _remoteCallNumber) return;
+        if (State is Iax2SessionState.Disconnecting or Iax2SessionState.Disconnected) return;
         Volatile.Write(ref _unansweredKeepAlives, 0);
 
         if (frame.Payload.Length > 0)
@@ -820,26 +981,24 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
             }
         }
 
-        string hashHex = string.Empty;
-        if (!string.IsNullOrEmpty(challenge) && !string.IsNullOrEmpty(Password))
+        // Only the MD5 challenge method is answered. The RFC's plaintext method would put the password itself
+        // on the wire, so it is never used: with no challenge or no password the call is given up instead.
+        if (string.IsNullOrEmpty(challenge) || string.IsNullOrEmpty(Password))
         {
-            byte[] hashBytes = MD5.HashData(Encoding.UTF8.GetBytes(challenge + Password));
-            hashHex = Convert.ToHexStringLower(hashBytes);
+            ReportError("The remote node asked for a password that this link does not have (node links log in without one).");
+            try { await SendHangupAsync("Authentication not possible"); }
+            catch (Exception ex) when (ex is SocketException or OperationCanceledException or ObjectDisposedException) { }
+            SetDisconnected(Iax2DisconnectReason.RemoteRejected);
+            return;
         }
+
+        string hashHex = Convert.ToHexStringLower(MD5.HashData(Encoding.UTF8.GetBytes(challenge + Password)));
 
         var responseIes = new List<Iax2InformationElement>
         {
-            Iax2InformationElement.String(Iax2Protocol.InformationElementId.Username, Username)
+            Iax2InformationElement.String(Iax2Protocol.InformationElementId.Username, Username),
+            Iax2InformationElement.String(Iax2Protocol.InformationElementId.Md5Result, hashHex)
         };
-
-        if (!string.IsNullOrEmpty(hashHex))
-        {
-            responseIes.Add(Iax2InformationElement.String(Iax2Protocol.InformationElementId.Md5Result, hashHex));
-        }
-        else
-        {
-            responseIes.Add(Iax2InformationElement.String(Iax2Protocol.InformationElementId.Password, Password));
-        }
 
         byte[] buffer = new byte[256];
         int len = Iax2Protocol.WriteInformationElements(buffer, responseIes.ToArray());
@@ -865,7 +1024,7 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
                 // NAT mapping lost, or network handoff).
                 if (Volatile.Read(ref _unansweredKeepAlives) >= MaxMissedKeepAlives)
                 {
-                    ErrorOccurred?.Invoke(
+                    ReportError(
                         $"Link lost: no response to {MaxMissedKeepAlives} keep-alive PINGs.");
                     SetDisconnected(Iax2DisconnectReason.LinkLost);
                     continue;
@@ -875,24 +1034,70 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
 
                 // PING is the RFC 5456 in-call liveness probe: it keeps the NAT mapping open,
                 // the remote answers with PONG, and the echoed timestamp yields an RTT sample.
-                await SendFullFrameAsync(
-                    Iax2Protocol.FrameType.IaxControl,
-                    (byte)Iax2Protocol.IaxControlSubclass.Ping,
-                    ReadOnlyMemory<byte>.Empty,
-                    _cts.Token);
+                try
+                {
+                    await SendFullFrameAsync(
+                        Iax2Protocol.FrameType.IaxControl,
+                        (byte)Iax2Protocol.IaxControlSubclass.Ping,
+                        ReadOnlyMemory<byte>.Empty,
+                        _cts.Token);
+                }
+                catch (SocketException)
+                {
+                    // This PING did not get out (no route for a moment). It is queued for retransmission and the
+                    // watchdog above keeps counting, so the loop must carry on rather than end here.
+                }
             }
         }
         catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) { }     // the session was closed under us
     }
 
-    private void SetState(Iax2SessionState newState)
+    private readonly Lock _stateGate = new();
+
+    /// <summary>
+    /// Guarded by <see cref="_stateGate"/>. Once a dialled session reaches Disconnected it stays there: a late
+    /// ACCEPT or ANSWER, or a second loop noticing the same failure, cannot bring it back or report it twice.
+    /// </summary>
+    private bool _ended;
+
+    /// <summary>True for the states a call passes through before it is answered.</summary>
+    private static bool IsSettingUp(Iax2SessionState state) =>
+        state is Iax2SessionState.Connecting or Iax2SessionState.CallTokenHandshake or Iax2SessionState.Authenticating;
+
+    /// <summary>
+    /// Moves to <paramref name="newState"/> and raises <see cref="StateChanged"/>. The receive, keep-alive and
+    /// retransmit loops and the caller's thread can all get here at once, so the transition itself is atomic;
+    /// the event is raised outside the lock. Returns false when nothing changed.
+    /// </summary>
+    private bool SetState(Iax2SessionState newState, Iax2DisconnectReason reason = Iax2DisconnectReason.None)
     {
-        if (State != newState)
+        lock (_stateGate)
         {
+            if (_ended || State == newState) return false;
+
+            if (newState == Iax2SessionState.Disconnected)
+            {
+                _ended = true;
+                DisconnectReason = reason;      // set before StateChanged reports Disconnected
+            }
             State = newState;
-            if (newState == Iax2SessionState.Disconnected) _retransmit.Clear(); // nothing left to resend
-            StateChanged?.Invoke(newState);
         }
+
+        if (newState == Iax2SessionState.Disconnected) _retransmit.Clear(); // nothing left to resend
+
+        // Each listener on its own: one that throws must not stop the others hearing that the call ended
+        // (the runtime cleans the link up from this event).
+        var handlers = StateChanged;
+        if (handlers != null)
+        {
+            foreach (Action<Iax2SessionState> handler in handlers.GetInvocationList())
+            {
+                try { handler(newState); }
+                catch (Exception ex) { ReportError($"A session state listener failed: {ex.Message}"); }
+            }
+        }
+        return true;
     }
 
     public async ValueTask DisposeAsync()
@@ -900,8 +1105,10 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         if (_isDisposed) return;
         _isDisposed = true;
 
-        _cts.Cancel();
+        // Hang up while the loops are still running: the receive loop has to be alive to see the HANGUP's
+        // acknowledgment (see HangupAckWait). Then stop them.
         await DisconnectAsync();
+        _cts.Cancel();
 
         // Events are raised on the receive/keep-alive threads. If a handler disposes the session
         // (directly or via an inline continuation) the loop cannot finish while we wait on it, so

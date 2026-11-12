@@ -41,7 +41,8 @@ public class NodeRuntimeMultiLinkTests : IDisposable
         Factor = 2,
         NetworkChangeDebounce = TimeSpan.FromMilliseconds(30),
         RegistrationWait = TimeSpan.FromMilliseconds(800),
-        AttemptTimeout = TimeSpan.FromMilliseconds(400)
+        AttemptTimeout = TimeSpan.FromMilliseconds(400),
+        RegistrationSettleDelay = TimeSpan.Zero   // production waits 15 s after registering; tests must not
     };
 
     private async Task<NodeRuntime> CreateAsync(bool quickKeepAlive = false, bool autoReconnect = true)
@@ -307,5 +308,138 @@ public class NodeRuntimeMultiLinkTests : IDisposable
         Assert.Same(b, Conn(rt, "3000").Link);
         Assert.Equal(2, rt.Connections.Count);
         Assert.Equal("2000", rt.TransmitNode);          // its transmit choice survived the outage
+    }
+
+    /// <summary>A runtime that, like production, holds the first dial for a while after registering.</summary>
+    private async Task<NodeRuntime> CreateWithSettleDelayAsync(TimeSpan settle)
+    {
+        var config = new NodeConfigService(new JsonFileSettingsStore(_settingsPath), _secrets);
+        await config.SaveAsync(new NodeSettings { NodeNumber = "55553", Callsign = "W1AW" }, "pw");
+        var resolver = new NodeResolution();
+        foreach (var (node, remote) in _remotes) resolver.SetStaticOverride(node, remote.EndPoint);
+
+        var runtime = new NodeRuntime(
+            config,
+            audioFactory: () => { var d = new FakeAudioDevice(); lock (_devices) _devices.Add(d); return d; },
+            resolver: resolver,
+            registrationFactory: cfg => new AslRegistrationService(cfg, new HttpClient(new OkHandler())),
+            networkMonitor: _net,
+            reconnectPolicy: FastPolicy with { RegistrationSettleDelay = settle },
+            configureSession: s => s.KeepAliveInterval = TimeSpan.FromSeconds(30));
+        await runtime.StartAsync();
+        await Wait.UntilAsync(() => runtime.IsRegistered);
+        return runtime;
+    }
+
+    private sealed class DirectoryHandler(Func<int> port) : HttpMessageHandler
+    {
+        public int Requests;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Interlocked.Increment(ref Requests);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"node\":{\"ipaddr\":\"127.0.0.1\",\"port\":" + port() + ",\"callsign\":\"W1AW\"}}",
+                    Encoding.UTF8, "application/json")
+            });
+        }
+    }
+
+    [Fact]
+    public async Task ReconnectAfterTheNodeMovedAddress_LooksItUpAgain_InsteadOfRedialingTheCachedOne()
+    {
+        // Node 2000 is found through the directory (not a static override), so its address is cached for 15 minutes.
+        var oldHome = _remotes["2000"];
+        var newHome = _remotes["3000"];
+        var current = oldHome;
+        var directory = new DirectoryHandler(() => Volatile.Read(ref current).EndPoint.Port);
+        var resolver = new NodeResolution(new HttpClient(directory)) { PortProbe = null, DnsPort = null };
+
+        var config = new NodeConfigService(new JsonFileSettingsStore(_settingsPath), _secrets);
+        await config.SaveAsync(new NodeSettings { NodeNumber = "55553", Callsign = "W1AW" }, "pw");
+        await using var rt = new NodeRuntime(
+            config,
+            audioFactory: () => new FakeAudioDevice(),
+            resolver: resolver,
+            registrationFactory: cfg => new AslRegistrationService(cfg, new HttpClient(new OkHandler())),
+            networkMonitor: _net,
+            reconnectPolicy: FastPolicy,
+            // The fakes never answer PINGs, so the link is declared lost about 160 ms after it connects.
+            configureSession: s => s.KeepAliveInterval = TimeSpan.FromMilliseconds(40));
+        await rt.StartAsync();
+
+        await rt.ConnectAsync("2000");
+        await oldHome.AcceptCallAsync();
+        await Wait.UntilAsync(() => Conn(rt, "2000").Link?.Session.State == Iax2SessionState.Connected);
+        Assert.Equal(1, Volatile.Read(ref directory.Requests));
+
+        // The node's public address changes; the old one goes quiet, so the link is lost and re-dialled.
+        Volatile.Write(ref current, newHome);
+
+        // First retry: the cached (old) address, which never answers. That failure must drop the cached address,
+        // so the next retry asks the directory again and reaches the node at its new home.
+        await newHome.AcceptCallAsync();
+        await Wait.UntilAsync(() => rt.Connections.FirstOrDefault(c => c.Node == "2000")?.Link is { } l
+                                    && l.Session.State == Iax2SessionState.Connected
+                                    && l.Target.EndPoint.Port == newHome.EndPoint.Port);
+        Assert.True(Volatile.Read(ref directory.Requests) >= 2);
+    }
+
+    [Fact]
+    public async Task HangUpDuringTheJustRegisteredWait_CancelsTheConnect_AndNothingIsDialled()
+    {
+        await using var rt = await CreateWithSettleDelayAsync(TimeSpan.FromSeconds(30));
+        int linksCreated = 0;
+        rt.LinkAdded += _ => Interlocked.Increment(ref linksCreated);
+
+        var connect = rt.ConnectAsync("2000");                      // held by the "just registered" wait
+        await Wait.UntilAsync(() => rt.Connections.Count == 1);     // the row is on screen, so it can be hung up
+        await rt.DisconnectAsync("2000");
+
+        // The connect ends promptly (not after the 30 s wait) and reports that it was cancelled.
+        var finished = await Task.WhenAny(connect, Task.Delay(5000));
+        Assert.Same(connect, finished);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => connect);
+
+        await Task.Delay(200);
+        Assert.Empty(rt.Connections);
+        Assert.Empty(rt.Links);
+        Assert.Equal(0, Volatile.Read(ref linksCreated));           // no hidden call that the user cannot hang up
+        Assert.Null(rt.TransmitNode);
+        lock (_devices) Assert.Empty(_devices);                     // no audio device was opened for it
+        await Assert.ThrowsAnyAsync<Exception>(() => _remotes["2000"].ReceiveFrameAsync(200));   // nothing reached the node
+    }
+
+    [Fact]
+    public async Task DisconnectAllDuringTheWait_CancelsEveryPendingConnect_AndANewConnectStillWorks()
+    {
+        await using var rt = await CreateWithSettleDelayAsync(TimeSpan.FromSeconds(30));
+
+        var first = rt.ConnectAsync("2000");
+        var second = rt.ConnectAsync("3000");
+        await Wait.UntilAsync(() => rt.Connections.Count == 2);
+        await rt.DisconnectAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first.WaitAsync(TimeSpan.FromSeconds(5)));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => second.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Empty(rt.Connections);
+        Assert.Empty(rt.Links);
+    }
+
+    [Fact]
+    public async Task AfterACancelledConnect_TheSameNodeCanBeConnectedAgain()
+    {
+        await using var rt = await CreateWithSettleDelayAsync(TimeSpan.FromMilliseconds(600));
+
+        var cancelled = rt.ConnectAsync("2000");
+        await Wait.UntilAsync(() => rt.Connections.Count == 1);
+        await rt.DisconnectAsync("2000");
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled.WaitAsync(TimeSpan.FromSeconds(5)));
+
+        var link = await LinkAsync(rt, "2000");                     // waits out the rest of the 600 ms, then dials
+        Assert.Equal(Iax2SessionState.Connected, link.Session.State);
+        Assert.Equal("2000", rt.TransmitNode);
+        Assert.Single(rt.Links);
     }
 }

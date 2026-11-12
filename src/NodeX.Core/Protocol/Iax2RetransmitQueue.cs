@@ -94,6 +94,26 @@ internal sealed class Iax2RetransmitQueue
         lock (_lock) _entries.Clear();
     }
 
+    /// <summary>True while the frame with this sequence number has not been acknowledged.</summary>
+    public bool IsPending(byte seq)
+    {
+        lock (_lock) return _entries.Exists(e => e.Seq == seq);
+    }
+
+    /// <summary>
+    /// A copy of one unacknowledged frame with the retransmit bit set, for a caller that paces its own
+    /// re-sends (the HANGUP at the end of a call). Null once the frame has been acknowledged. Does not count
+    /// against the retry limit.
+    /// </summary>
+    public byte[]? RetransmitCopy(byte seq)
+    {
+        lock (_lock)
+        {
+            var entry = _entries.Find(e => e.Seq == seq);
+            return entry == null ? null : WithRetransmitBit(entry.Packet);
+        }
+    }
+
     private static byte[] WithRetransmitBit(byte[] original)
     {
         byte[] copy = (byte[])original.Clone();

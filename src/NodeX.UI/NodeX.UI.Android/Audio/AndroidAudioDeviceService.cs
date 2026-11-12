@@ -33,9 +33,10 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
         {
             var track = _track;
             if (track == null) return TimeSpan.Zero;
-            long played = (uint)track.PlaybackHeadPosition; // frames, wraps at 2^32
-            long pending = Interlocked.Read(ref _samplesWritten) - played;
-            return AudioFormat.SamplesToDuration((int)Math.Max(0, pending));
+            // The head position is a 32-bit frame counter that wraps; the helper compares modulo 2^32.
+            int pending = AudioFormat.PendingPlaybackSamples(
+                Interlocked.Read(ref _samplesWritten), track.PlaybackHeadPosition);
+            return AudioFormat.SamplesToDuration(pending);
         }
     }
 

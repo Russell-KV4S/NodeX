@@ -43,6 +43,12 @@ public sealed class NodeConnection
         set => _wanted = value;
     }
 
+    /// <summary>
+    /// Cancelled when the runtime forgets this node (the user hung up, or recovery gave up), so a connect that is
+    /// still waiting or resolving stops instead of dialling a node nobody wants any more.
+    /// </summary>
+    internal readonly CancellationTokenSource Abandoned = new();
+
     /// <summary>Consecutive "remote hung up right after ACCEPT" outcomes.</summary>
     internal int EarlyHangups;
 

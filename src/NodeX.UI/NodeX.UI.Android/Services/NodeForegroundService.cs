@@ -230,7 +230,11 @@ public sealed class NodeForegroundService : Service
             else
             {
                 if (_carMode) AndroidAudioRoute.LeaveCar(this);
-                _keeper.StartBluetoothSco();   // no-op when no Bluetooth headset is connected
+                // No-op when no Bluetooth headset is connected. Apply runs again on every change (another node
+                // linked, a settings save, a notification refresh), so it must not undo a loudspeaker choice:
+                // starting SCO puts the phone back in communication mode and moves the audio to the headset.
+                // Switching back to Phone picks the headset itself (AndroidAudioRoute.SetSpeaker).
+                if (!AndroidAudioRoute.SpeakerActive) _keeper.StartBluetoothSco();
             }
             _carMode = car;
         }

@@ -45,6 +45,7 @@ public class TransmitPolicyTests
     public async Task Ptt_IsRefused_WhenBlocked_AndNothingIsSent()
     {
         using var s = new Iax2Session { LocalNodeNumber = "1234", RemoteNodeNumber = "2000" };
+        s.SetStateForTests(Iax2SessionState.Connected);   // keying is refused on a call that is not up
         var policy = new TransmitPolicy { ListenOnly = true };
         using var c = new NodePttController(s) { Policy = policy };
         var warnings = new List<string>();
@@ -66,6 +67,7 @@ public class TransmitPolicyTests
     public async Task Ptt_Works_OnceAllowed_AndUnkeyingIsNeverBlocked()
     {
         using var s = new Iax2Session { LocalNodeNumber = "1234", RemoteNodeNumber = "2000" };
+        s.SetStateForTests(Iax2SessionState.Connected);   // keying is refused on a call that is not up
         var policy = new TransmitPolicy { MicrophoneAllowed = false };
         using var c = new NodePttController(s) { Policy = policy };
 
@@ -84,6 +86,7 @@ public class TransmitPolicyTests
     public async Task ActiveKey_IsReleased_WhenPolicyBecomesBlocked()
     {
         using var s = new Iax2Session { LocalNodeNumber = "1234", RemoteNodeNumber = "2000" };
+        s.SetStateForTests(Iax2SessionState.Connected);   // keying is refused on a call that is not up
         var policy = new TransmitPolicy();
         using var c = new NodePttController(s) { Policy = policy };
         var released = new TaskCompletionSource();

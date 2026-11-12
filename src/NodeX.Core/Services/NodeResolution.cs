@@ -23,6 +23,9 @@ public sealed class NodeResolution
 {
     private readonly HttpClient _httpClient;
     private readonly ConcurrentDictionary<string, (NodeInfo Info, DateTime ExpiresAt)> _cache = new();
+
+    /// <summary>The most recent successful lookup per node, kept past the cache so a failed lookup has something to fall back on.</summary>
+    private readonly ConcurrentDictionary<string, NodeInfo> _lastKnown = new();
     private readonly ConcurrentDictionary<string, IPEndPoint> _staticOverrides = new();
     private readonly Func<string, CancellationToken, Task<IPAddress[]>> _dnsResolver;
     private readonly Func<DateTime> _utcNow;
@@ -91,7 +94,22 @@ public sealed class NodeResolution
     }
 
     /// <summary>Clears all cached lookups (static overrides are kept).</summary>
-    public void ClearCache() => _cache.Clear();
+    public void ClearCache()
+    {
+        _cache.Clear();
+        _lastKnown.Clear();
+    }
+
+    /// <summary>
+    /// Forgets the cached address of one node so the next <see cref="ResolveNodeAsync"/> looks it up again. Call it
+    /// when a dial to the cached address went unanswered: the node may have moved (a home or hotspot node whose
+    /// public IP changed), and without this every retry for the rest of <see cref="CacheTtl"/> would go to the old
+    /// address. If the fresh lookup then fails altogether, the last known address is still returned.
+    /// </summary>
+    public void Invalidate(string nodeNumber)
+    {
+        if (!string.IsNullOrWhiteSpace(nodeNumber)) _cache.TryRemove(nodeNumber.Trim(), out _);
+    }
 
     /// <summary>
     /// Sets a manual IP endpoint override for a specific node (useful for testing, private nodes, or LAN).
@@ -187,6 +205,7 @@ public sealed class NodeResolution
 
                         var info = new NodeInfo(nodeNumber, callsign, endpoint, desc, _utcNow());
                         _cache[nodeNumber] = (info, _utcNow().Add(CacheTtl));
+                        _lastKnown[nodeNumber] = info;
                         return info;
                     }
                 }
@@ -216,6 +235,7 @@ public sealed class NodeResolution
                     var endpoint = new IPEndPoint(ipv4, dnsPort);
                     var info = new NodeInfo(nodeNumber, string.Empty, endpoint, "DNS Fallback", _utcNow());
                     _cache[nodeNumber] = (info, _utcNow().Add(CacheTtl));
+                    _lastKnown[nodeNumber] = info;
                     return info;
                 }
             }
@@ -229,6 +249,8 @@ public sealed class NodeResolution
             }
         }
 
-        return null;
+        // 3. Every lookup failed (directory and DNS unreachable, or the node has dropped out of both). An
+        //    address that worked earlier is a better guess than giving up, so a reconnect can still be tried.
+        return _lastKnown.TryGetValue(nodeNumber, out var lastKnown) ? lastKnown : null;
     }
 }

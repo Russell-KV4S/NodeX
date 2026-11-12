@@ -39,9 +39,12 @@ public sealed class NodePttController : IAsyncDisposable, IDisposable
     private readonly Stopwatch _txDurationStopwatch = new();
     private readonly Lock _stateLock = new();
 
+    /// <summary>Serialises key/unkey requests (see <see cref="SetPttStateAsync"/>). Never disposed: late callers may still be queued.</summary>
+    private readonly SemaphoreSlim _keyGate = new(1, 1);
+
     private CancellationTokenSource? _totCts;
     private Task? _totMonitorTask;
-    private bool _isDisposed;
+    private volatile bool _isDisposed;
 
     /// <summary>Whether transmitter is currently keyed active.</summary>
     public bool IsPttActive { get; private set; }
@@ -174,60 +177,85 @@ public sealed class NodePttController : IAsyncDisposable, IDisposable
 
     /// <summary>
     /// Sets the PTT state directly and dispatches IAX2 AST_CONTROL_KEY / AST_CONTROL_UNKEY.
+    /// Calls are serialised: the state change and the frame it sends are one step, so a key and an unkey arriving
+    /// from different threads (screen, Bluetooth button, time-out timer, a transmit-node change) can never leave
+    /// the session transmitting while this controller says it is idle.
     /// </summary>
-    public async Task SetPttStateAsync(bool key, PttSource source)
+    public Task SetPttStateAsync(bool key, PttSource source) => SetPttStateCoreAsync(key, source, CancellationToken.None);
+
+    /// <param name="onlyIfStillCurrent">
+    /// Used by the time-out timer: if this is cancelled by the time the call gets its turn (the over it was timing
+    /// has already ended), nothing is done, so an old timer can never unkey a newer transmission.
+    /// </param>
+    private async Task SetPttStateCoreAsync(bool key, PttSource source, CancellationToken onlyIfStillCurrent)
     {
-        bool stateChanged = false;
-
-        if (key && !_transmitEnabled)
+        await _keyGate.WaitAsync().ConfigureAwait(false);
+        try
         {
-            WarningLogged?.Invoke($"Not transmitting. {ListenOnlyReason}");
-            return;
-        }
-
-        if (key && _policy is { CanTransmit: false })
-        {
-            WarningLogged?.Invoke($"Not transmitting. {_policy.Reason}");
-            return;
-        }
-
-        lock (_stateLock)
-        {
-            if (IsPttActive == key)
-            {
-                return;
-            }
-
-            IsPttActive = key;
-            CurrentSource = key ? source : PttSource.None;
-            stateChanged = true;
+            if (onlyIfStillCurrent.IsCancellationRequested) return;
 
             if (key)
             {
-                _txDurationStopwatch.Restart();
-                StartTotMonitor();
-            }
-            else
-            {
-                _txDurationStopwatch.Stop();
-                StopTotMonitor();
-            }
-        }
+                // Checked inside the gate, so a refusal cannot race with the change that causes it.
+                if (_isDisposed) return;
 
-        if (stateChanged)
-        {
+                if (!_transmitEnabled)
+                {
+                    WarningLogged?.Invoke($"Not transmitting. {ListenOnlyReason}");
+                    return;
+                }
+
+                if (_policy is { CanTransmit: false })
+                {
+                    WarningLogged?.Invoke($"Not transmitting. {_policy.Reason}");
+                    return;
+                }
+
+                // The session only sends KEY while the call is up. Accepting a key earlier would show "on air"
+                // (and run the time-out timer) with nothing going out, even after the call connects.
+                if (_session.State != Iax2SessionState.Connected)
+                {
+                    WarningLogged?.Invoke("Not transmitting. The link is not connected yet.");
+                    return;
+                }
+            }
+
+            lock (_stateLock)
+            {
+                if (IsPttActive == key) return;
+
+                IsPttActive = key;
+                CurrentSource = key ? source : PttSource.None;
+
+                if (key)
+                {
+                    _txDurationStopwatch.Restart();
+                    StartTotMonitor();
+                }
+                else
+                {
+                    _txDurationStopwatch.Stop();
+                    StopTotMonitor();
+                }
+            }
+
             try
             {
                 // Signaling via IAX2 session:
                 // Emits AST_CONTROL_KEY (12) when true and AST_CONTROL_UNKEY (13) when false
-                await _session.SetPttAsync(key);
+                await _session.SetPttAsync(key).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 WarningLogged?.Invoke($"Failed to send IAX2 PTT control frame: {ex.Message}");
             }
 
+            // Raised inside the gate so listeners always see key and unkey in the order they happened.
             PttStateChanged?.Invoke(key, source);
+        }
+        finally
+        {
+            _keyGate.Release();
         }
     }
 
@@ -250,7 +278,8 @@ public sealed class NodePttController : IAsyncDisposable, IDisposable
     {
         StopTotMonitor();
         _totCts = new CancellationTokenSource();
-        _totMonitorTask = Task.Run(() => TotMonitorLoopAsync(_totCts.Token));
+        var token = _totCts.Token;   // captured now: the field may be replaced before the task runs
+        _totMonitorTask = Task.Run(() => TotMonitorLoopAsync(token));
     }
 
     private void StopTotMonitor()
@@ -273,7 +302,9 @@ public sealed class NodePttController : IAsyncDisposable, IDisposable
             WarningLogged?.Invoke($"Time-Out Timer ({TimeOutTimerLimit.TotalSeconds}s) exceeded! Forcing unkey.");
             TimeOutTimerExceeded?.Invoke();
 
-            await SetPttStateAsync(false, PttSource.External);
+            // Tied to this over's token: if the user unkeyed (and perhaps keyed again) while this was waiting
+            // for its turn, it must not release the newer transmission.
+            await SetPttStateCoreAsync(false, PttSource.External, cancellationToken);
         }
         catch (OperationCanceledException) { }
     }

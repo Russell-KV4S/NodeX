@@ -3,7 +3,7 @@
 **Status (2026-11-06): not started by the owner.** The owner has no Mac and chose not to pay for the Apple Developer Program ($99/year). The iOS head compiles and is prepared for release, but it has **never been built into an `.ipa` or run on a device**. This file is for anyone (a future contributor, or the owner later) who wants to pick it up.
 
 ## What is already done in the repo
-- `src/NodeX.UI/NodeX.UI.iOS/Info.plist`: bundle ID `com.kv4s.nodex` (same as Android), display name `NodeX`, version 1.4 / build 1, `arm64`, `ITSAppUsesNonExemptEncryption=false`, `XSAppIconAssets` pointing at the icon set, microphone and Bluetooth usage strings, background modes `audio` and `bluetooth-central`.
+- `src/NodeX.UI/NodeX.UI.iOS/Info.plist`: bundle ID `com.kv4s.nodex` (same as Android), display name `NodeX`, version 1.15 / build 17 (kept in step with Android), `arm64`, `ITSAppUsesNonExemptEncryption=false`, `XSAppIconAssets` pointing at the icon set, microphone and Bluetooth usage strings, background modes `audio` and `bluetooth-central`.
 - `Resources/Assets.xcassets/AppIcon.appiconset`: 1024x1024 RGB icon (no alpha, which Apple requires) made from `branding/exports/nodex-app-icon-1024.png`. **Unproven:** the asset catalog is only compiled on a Mac, so the first Mac build may need fixes here.
 - `dotnet build src/NodeX.UI/NodeX.UI.iOS` passes on Windows (compile check only).
 

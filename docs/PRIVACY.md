@@ -13,7 +13,7 @@ NodeX is a free, open-source AllStarLink node app. It has no accounts, no advert
 
 **Sent over the network, only because you asked NodeX to connect**
 - **AllStarLink registration** (`register.allstarlink.org`, HTTPS): your node number, node password and the public IP address your connection comes from. This is how an AllStarLink node tells the network where it is. It is governed by AllStarLink's own policies.
-- **Looking up and linking nodes** (`stats.allstarlink.org`, DNS, and IAX2 over UDP to the node you link): the node numbers you search for or connect to, your node number (the IAX caller identity is `NodeX-<node number>`) and your public IP address. Your callsign is not sent. Other nodes on the network can see these, as with any AllStarLink node.
+- **Looking up and linking nodes** (`stats.allstarlink.org`, DNS, and IAX2 over UDP to the node you link): the node numbers you search for or connect to, your node number (the IAX caller identity is `NodeX-<node number>`) and your public IP address. Your callsign is not sent. Other nodes on the network can see these, as with any AllStarLink node. To find which port a node listens on, NodeX asks your device's DNS servers and, when it cannot use them, the public resolvers 1.1.1.1 (Cloudflare) and 8.8.8.8 (Google), which then see the number of the node being looked up.
 - **Find a node**: the text you type in the search box is sent to `stats.allstarlink.org`.
 - **Your voice**: while you key the transmitter, microphone audio is sent to the node you chose, and through it possibly onto the air and to anyone linked to that node. NodeX never records audio. Received audio is played and discarded.
 

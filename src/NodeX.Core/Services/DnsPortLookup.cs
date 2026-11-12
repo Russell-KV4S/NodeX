@@ -120,14 +120,23 @@ public static class DnsPortLookup
             int qd = BinaryPrimitives.ReadUInt16BigEndian(msg.AsSpan(4));
             int an = BinaryPrimitives.ReadUInt16BigEndian(msg.AsSpan(6));
             int pos = 12;
-            for (int i = 0; i < qd; i++) pos = SkipName(msg, pos) + 4;
+            for (int i = 0; i < qd; i++)
+            {
+                pos = SkipName(msg, pos);
+                if (pos < 0) return null;
+                pos += 4;
+            }
 
             for (int i = 0; i < an; i++)
             {
                 pos = SkipName(msg, pos);
+                if (pos < 0 || pos + 10 > msg.Length) return null;
                 ushort type = BinaryPrimitives.ReadUInt16BigEndian(msg.AsSpan(pos));
                 int rdLen = BinaryPrimitives.ReadUInt16BigEndian(msg.AsSpan(pos + 8));
                 int rd = pos + 10;
+                // A record that claims more data than the reply holds is truncated: trust nothing from here on
+                // (reading a port out of half a record could produce a plausible but wrong number).
+                if (rd + rdLen > msg.Length) return null;
                 pos = rd + rdLen;
 
                 if (type != wantedType) continue;
@@ -163,13 +172,16 @@ public static class DnsPortLookup
         return null;
     }
 
-    private static int SkipName(byte[] msg, int pos)
+    /// <summary>Position just after the name starting at <paramref name="pos"/>, or -1 when the name is malformed.</summary>
+    internal static int SkipName(byte[] msg, int pos)
     {
         while (true)
         {
+            if ((uint)pos >= (uint)msg.Length) return -1;
             byte b = msg[pos];
             if (b == 0) return pos + 1;
-            if ((b & 0xC0) == 0xC0) return pos + 2;   // compression pointer ends the name
+            if ((b & 0xC0) == 0xC0) return pos + 2 <= msg.Length ? pos + 2 : -1;   // compression pointer ends the name
+            if ((b & 0xC0) != 0) return -1;            // 0x40 / 0x80 label types are reserved: not a reply we understand
             pos += b + 1;
         }
     }

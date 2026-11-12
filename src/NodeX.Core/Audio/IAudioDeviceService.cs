@@ -51,4 +51,15 @@ public static class AudioFormat
 
     public static TimeSpan SamplesToDuration(int samples) =>
         TimeSpan.FromTicks(samples * TimeSpan.TicksPerSecond / SampleRate);
+
+    /// <summary>
+    /// Samples handed to an output device that it has not played yet, from a running total of samples written and
+    /// the device's own playback position when that position is a 32-bit counter that wraps (Android's
+    /// <c>AudioTrack.PlaybackHeadPosition</c>: about 149 hours of continuous audio at 8 kHz). The two are compared
+    /// modulo 2^32, so the answer stays right across the wrap; comparing the 64-bit total with the wrapped position
+    /// directly made the backlog look enormous from then on, and the engine dropped every frame as "device behind".
+    /// A position ahead of the total (a stream that was just rebuilt) counts as nothing pending.
+    /// </summary>
+    public static int PendingPlaybackSamples(long samplesWritten, int devicePosition) =>
+        Math.Max(0, unchecked((int)((uint)samplesWritten - (uint)devicePosition)));
 }

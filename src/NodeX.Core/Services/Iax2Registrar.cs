@@ -13,6 +13,12 @@ namespace NodeX.Core;
 /// so the registry records the public address and source port of that socket.
 /// Sequence: REGREQ(username, refresh) → REGAUTH(challenge) → REGREQ(username, MD5(challenge+password), refresh)
 /// → REGACK. Servers that require call tokens first answer with a CALLTOKEN frame, which is echoed.
+/// <para>
+/// <b>Status:</b> experimental and off by default (setting <c>UdpRegistration</c>, no UI). Production registration is
+/// <see cref="AslRegistrationService"/>. This has only been tested against a loopback fake, never against
+/// register.allstarlink.org. Because it uses its own socket, the registry would record that socket's port rather
+/// than the one the call sockets use. Kept for experiments with UDP-only networks; remove it if that never happens.
+/// </para>
 /// </summary>
 public sealed class Iax2Registrar : IAsyncDisposable, IDisposable
 {

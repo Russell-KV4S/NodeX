@@ -438,10 +438,13 @@ public sealed class NodeRuntime : IAsyncDisposable
         UpdateActive();
         ConnectionsChanged?.Invoke();
 
+        // The user can hang this node up while we are still waiting or resolving (the row is already on screen).
+        // That must stop the connect, not let it dial a node that is no longer in the list.
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, c.Abandoned.Token);
         try
         {
-            await WaitForRegistrationToSettleAsync(cancellationToken);
-            var info = await DialAsync(c, cancellationToken);
+            await WaitForRegistrationToSettleAsync(linked.Token);
+            var info = await DialAsync(c, linked.Token);
             if (info == null) RemoveConnection(c, byUser: true);
             return info;
         }
@@ -476,6 +479,7 @@ public sealed class NodeRuntime : IAsyncDisposable
         var info = await _resolver.ResolveNodeAsync(c.Node, cancellationToken);
         Log.Detail("dial", $"node {c.Node}: resolve {(info == null ? "failed" : "ok -> " + info.EndPoint)} in {sw.ElapsedMilliseconds} ms");
         if (info == null) return null;
+        ThrowIfAbandoned(c);
         c.Info = info;
 
         var link = new NodeLink(Config.Settings, info, _audioFactory(), _audioOptions, _configureSession, Transmit);
@@ -489,6 +493,15 @@ public sealed class NodeRuntime : IAsyncDisposable
             Log.Detail("iax", $"node {c.Node}: session {state} {dialClock.ElapsedMilliseconds} ms after dial started");
 
         c.Link = link;
+
+        // A hang-up that slipped in before the link was published saw no call to end. Now that it is visible to
+        // DisconnectAsync, check once more; from here on a hang-up finds and closes it.
+        if (!IsCurrent(c))
+        {
+            if (c.TryClearLink(link)) await link.DisposeAsync();
+            throw new OperationCanceledException($"Node {c.Node} was disconnected before the call started.");
+        }
+
         ApplyTransmitFlags();          // sets this link's TransmitEnabled from the current choice
         LinkAdded?.Invoke(link);
         ConnectionsChanged?.Invoke();
@@ -506,11 +519,24 @@ public sealed class NodeRuntime : IAsyncDisposable
         return info;
     }
 
+    /// <summary>True while <paramref name="c"/> is still one of the nodes the user wants linked.</summary>
+    private bool IsCurrent(NodeConnection c)
+    {
+        lock (_connLock) return c.Wanted && _connections.Contains(c);
+    }
+
+    private void ThrowIfAbandoned(NodeConnection c)
+    {
+        if (!IsCurrent(c))
+            throw new OperationCanceledException($"Node {c.Node} was disconnected before the call started.");
+    }
+
     /// <summary>The user hangs up every link: stops any reconnecting and closes them all.</summary>
     public async Task DisconnectAsync()
     {
-        foreach (var c in SnapshotConnections())
-            await DisconnectConnectionAsync(c);
+        // All at once: each hang-up may wait a moment for its HANGUP to be acknowledged, and with several nodes
+        // on a dead path those waits must not add up.
+        await Task.WhenAll(SnapshotConnections().Select(DisconnectConnectionAsync));
         UpdateActive();
     }
 
@@ -598,6 +624,7 @@ public sealed class NodeRuntime : IAsyncDisposable
             remaining = _connections.Count;
         }
 
+        c.Abandoned.Cancel();          // stops a connect for this node that is still waiting or resolving
         ApplyTransmitFlags();
         UpdateActive();
         if (lostTransmit && remaining > 0)
@@ -699,6 +726,7 @@ public sealed class NodeRuntime : IAsyncDisposable
             switch (reason)
             {
                 case Iax2DisconnectReason.LinkLost when !link.WasConnected:
+                    _resolver.Invalidate(node);     // the address may be out of date: look it up afresh next time
                     ErrorOccurred?.Invoke($"No response from node {node}.");
                     break;
                 case Iax2DisconnectReason.LinkLost:
@@ -945,6 +973,9 @@ public sealed class NodeRuntime : IAsyncDisposable
 
         if (!connected)
         {
+            // Nothing answered at that address. The node may have moved since it was looked up (its public IP
+            // changed), so the next attempt must not reuse the cached address for the rest of the cache lifetime.
+            _resolver.Invalidate(c.Node);
             await EndLinkAsync(c, link, transient: true);
             return false;
         }
@@ -1063,6 +1094,8 @@ public sealed class NodeRuntime : IAsyncDisposable
         {
             var link = c.Link;
             if (link == null) return;
+            // The old source address is gone, so the HANGUP cannot be acknowledged: do not wait for it.
+            link.Session.HangupAckWait = TimeSpan.Zero;
             await EndLinkAsync(c, link, transient: true);
             StartReconnect(c, immediate: available);
         }));

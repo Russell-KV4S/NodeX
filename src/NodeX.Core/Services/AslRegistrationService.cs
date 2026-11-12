@@ -14,11 +14,19 @@ public record AslRegistrationConfig(
     string NodePassword,
     int Port = Iax2Protocol.DefaultPort,
     string RegistrationUrl = AslRegistrationService.DefaultRegistrationUrl,
-    TimeSpan Interval = default
+    TimeSpan Interval = default,
+    TimeSpan RetryDelay = default
 )
 {
     /// <summary>The official module re-registers every 60 s by default.</summary>
     public TimeSpan EffectiveInterval => Interval == default ? TimeSpan.FromSeconds(60) : Interval;
+
+    /// <summary>
+    /// Wait before trying again after a request that never reached the registry: 5 s unless overridden, doubling
+    /// per further failure and never longer than the normal interval. Waiting a whole interval leaves a node
+    /// unregistered for a minute over one lost request (for example the first one after a network change).
+    /// </summary>
+    public TimeSpan EffectiveRetryDelay => RetryDelay == default ? TimeSpan.FromSeconds(5) : RetryDelay;
 }
 
 /// <summary>
@@ -123,8 +131,19 @@ public sealed class AslRegistrationService : IAsyncDisposable, IDisposable
         RegistrationStatusChanged?.Invoke(false, LastStatusMessage);
     }
 
-    /// <summary>Sends a single registration request immediately.</summary>
+    /// <summary>
+    /// Sends a single registration request immediately (outside the background schedule, for example right after
+    /// the network changed). The background loop then re-plans its next beat: a full interval after a success,
+    /// a short retry after a request that never reached the registry.
+    /// </summary>
     public async Task<bool> SendHeartbeatAsync(CancellationToken cancellationToken = default)
+    {
+        bool ok = await SendOnceAsync(cancellationToken);
+        Interlocked.Exchange(ref _reschedule, NewSignal()).TrySetResult();
+        return ok;
+    }
+
+    private async Task<bool> SendOnceAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -139,14 +158,28 @@ public sealed class AslRegistrationService : IAsyncDisposable, IDisposable
 
             if (!response.IsSuccessStatusCode)
             {
-                return Fail($"Registration rejected (HTTP {(int)response.StatusCode} {response.ReasonPhrase})");
+                // 5xx, 408 and 429 say the registry (or something in front of it) is struggling, not that it
+                // refused this node.
+                int code = (int)response.StatusCode;
+                bool verdict = code is < 500 and not 408 and not 429;
+                return Fail($"Registration rejected (HTTP {code} {response.ReasonPhrase})", registryAnswered: verdict);
             }
 
             return ApplyResponse(body);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return Fail($"Connection failed: {ex.Message}");
+            throw;      // the caller (or StopAsync) cancelled: not a failure
+        }
+        catch (OperationCanceledException)
+        {
+            // HttpClient reports its own timeout as a cancellation. It is a failed request like any other; letting
+            // it escape used to end the background loop for good, so the node silently stopped re-registering.
+            return Fail("Connection failed: the registration server did not answer in time", registryAnswered: false);
+        }
+        catch (Exception ex)
+        {
+            return Fail($"Connection failed: {ex.Message}", registryAnswered: false);
         }
     }
 
@@ -156,7 +189,8 @@ public sealed class AslRegistrationService : IAsyncDisposable, IDisposable
         {
             using var doc = JsonDocument.Parse(body);
             var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return Fail("Registration reply was not a JSON object");
+            if (root.ValueKind != JsonValueKind.Object)
+                return Fail("Registration reply was not a JSON object", registryAnswered: false);
 
             if (root.TryGetProperty("ipaddr", out var ip) && ip.ValueKind == JsonValueKind.String
                 && IPAddress.TryParse(ip.GetString(), out var address))
@@ -176,6 +210,7 @@ public sealed class AslRegistrationService : IAsyncDisposable, IDisposable
 
             if (status.Contains(SuccessMarker, StringComparison.Ordinal))
             {
+                Interlocked.Exchange(ref _transportFailures, 0);
                 IsRegistered = true;
                 LastSuccessfulHeartbeat = DateTime.UtcNow;
                 LastStatusMessage = PerceivedAddress is null
@@ -186,21 +221,72 @@ public sealed class AslRegistrationService : IAsyncDisposable, IDisposable
             }
 
             string shown = status.Length > 120 ? status[..120] + "..." : status;
-            return Fail(string.IsNullOrWhiteSpace(shown) ? "Registration not accepted" : $"Registration not accepted: {shown}");
+            return Fail(
+                string.IsNullOrWhiteSpace(shown) ? "Registration not accepted" : $"Registration not accepted: {shown}",
+                registryAnswered: true);
         }
         catch (JsonException)
         {
-            return Fail("Registration reply was not valid JSON");
+            // Not the registry talking (a captive portal or proxy page, or a truncated reply).
+            return Fail("Registration reply was not valid JSON", registryAnswered: false);
         }
     }
 
-    private bool Fail(string message)
+    /// <summary>
+    /// Consecutive requests that got no verdict from the registry (no connection, timeout, server error, a reply
+    /// that is not the registry's JSON). Reset by any real answer, accepted or not.
+    /// </summary>
+    private int _transportFailures;
+
+    /// <summary>
+    /// While registered, this many requests in a row may fail to reach the registry before the node is reported
+    /// as not registered. One lost request does not unregister a node (the registry keeps its entry well past one
+    /// interval) and the retry follows within seconds, so reporting it would only reset "registered since" and
+    /// make the next connect wait for nothing.
+    /// </summary>
+    public const int ToleratedTransportFailures = 1;
+
+    /// <param name="registryAnswered">
+    /// True when the registry itself refused (wrong password, unknown node): reported at once and retried at the
+    /// normal interval. False when the request never got a verdict: tolerated briefly and retried quickly.
+    /// </param>
+    private bool Fail(string message, bool registryAnswered)
     {
+        if (registryAnswered)
+        {
+            Interlocked.Exchange(ref _transportFailures, 0);
+        }
+        else
+        {
+            int failures = Interlocked.Increment(ref _transportFailures);
+            if (IsRegistered && failures <= ToleratedTransportFailures) return false;
+        }
+
         IsRegistered = false;
         LastStatusMessage = message;
         RegistrationStatusChanged?.Invoke(false, message);
         return false;
     }
+
+    /// <summary>
+    /// Time until the next scheduled request: the normal interval, or after requests that never reached the
+    /// registry a short retry (<see cref="AslRegistrationConfig.EffectiveRetryDelay"/>, doubling, never longer
+    /// than the interval).
+    /// </summary>
+    internal TimeSpan NextDelay()
+    {
+        var interval = CurrentInterval;
+        int failures = Volatile.Read(ref _transportFailures);
+        if (failures <= 0) return interval;
+
+        double retryTicks = _config.EffectiveRetryDelay.Ticks * Math.Pow(2, Math.Min(failures - 1, 16));
+        return retryTicks < interval.Ticks ? TimeSpan.FromTicks((long)retryTicks) : interval;
+    }
+
+    private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Completed (and replaced) whenever an out-of-band request changes when the next beat is due.</summary>
+    private TaskCompletionSource _reschedule = NewSignal();
 
     private async Task HeartbeatLoopAsync(CancellationToken cancellationToken)
     {
@@ -208,8 +294,32 @@ public sealed class AslRegistrationService : IAsyncDisposable, IDisposable
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                await SendHeartbeatAsync(cancellationToken);
-                await Task.Delay(CurrentInterval, cancellationToken);
+                try
+                {
+                    await SendOnceAsync(cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception)
+                {
+                    // Only a listener of RegistrationStatusChanged can get here. Whatever it was, this loop is
+                    // what keeps the node registered, so it carries on.
+                }
+
+                // Wait for the next beat. An out-of-band SendHeartbeatAsync restarts the wait, so a failed
+                // immediate registration is retried soon and a successful one is not repeated moments later.
+                while (true)
+                {
+                    var rescheduled = Volatile.Read(ref _reschedule).Task;
+                    using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    var due = Task.Delay(NextDelay(), waitCts.Token);
+                    var first = await Task.WhenAny(due, rescheduled);
+                    waitCts.Cancel();
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (first == due) break;
+                }
             }
         }
         catch (OperationCanceledException) { }

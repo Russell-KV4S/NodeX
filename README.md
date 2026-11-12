@@ -66,8 +66,9 @@ Build output is redirected to `%LOCALAPPDATA%\NodeX\build` by `Directory.Build.p
 ## Known limitations
 
 - Outbound links only. Cellular carriers block inbound IAX2, so NodeX ignores inbound links.
-- At least one public hub drops links after about 45 seconds for reasons not yet understood (see the spec change log).
-- Reconnecting from a different public IP is not yet verified.
+- A hub can refuse your link for some minutes after you register or change network, until it has learned your node's address. NodeX keeps retrying (up to about 28 minutes).
+- Moving between Wi-Fi and cellular drops and re-dials the link (an IAX2 call cannot change address). It works in day-to-day use, with a delay while the new address registers; the delay has not been measured.
+- IPv4 only.
 - Linux secrets are stored in a key file beside the ciphertext rather than the OS keyring.
 
 ## Documentation
