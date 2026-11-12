@@ -32,6 +32,9 @@ public sealed class IosAudioDeviceService : IAudioDeviceService
     private bool _captureWanted;
     private bool _playbackWanted;
     private long _pendingSamples;
+    private float[] _tapInputScratch = [];
+    private short[] _tapOutputScratch = [];
+    private float[] _playbackFloatScratch = new float[AudioFormat.SamplesPerFrame];
 
     public IosAudioDeviceService(IosAudioSessionManager session)
     {
@@ -103,12 +106,12 @@ public sealed class IosAudioDeviceService : IAudioDeviceService
         int n = pcm.Length;
         var buffer = new AVAudioPcmBuffer(_playbackFormat, (uint)n) { FrameLength = (uint)n };
 
-        float[] floats = new float[n];
+        if (_playbackFloatScratch.Length < n) _playbackFloatScratch = new float[n];
         var span = pcm.Span;
-        for (int i = 0; i < n; i++) floats[i] = span[i] / 32768f;
+        for (int i = 0; i < n; i++) _playbackFloatScratch[i] = span[i] / 32768f;
 
         IntPtr channel0 = Marshal.ReadIntPtr(buffer.FloatChannelData);
-        Marshal.Copy(floats, 0, channel0, n);
+        Marshal.Copy(_playbackFloatScratch, 0, channel0, n);
 
         Interlocked.Add(ref _pendingSamples, n);
         player.ScheduleBuffer(buffer, () => Interlocked.Add(ref _pendingSamples, -n));
@@ -178,12 +181,13 @@ public sealed class IosAudioDeviceService : IAudioDeviceService
         int frames = (int)buffer.FrameLength;
         if (frames == 0 || buffer.FloatChannelData == IntPtr.Zero) return;
 
-        float[] input = new float[frames];
-        Marshal.Copy(Marshal.ReadIntPtr(buffer.FloatChannelData), input, 0, frames); // channel 0
+        if (_tapInputScratch.Length < frames) _tapInputScratch = new float[frames];
+        Marshal.Copy(Marshal.ReadIntPtr(buffer.FloatChannelData), _tapInputScratch, 0, frames); // channel 0
 
-        short[] output = new short[resampler.MaxOutputSamples(frames)];
-        int n = resampler.Process(input, output);
-        if (n > 0) cb(output.AsMemory(0, n));
+        int maxOut = resampler.MaxOutputSamples(frames);
+        if (_tapOutputScratch.Length < maxOut) _tapOutputScratch = new short[maxOut];
+        int n = resampler.Process(_tapInputScratch.AsSpan(0, frames), _tapOutputScratch);
+        if (n > 0) cb(_tapOutputScratch.AsMemory(0, n));
     }
 
     private void StopEngineIfIdleLocked()

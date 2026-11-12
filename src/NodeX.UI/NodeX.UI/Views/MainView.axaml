@@ -172,7 +172,7 @@
     <Grid RowDefinitions="Auto,*,Auto,Auto">
 
         <!-- TOP APP / CONSOLE HEADER -->
-        <Border Grid.Row="0"
+        <Border x:Name="HeaderBorder" Grid.Row="0"
                 Background="{StaticResource HeaderBackgroundBrush}"
                 BorderBrush="{StaticResource CardBorderBrush}"
                 BorderThickness="0,0,0,1"
@@ -506,6 +506,9 @@
                                                 </StackPanel>
                                                 <TextBlock Text="{Binding LastHeardText}" FontSize="11"
                                                            Foreground="{StaticResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding RemoteLinksText}" IsVisible="{Binding HasRemoteLinks}"
+                                                           FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="{StaticResource CyanAccentBrush}" />
                                                 <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
                                                     <Button Grid.Column="0" IsVisible="{Binding CanSelectTransmit}" Content="Transmit here"
                                                             Command="{Binding SelectTransmitCommand}"
@@ -583,6 +586,9 @@
                                                         </StackPanel>
                                                         <TextBlock Text="{Binding LastHeardText}" FontSize="11"
                                                                    Foreground="{StaticResource TextSecondaryBrush}" />
+                                                        <TextBlock Text="{Binding RemoteLinksText}" IsVisible="{Binding HasRemoteLinks}"
+                                                                   FontSize="11" TextWrapping="Wrap"
+                                                                   Foreground="{StaticResource CyanAccentBrush}" />
                                                     </StackPanel>
                                                     <!-- Text pill, so "audio is arriving from this node" is not colour-only -->
                                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Top">
@@ -705,7 +711,7 @@
                                             CornerRadius="6" Padding="14,8">
                                         Connect
                                     </Button>
-                                    <Button Grid.Column="1" Command="{Binding DisconnectNodeCommand}"
+                                    <Button Grid.Column="1" Command="{Binding RequestDisconnectNodeCommand}"
                                             IsEnabled="{Binding CanDisconnect}"
                                             Background="{StaticResource DangerButtonBrush}"
                                             Foreground="#FFFFFF" FontWeight="Bold"
@@ -714,6 +720,21 @@
                                             CornerRadius="6" Padding="14,8" />
                                 </Grid>
                             </Grid>
+
+                            <!-- Confirmation when multiple links are up so a stray tap does not drop every link -->
+                            <Border IsVisible="{Binding IsConfirmingDisconnectAll}"
+                                    Background="#2A1215" BorderBrush="{StaticResource TxRedBrush}" BorderThickness="1"
+                                    CornerRadius="8" Padding="10,8">
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                    <TextBlock Grid.Column="0" Text="Disconnect all linked nodes?" FontSize="12" FontWeight="SemiBold"
+                                               VerticalAlignment="Center" Foreground="#FCA5A5" TextWrapping="Wrap" />
+                                    <Button Grid.Column="1" Content="Cancel" Command="{Binding CancelDisconnectAllCommand}"
+                                            Padding="10,4" CornerRadius="6" FontSize="12" />
+                                    <Button Grid.Column="2" Content="Disconnect all" Command="{Binding DisconnectNodeCommand}"
+                                            Background="{StaticResource DangerButtonBrush}" Foreground="#FFFFFF"
+                                            Padding="10,4" CornerRadius="6" FontSize="12" FontWeight="Bold" />
+                                </Grid>
+                            </Border>
 
                             <!-- Inline rename (not a popup, which the Android keyboard would cover) -->
                             <StackPanel Spacing="6" IsVisible="{Binding IsEditingFavoriteLabel}">
@@ -822,7 +843,7 @@
 
                             <!-- Read-only TextBox: unlike SelectableTextBlock it gives touch selection handles on Android, and
                                  still selects with the mouse on desktop. Copy copies everything. -->
-                            <TextBox Grid.Row="1" Text="{Binding LogText}" IsReadOnly="True" AcceptsReturn="True"
+                            <TextBox x:Name="LogTextBox" Grid.Row="1" Text="{Binding LogText}" IsReadOnly="True" AcceptsReturn="True"
                                      TextWrapping="Wrap" FontFamily="Consolas,Menlo,monospace" FontSize="11"
                                      AutomationProperties.Name="Event log text"
                                      Background="Transparent" BorderThickness="0" Padding="0"

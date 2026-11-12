@@ -53,6 +53,13 @@ public sealed partial class LinkItemViewModel : ObservableObject
 
     public bool HasDetails => Details.Length > 0;
 
+    /// <summary>Other nodes linked to this remote node (from app_rpt <c>L</c> or <c>STATUS</c> text frames).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRemoteLinks))]
+    public partial string RemoteLinksText { get; set; } = "";
+
+    public bool HasRemoteLinks => RemoteLinksText.Length > 0;
+
     [ObservableProperty]
     public partial string StatusText { get; set; } = "CONNECTING...";
 
@@ -159,6 +166,8 @@ public sealed partial class LinkItemViewModel : ObservableObject
             string.IsNullOrWhiteSpace(info.Callsign) ? info.Description : $"{info.Callsign} • {info.Description}";
 
         var link = c.Link;
+        string remoteLinks = link?.RemoteLinkedSummary ?? "";
+        RemoteLinksText = remoteLinks.Length > 0 ? $"Also linked: {remoteLinks}" : "";
         var state = link?.Session.State ?? Iax2SessionState.Disconnected;
         IsConnected = state == Iax2SessionState.Connected;
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -51,6 +52,9 @@ public partial class MainView : UserControl
         FavoritesList.AddHandler(InputElement.PointerMovedEvent, OnFavPointerMoved, RoutingStrategies.Tunnel);
         FavoritesList.AddHandler(InputElement.PointerReleasedEvent, OnFavPointerReleased, RoutingStrategies.Tunnel);
         FavoritesList.AddHandler(InputElement.PointerCaptureLostEvent, OnFavCaptureLost, RoutingStrategies.Tunnel);
+
+        AddHandler(InputElement.KeyDownEvent, OnViewKeyDown, RoutingStrategies.Bubble);
+        AddHandler(InputElement.KeyUpEvent, OnViewKeyUp, RoutingStrategies.Bubble);
 
         SizeChanged += (_, e) =>
         {
@@ -169,6 +173,29 @@ public partial class MainView : UserControl
         {
             // Clipboard can be unavailable (locked by another app); nothing useful to show.
         }
+    }
+
+    private bool _spacePttDown;
+
+    private void OnViewKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Space || e.Source is TextBox or Button) return;
+        if (_spacePttDown) { e.Handled = true; return; }
+        if (DataContext is MainViewModel vm)
+        {
+            _spacePttDown = true;
+            e.Handled = true;
+            _ = vm.HandleSpacebarPttAsync(true);
+        }
+    }
+
+    private void OnViewKeyUp(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Space || !_spacePttDown) return;
+        _spacePttDown = false;
+        e.Handled = true;
+        if (DataContext is MainViewModel vm)
+            _ = vm.HandleSpacebarPttAsync(false);
     }
 
     private void OnPttPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -297,6 +324,7 @@ public partial class MainView : UserControl
         if (mode == HeaderMode.Short)
         {
             // Short screens (phone in landscape): brand | station | settings on one row, badges on a thin second row.
+            HeaderBorder.Padding = new Thickness(12, 8);
             HeaderGrid.ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto");
             HeaderGrid.RowDefinitions = RowDefinitions.Parse("Auto,Auto");
 
@@ -313,23 +341,25 @@ public partial class MainView : UserControl
         }
         else if (mode == HeaderMode.Compact)
         {
-            // Row 0: brand + settings. Row 1: station. Row 2: badges.
-            HeaderGrid.ColumnDefinitions = ColumnDefinitions.Parse("*,Auto");
-            HeaderGrid.RowDefinitions = RowDefinitions.Parse("Auto,Auto,Auto");
+            // Slim portrait phone header: Row 0 has brand + station badge + exit; Row 1 has registration/BLE badges.
+            HeaderBorder.Padding = new Thickness(12, 8);
+            HeaderGrid.ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto");
+            HeaderGrid.RowDefinitions = RowDefinitions.Parse("Auto,Auto");
 
             Place(BrandPanel, row: 0, column: 0, columnSpan: 1);
-            Place(HeaderActions, row: 0, column: 1, columnSpan: 1);
-            Place(StationBadge, row: 1, column: 0, columnSpan: 2);
-            Place(BadgesPanel, row: 2, column: 0, columnSpan: 2);
+            Place(StationBadge, row: 0, column: 1, columnSpan: 1);
+            Place(HeaderActions, row: 0, column: 2, columnSpan: 1);
+            Place(BadgesPanel, row: 1, column: 0, columnSpan: 3);
 
-            StationBadge.HorizontalAlignment = HorizontalAlignment.Left;
-            StationBadge.Margin = new Thickness(0, 10, 0, 0);
-            BadgesPanel.Margin = new Thickness(0, 8, 0, 0);
+            StationBadge.HorizontalAlignment = HorizontalAlignment.Center;
+            StationBadge.Margin = new Thickness(8, 0, 8, 0);
+            BadgesPanel.Margin = new Thickness(0, 6, 0, 0);
             HeaderActions.Margin = new Thickness(0);
             BrandTagline.IsVisible = false;
         }
         else
         {
+            HeaderBorder.Padding = new Thickness(16, 12);
             HeaderGrid.ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto");
             HeaderGrid.RowDefinitions = RowDefinitions.Parse("Auto");
 
@@ -378,6 +408,7 @@ public partial class MainView : UserControl
             }
 
             LogCard.Height = double.NaN;
+            ScrollViewer.SetVerticalScrollBarVisibility(LogTextBox, ScrollBarVisibility.Disabled);
         }
         else
         {
@@ -401,6 +432,7 @@ public partial class MainView : UserControl
             }
 
             LogCard.Height = 220;
+            ScrollViewer.SetVerticalScrollBarVisibility(LogTextBox, ScrollBarVisibility.Auto);
         }
 
         // On phones only the Radio tab carries the PTT key.

@@ -39,6 +39,19 @@ public class MainActivity : AvaloniaMainActivity
             return name.Length == 0 ? $"Key {code}" : char.ToUpperInvariant(name[0]) + name[1..];
         };
         AppServices.MicrophonePermissionRequester = RequestMicrophoneOrOpenSettings;
+        AppServices.IdReminderNotifier = due => NodeForegroundService.NotifyIdReminder(ApplicationContext!, due);
+        AppServices.HapticFeedback = active =>
+        {
+            try
+            {
+                Window?.DecorView?.PerformHapticFeedback(active
+                    ? global::Android.Views.FeedbackConstants.KeyboardTap
+                    : OperatingSystem.IsAndroidVersionAtLeast(27)
+                        ? global::Android.Views.FeedbackConstants.VirtualKeyRelease
+                        : global::Android.Views.FeedbackConstants.VirtualKey);
+            }
+            catch (Exception) { }
+        };
         AppServices.ExitHandler = () => AndroidAppExit.Finish(this);
         AppServices.SpeakerphoneSetter = speaker => AndroidAudioRoute.SetSpeaker(this, speaker);
         AppServices.LogSharer = ShareLogText;

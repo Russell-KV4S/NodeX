@@ -58,6 +58,7 @@ public partial class MainViewModel : ViewModelBase
         public long LastVoiceTicks;      // Environment.TickCount64 of the last voice frame (network thread)
         public long KeyedAtTicks;        // when the last KEY arrived
         public string Node = "";
+        public string? LastLinkSummary;  // deduplicates periodic app_rpt "L " link-list frames
         public Action Detach = static () => { };
     }
 
@@ -221,6 +222,10 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>"Disconnect" for one link, "Disconnect all" for several.</summary>
     public string DisconnectAllText => HasMultipleLinks ? "Disconnect all" : "Disconnect";
+
+    /// <summary>True when the user clicked "Disconnect all" with multiple links up and is asked to confirm.</summary>
+    [ObservableProperty]
+    public partial bool IsConfirmingDisconnectAll { get; set; }
 
     /// <summary>The transmit node's link is up.</summary>
     public bool IsConnected => TxLink?.Session.State == Iax2SessionState.Connected;
@@ -498,6 +503,7 @@ public partial class MainViewModel : ViewModelBase
     private void OnIdReminderDueChanged(bool due) => OnUi(() =>
     {
         IsIdReminderDue = due;
+        AppServices.IdReminderNotifier?.Invoke(due);
         if (due)
         {
             LogActivity("[ID] Time to identify (say your callsign).");
@@ -512,6 +518,7 @@ public partial class MainViewModel : ViewModelBase
     {
         _runtime = runtime;
         _idReminder.DueChanged += OnIdReminderDueChanged;
+        AppServices.AcknowledgeIdHandler = () => OnUi(AcknowledgeId);
         AppServices.HardwarePtt.Pressed += OnHardwarePtt;
         HookBle();
 
@@ -687,10 +694,31 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// UI button handler: hangs up immediately when only one link is up, or shows an inline confirmation prompt
+    /// when multiple links are up so a stray tap doesn't drop every link at once.
+    /// </summary>
+    [RelayCommand]
+    public async Task RequestDisconnectNodeAsync()
+    {
+        if (HasMultipleLinks && !IsConfirmingDisconnectAll)
+        {
+            IsConfirmingDisconnectAll = true;
+            return;
+        }
+
+        IsConfirmingDisconnectAll = false;
+        await DisconnectNodeAsync();
+    }
+
+    [RelayCommand]
+    public void CancelDisconnectAll() => IsConfirmingDisconnectAll = false;
+
     /// <summary>Hangs up every linked node.</summary>
     [RelayCommand]
     public async Task DisconnectNodeAsync()
     {
+        IsConfirmingDisconnectAll = false;
         try
         {
             LogActivity(HasMultipleLinks ? "Disconnecting from all nodes..." : "Disconnecting from remote node...");
@@ -740,6 +768,13 @@ public partial class MainViewModel : ViewModelBase
     public async Task TogglePttClickAsync()
     {
         if (IsToggleMode && TxLink is { } link) await link.Ptt.HandleUiPttAsync(true);
+    }
+
+    /// <summary>Desktop Spacebar PTT: works in both Momentary (hold Space) and Toggle (tap Space) modes.</summary>
+    public async Task HandleSpacebarPttAsync(bool pressed)
+    {
+        if (IsSettingsOpen || IsSearchOpen || !CanKey || TxLink is not { } link) return;
+        await link.Ptt.HandleUiPttAsync(pressed);
     }
 
     /// <summary>A mapped phone button went down or up (Android volume key, headset button...).</summary>
@@ -988,6 +1023,7 @@ public partial class MainViewModel : ViewModelBase
             LinkItems[i].Refresh(c);
         }
 
+        if (!HasMultipleLinks) IsConfirmingDisconnectAll = false;
         OnPropertyChanged(nameof(HasLinks));
         OnPropertyChanged(nameof(HasMultipleLinks));
         OnPropertyChanged(nameof(LinkCountText));
@@ -1079,7 +1115,33 @@ public partial class MainViewModel : ViewModelBase
                 : keyed ? "<<< Remote Node Keyed (RX Active)" : "<<< Remote Node Unkeyed");
         });
 
-        void OnMessage(string msg) => LogActivity($"[NODE MSG] {Tag(node)}{msg}");
+        void OnMessage(string msg)
+        {
+            var parsed = AslTextParser.Parse(msg);
+            if (parsed.Kind == AslTextMessageKind.Handshake) return;
+            if (parsed.Kind == AslTextMessageKind.LinkList)
+            {
+                string summary = AslTextParser.FormatLinkedNodes(parsed.LinkedNodes, link.Session.LocalNodeNumber, maxShown: 8);
+                OnUi(RefreshLinks);
+                if (summary == watch.LastLinkSummary) return;
+                watch.LastLinkSummary = summary;
+                if (summary.Length > 0)
+                    LogActivity($"[LINKS] {Tag(node)}Node {node} linked to: {summary}");
+                return;
+            }
+            if (parsed.Kind == AslTextMessageKind.Status)
+            {
+                string summary = AslTextParser.FormatLinkedNodes(parsed.LinkedNodes, link.Session.LocalNodeNumber, maxShown: 8);
+                watch.LastLinkSummary = summary;
+                OnUi(RefreshLinks);
+                string keyedState = parsed.IsKeyed == true ? "keyed" : "idle";
+                LogActivity(summary.Length > 0
+                    ? $"[STATUS] {Tag(node)}Node {parsed.SourceNode ?? node} ({keyedState}), linked to: {summary}"
+                    : $"[STATUS] {Tag(node)}Node {parsed.SourceNode ?? node} ({keyedState}), no other links.");
+                return;
+            }
+            LogActivity($"[NODE MSG] {Tag(node)}{msg}");
+        }
         void OnPtt(bool active, PttSource source) => OnUi(() => OnPttStateChanged(node, active, source));
         void OnWarning(string msg) => LogActivity($"[PTT WARNING] {Tag(node)}{msg}");
         void OnInput(AudioLevels l) { if (ReferenceEquals(TxLink, link)) _micMeter = ToMeter(l); }
@@ -1147,6 +1209,7 @@ public partial class MainViewModel : ViewModelBase
     private void OnPttStateChanged(string node, bool active, PttSource source)
     {
         IsTransmitting = _runtime.Links.Any(l => l.Ptt.IsPttActive);
+        AppServices.HapticFeedback?.Invoke(active);
         string where = _runtime.Connections.Count > 1 ? $" to node {node}" : "";
         if (active)
         {

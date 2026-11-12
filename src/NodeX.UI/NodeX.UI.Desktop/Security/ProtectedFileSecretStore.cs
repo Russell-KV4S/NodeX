@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -11,26 +12,31 @@ using NodeX.Core.Settings;
 namespace NodeX.UI.Desktop.Security;
 
 /// <summary>
-/// Desktop <see cref="ISecretStore"/> persisting secrets in a per-user file.
+/// Desktop <see cref="ISecretStore"/> persisting secrets in a per-user encrypted file.
 /// <list type="bullet">
 /// <item><b>Windows:</b> each value is encrypted with DPAPI (<c>CurrentUser</c> scope), so it can only be
 /// decrypted by the same Windows account on the same machine.</item>
-/// <item><b>Linux / macOS:</b> there is no portable OS keyring API in .NET, so values are encrypted with
-/// AES-GCM using a random key kept in a separate file restricted to the current user (mode 0600). This
-/// stops casual reading and accidental sync/backup leaks but is weaker than a real keychain, because
-/// anyone who can read both files as that user can decrypt.</item>
+/// <item><b>macOS:</b> values are encrypted with AES-GCM using a 256-bit key stored in the user's login
+/// Keychain (<c>/usr/bin/security</c>).</item>
+/// <item><b>Linux:</b> values are encrypted with AES-GCM using a 256-bit key stored in the Freedesktop Secret
+/// Service (<c>secret-tool</c> / <c>libsecret</c>) when available, falling back to a <c>0600</c> key file on
+/// headless or minimal systems without a keyring daemon.</item>
 /// </list>
 /// </summary>
 public sealed class ProtectedFileSecretStore : ISecretStore
 {
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("NodeX.secrets.v1");
+    private const string KeychainService = "com.kv4s.nodex";
+    private const string KeychainAccount = "master-key";
 
     private readonly string _path;
     private readonly string _keyPath;
+    private readonly bool _useOsKeyring;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public ProtectedFileSecretStore(string? directory = null)
     {
+        _useOsKeyring = directory == null;
         string dir = directory ?? JsonFileSettingsStore.DefaultDirectory;
         _path = Path.Combine(dir, "secrets.dat");
         _keyPath = Path.Combine(dir, "secrets.key");
@@ -152,17 +158,107 @@ public sealed class ProtectedFileSecretStore : ISecretStore
 
     private byte[] LoadOrCreateKey()
     {
+        if (_useOsKeyring && TryReadOsKeyring(out byte[]? keyringKey) && keyringKey is { Length: 32 })
+        {
+            return keyringKey;
+        }
+
         if (File.Exists(_keyPath))
         {
             byte[] existing = File.ReadAllBytes(_keyPath);
-            if (existing.Length == 32) return existing;
+            if (existing.Length == 32)
+            {
+                // Migrate legacy on-disk key into the OS keyring when available and remove the file.
+                if (_useOsKeyring && TryWriteOsKeyring(existing))
+                {
+                    try { File.Delete(_keyPath); } catch (Exception) { }
+                }
+                return existing;
+            }
+        }
+
+        byte[] key = RandomNumberGenerator.GetBytes(32);
+        if (_useOsKeyring && TryWriteOsKeyring(key))
+        {
+            return key;
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(_keyPath)!);
-        byte[] key = RandomNumberGenerator.GetBytes(32);
         File.WriteAllBytes(_keyPath, key);
         RestrictToCurrentUser(_keyPath);
         return key;
+    }
+
+    private static bool TryReadOsKeyring(out byte[]? key)
+    {
+        key = null;
+        try
+        {
+            string? b64 = null;
+            if (OperatingSystem.IsMacOS())
+            {
+                b64 = RunTool("/usr/bin/security", ["find-generic-password", "-s", KeychainService, "-a", KeychainAccount, "-w"]);
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                b64 = RunTool("secret-tool", ["lookup", "service", KeychainService, "account", KeychainAccount]);
+            }
+
+            if (string.IsNullOrWhiteSpace(b64)) return false;
+            byte[] decoded = Convert.FromBase64String(b64.Trim());
+            if (decoded.Length != 32) return false;
+            key = decoded;
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryWriteOsKeyring(byte[] key)
+    {
+        try
+        {
+            string b64 = Convert.ToBase64String(key);
+            if (OperatingSystem.IsMacOS())
+            {
+                return RunTool("/usr/bin/security", ["add-generic-password", "-U", "-s", KeychainService, "-a", KeychainAccount, "-w", b64]) != null;
+            }
+            if (OperatingSystem.IsLinux())
+            {
+                return RunTool("secret-tool", ["store", "--label=NodeX Master Key", "service", KeychainService, "account", KeychainAccount], stdin: b64) != null;
+            }
+            return false;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static string? RunTool(string fileName, string[] args, string? stdin = null)
+    {
+        var psi = new ProcessStartInfo(fileName)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = stdin != null,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        foreach (string arg in args) psi.ArgumentList.Add(arg);
+
+        using var proc = Process.Start(psi);
+        if (proc == null) return null;
+        if (stdin != null)
+        {
+            proc.StandardInput.Write(stdin);
+            proc.StandardInput.Close();
+        }
+        string output = proc.StandardOutput.ReadToEnd();
+        if (!proc.WaitForExit(3000) || proc.ExitCode != 0) return null;
+        return output;
     }
 
     private static void RestrictToCurrentUser(string path)

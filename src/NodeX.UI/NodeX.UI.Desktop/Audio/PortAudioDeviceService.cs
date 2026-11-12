@@ -32,13 +32,12 @@ public sealed class PortAudioDeviceService : IAudioDeviceService
     private PcmResampler? _micResampler;
     private int _micRate = AudioFormat.SampleRate;
 
-    // Playback ring (samples at the output stream rate).
+    // Playback ring (samples at the output stream rate) and reusable callback scratch buffers.
     private readonly object _ringGate = new();
-    private short[] _ring = Array.Empty<short>();
-    private int _ringHead, _ringCount;
-    private int _outRate = AudioFormat.SampleRate;
-    private double _upPos;      // fractional position for the up-sampler
-    private short _upPrev;
+    private readonly PlaybackRingBuffer _playbackRing = new();
+    private short[] _inScratch = Array.Empty<short>();
+    private short[] _resampleScratch = Array.Empty<short>();
+    private short[] _outScratch = Array.Empty<short>();
 
     /// <param name="inputDevice">PortAudio device index, or -1 for the system default.</param>
     /// <param name="outputDevice">PortAudio device index, or -1 for the system default.</param>
@@ -57,7 +56,7 @@ public sealed class PortAudioDeviceService : IAudioDeviceService
         get
         {
             lock (_ringGate)
-                return TimeSpan.FromSeconds((double)_ringCount / Math.Max(1, _outRate));
+                return _playbackRing.BufferedDuration;
         }
     }
 
@@ -197,11 +196,7 @@ public sealed class PortAudioDeviceService : IAudioDeviceService
 
             lock (_ringGate)
             {
-                _outRate = usedRate;
-                _ring = new short[usedRate]; // one second
-                _ringHead = _ringCount = 0;
-                _upPos = 0;
-                _upPrev = 0;
+                _playbackRing.Configure(usedRate);
             }
             _outCallback = cb;
             _outStream = stream;
@@ -221,7 +216,7 @@ public sealed class PortAudioDeviceService : IAudioDeviceService
             _outStream.Dispose();
             _outStream = null;
             _outCallback = null;
-            lock (_ringGate) { _ringHead = _ringCount = 0; }
+            lock (_ringGate) { _playbackRing.Clear(); }
         }
     }
 
@@ -230,40 +225,9 @@ public sealed class PortAudioDeviceService : IAudioDeviceService
         if (pcm.IsEmpty) return;
         lock (_ringGate)
         {
-            if (_ring.Length == 0 || !IsPlaying) return;
-            var src = pcm.Span;
-            if (_outRate == AudioFormat.SampleRate)
-            {
-                foreach (short s in src) Push(s);
-                return;
-            }
-
-            // Linear-interpolating up-sampler (8 kHz -> device rate), stateful across blocks.
-            double step = (double)AudioFormat.SampleRate / _outRate; // input samples per output sample
-            int i = 0;
-            while (true)
-            {
-                // _upPos in [0,1) is the position between _upPrev (at 0) and src[i] (at 1).
-                if (_upPos >= 1.0)
-                {
-                    _upPos -= 1.0;
-                    _upPrev = i < src.Length ? src[i] : _upPrev;
-                    i++;
-                }
-                if (i >= src.Length) break;
-                double v = _upPrev + (src[i] - _upPrev) * _upPos;
-                Push((short)Math.Clamp(Math.Round(v), short.MinValue, short.MaxValue));
-                _upPos += step;
-            }
+            if (!IsPlaying) return;
+            _playbackRing.Enqueue(pcm.Span);
         }
-    }
-
-    // Caller holds _ringGate. Drops new samples when the ring is full (same policy as the NAudio backend).
-    private void Push(short s)
-    {
-        if (_ringCount == _ring.Length) return;
-        _ring[(_ringHead + _ringCount) % _ring.Length] = s;
-        _ringCount++;
     }
 
     private StreamCallbackResult OnInput(IntPtr input, IntPtr output, uint frameCount,
@@ -274,19 +238,21 @@ public sealed class PortAudioDeviceService : IAudioDeviceService
             var cb = _onPcm;
             if (cb == null || input == IntPtr.Zero || frameCount == 0) return StreamCallbackResult.Continue;
 
-            var samples = new short[frameCount];
-            Marshal.Copy(input, samples, 0, (int)frameCount);
+            int count = (int)frameCount;
+            if (_inScratch.Length < count) _inScratch = new short[count];
+            Marshal.Copy(input, _inScratch, 0, count);
 
             var rs = _micResampler;
             if (rs == null)
             {
-                cb(samples);
+                cb(_inScratch.AsMemory(0, count));
             }
             else
             {
-                var outBuf = new short[rs.MaxOutputSamples(samples.Length)];
-                int n = rs.Process(samples, outBuf);
-                if (n > 0) cb(outBuf.AsMemory(0, n));
+                int maxOut = rs.MaxOutputSamples(count);
+                if (_resampleScratch.Length < maxOut) _resampleScratch = new short[maxOut];
+                int n = rs.Process(_inScratch.AsSpan(0, count), _resampleScratch);
+                if (n > 0) cb(_resampleScratch.AsMemory(0, n));
             }
         }
         catch (Exception ex)
@@ -303,19 +269,12 @@ public sealed class PortAudioDeviceService : IAudioDeviceService
         try
         {
             int want = (int)frameCount;
-            var block = new short[want]; // zero-filled: silence on underrun
+            if (_outScratch.Length < want) _outScratch = new short[want];
             lock (_ringGate)
             {
-                int n = Math.Min(want, _ringCount);
-                for (int k = 0; k < n; k++)
-                    block[k] = _ring[(_ringHead + k) % _ring.Length];
-                if (n > 0)
-                {
-                    _ringHead = (_ringHead + n) % _ring.Length;
-                    _ringCount -= n;
-                }
+                _playbackRing.Read(_outScratch.AsSpan(0, want));
             }
-            Marshal.Copy(block, 0, output, want);
+            Marshal.Copy(_outScratch, 0, output, want);
         }
         catch (Exception ex)
         {

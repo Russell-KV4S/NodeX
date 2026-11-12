@@ -154,7 +154,10 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         return _socket.SendToAsync(packet, SocketFlags.None, _remoteEndPoint!, cancellationToken);
     }
 
-    public Iax2Session()
+    /// <summary>The local UDP port bound by this session's socket.</summary>
+    public int BoundLocalPort => (_socket.LocalEndPoint as IPEndPoint)?.Port ?? 0;
+
+    public Iax2Session(int preferredLocalPort = 0)
     {
         // Allocate random 15-bit call number (1..32767)
         _localCallNumber = (ushort)Random.Shared.Next(1, 0x7FFF);
@@ -164,8 +167,15 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
             ReceiveBufferSize = 64 * 1024,
             SendBufferSize = 64 * 1024
         };
-        // Bind to ephemeral UDP port
-        _socket.Bind(new IPEndPoint(IPAddress.Any, 0));
+        if (preferredLocalPort is > 0 and <= 65535)
+        {
+            try { _socket.Bind(new IPEndPoint(IPAddress.Any, preferredLocalPort)); }
+            catch (SocketException) { _socket.Bind(new IPEndPoint(IPAddress.Any, 0)); }
+        }
+        else
+        {
+            _socket.Bind(new IPEndPoint(IPAddress.Any, 0));
+        }
 
         // Windows turns an ICMP "port unreachable" for an earlier send into WSAECONNRESET on the next receive.
         // It tells us nothing the retransmit limit will not tell us better, so switch that behaviour off
@@ -208,10 +218,13 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         Volatile.Write(ref _unansweredKeepAlives, 0);
         SetState(Iax2SessionState.Connecting);
 
-        _receiveLoopTask = Task.Run(ReceiveLoopAsync);
-        _keepAliveLoopTask = Task.Run(KeepAliveLoopAsync);
-        _retransmitLoopTask = Task.Run(RetransmitLoopAsync);
-        _linkListLoopTask = LinkListInterval > TimeSpan.Zero ? Task.Run(LinkListLoopAsync) : null;
+        // Start the loops directly up to their first async await (ReceiveFromAsync / PeriodicTimer.WaitForNextTickAsync)
+        // so the socket receive and timers are registered immediately before NEW is sent, without waiting in the
+        // ThreadPool queue under load.
+        _receiveLoopTask = ReceiveLoopAsync();
+        _keepAliveLoopTask = KeepAliveLoopAsync();
+        _retransmitLoopTask = RetransmitLoopAsync();
+        _linkListLoopTask = LinkListInterval > TimeSpan.Zero ? LinkListLoopAsync() : null;
 
         await SendNewCallAsync(cancellationToken);
     }
@@ -410,9 +423,17 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         }
 
         _lastVoiceTimestamp = ts;
-        byte[] buffer = new byte[Iax2Protocol.MiniHeaderSize + ulawAudio.Length];
-        Iax2Protocol.WriteMiniFrame(buffer, _localCallNumber, (ushort)(ts & 0xFFFF), ulawAudio.Span);
-        await TxAsync(buffer, cancellationToken);
+        int packetLen = Iax2Protocol.MiniHeaderSize + ulawAudio.Length;
+        byte[] buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(packetLen);
+        try
+        {
+            Iax2Protocol.WriteMiniFrame(buffer.AsSpan(0, packetLen), _localCallNumber, (ushort)(ts & 0xFFFF), ulawAudio.Span);
+            await TxAsync(buffer.AsMemory(0, packetLen), cancellationToken);
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     /// <summary>A gap this large between expected and actual send time restarts the voice timeline.</summary>
@@ -492,7 +513,8 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         byte[] buffer = new byte[Iax2Protocol.FullHeaderSize + payload.Length];
         int sequence = -1;
 
-        // Serialize sequence-number allocation: audio, PTT and keep-alive run on different threads.
+        // Serialize sequence-number allocation and transmission: audio, PTT and keep-alive run on different threads,
+        // and sending inside the lock guarantees frames leave the socket in the order their sequence numbers were assigned.
         await _sendLock.WaitAsync(cancellationToken);
         try
         {
@@ -514,13 +536,14 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
                 sequence = _oSeqno;
                 _oSeqno++;
             }
+
+            await TxAsync(buffer, cancellationToken);
         }
         finally
         {
             _sendLock.Release();
         }
 
-        await TxAsync(buffer, cancellationToken);
         return sequence;
     }
 
@@ -561,13 +584,13 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
                 _iSeqno,
                 Iax2Protocol.FrameType.IaxControl,
                 (byte)subclass);
+
+            await TxAsync(buffer, _cts.Token);
         }
         finally
         {
             _sendLock.Release();
         }
-
-        await TxAsync(buffer, _cts.Token);
     }
 
     private async Task RetransmitLoopAsync()
@@ -749,6 +772,8 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
             }
         }
 
+        // _iSeqno is read without _sendLock here because ReceiveLoopAsync is its sole writer (the CallToken
+        // reset above also runs on ReceiveLoopAsync and returns before reaching this line).
         switch (Iax2Sequencing.Classify(frame.OSeqno, _iSeqno))
         {
             case Iax2Sequencing.Order.Future:

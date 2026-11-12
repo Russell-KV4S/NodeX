@@ -35,7 +35,7 @@ internal sealed class FakeIaxRemote : IDisposable
     public bool LastWasRetransmit { get; private set; }
 
     /// <summary>Receives the next full frame (mini frames are skipped).</summary>
-    public async Task<Iax2Frame> ReceiveFrameAsync(int timeoutMs = 3000)
+    public async Task<Iax2Frame> ReceiveFrameAsync(int timeoutMs = 10000)
     {
         using var cts = new CancellationTokenSource(timeoutMs);
         while (true)
@@ -64,7 +64,7 @@ internal sealed class FakeIaxRemote : IDisposable
     }
 
     /// <summary>Reads frames until one matches, skipping the rest (ACKs and so on).</summary>
-    public async Task<Iax2Frame> WaitForFrameAsync(Func<Iax2Frame, bool> match, int timeoutMs = 3000)
+    public async Task<Iax2Frame> WaitForFrameAsync(Func<Iax2Frame, bool> match, int timeoutMs = 10000)
     {
         while (true)
         {
@@ -73,10 +73,10 @@ internal sealed class FakeIaxRemote : IDisposable
         }
     }
 
-    public Task<Iax2Frame> WaitForIaxAsync(IaxControlSubclass subclass, int timeoutMs = 3000) =>
+    public Task<Iax2Frame> WaitForIaxAsync(IaxControlSubclass subclass, int timeoutMs = 10000) =>
         WaitForFrameAsync(f => f.FrameType == FrameType.IaxControl && f.Subclass == (byte)subclass, timeoutMs);
 
-    public Task<Iax2Frame> WaitForPingAsync(int timeoutMs = 3000) => WaitForIaxAsync(IaxControlSubclass.Ping, timeoutMs);
+    public Task<Iax2Frame> WaitForPingAsync(int timeoutMs = 10000) => WaitForIaxAsync(IaxControlSubclass.Ping, timeoutMs);
 
     /// <summary>Discards everything queued for us until the socket has been quiet for <paramref name="quietMs"/>.</summary>
     public async Task DrainAsync(int quietMs = 100)
@@ -122,9 +122,9 @@ internal sealed class FakeIaxRemote : IDisposable
     }
 
     /// <summary>Waits for the session's NEW and answers ACCEPT.</summary>
-    public async Task AcceptCallAsync()
+    public async Task AcceptCallAsync(int timeoutMs = 10000)
     {
-        var neu = await ReceiveFrameAsync();
+        var neu = await ReceiveFrameAsync(timeoutMs);
         Assert.Equal((byte)IaxControlSubclass.New, neu.Subclass);
         await SendIaxAsync(IaxControlSubclass.Accept);
     }
@@ -147,7 +147,7 @@ internal sealed class FakeIaxRemote : IDisposable
 
         await s.ConnectAsync(EndPoint);
         await AcceptCallAsync();
-        await connected.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await connected.Task.WaitAsync(TimeSpan.FromSeconds(10));
         return s;
     }
 

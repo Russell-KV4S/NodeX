@@ -25,7 +25,7 @@ namespace NodeX.UI.Android;
 /// the transmission. The wheel's Next/Back never dial: they step through the connected nodes. Every car key is
 /// released when the car session ends, audio focus is lost, the car time limit passes or this service is destroyed.
 /// </summary>
-[Service(Name = "com.kv4s.nodex.NodeXMediaBrowserService", Exported = true, Label = "NodeX")]
+[Service(Name = "com.kv4s.nodex.NodeXMediaBrowserService", Exported = true, Label = "NodeX", Icon = "@drawable/ic_car_media")]
 [IntentFilter(new[] { "android.media.browse.MediaBrowserService" })]
 public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager.IOnAudioFocusChangeListener
 {
@@ -145,9 +145,13 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         base.OnDestroy();
     }
 
-    private static async Task StartRuntimeAsync()
+    private async Task StartRuntimeAsync()
     {
-        try { await AppServices.Runtime.StartAsync(); }
+        try
+        {
+            await AppServices.Runtime.StartAsync();
+            OnRuntimeChanged();
+        }
         catch (Exception ex) { global::Android.Util.Log.Warn("NodeX", $"Car start failed: {ex.Message}"); }
     }
 
@@ -707,6 +711,16 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
             session.SetMetadata(new MediaMetadata.Builder()
                 .PutString(MediaMetadata.MetadataKeyMediaId, node)!
                 .PutString(MediaMetadata.MetadataKeyTitle, CarBrowse.CardTitle(rt.Config.Settings, node))!
+                .PutString(MediaMetadata.MetadataKeyDisplaySubtitle, subtitle)!
+                .Build());
+        }
+        else if (LastRemembered(rt.Config.Settings) is { } lastFav && !string.IsNullOrWhiteSpace(lastFav))
+        {
+            // EP-2 state restoration: show the last remembered station on the car's media card in Stopped state
+            // so the driver sees the station context immediately without auto-dialling.
+            session.SetMetadata(new MediaMetadata.Builder()
+                .PutString(MediaMetadata.MetadataKeyMediaId, lastFav)!
+                .PutString(MediaMetadata.MetadataKeyTitle, CarBrowse.CardTitle(rt.Config.Settings, lastFav))!
                 .PutString(MediaMetadata.MetadataKeyDisplaySubtitle, subtitle)!
                 .Build());
         }

@@ -580,3 +580,56 @@ public class NodeAudioEngineTests
         Assert.Equal("mic unplugged", msg);
     }
 }
+
+public class PlaybackRingBufferTests
+{
+    [Fact]
+    public void PipelineRate_PassThrough_EnqueuesAndReadsExactSamples()
+    {
+        var ring = new PlaybackRingBuffer();
+        ring.Configure(8000);
+        short[] input = [100, -200, 300, -400];
+        ring.Enqueue(input);
+
+        Assert.Equal(4, ring.BufferedSamples);
+        short[] output = [999, 999, 999, 999, 999, 999];
+        int read = ring.Read(output);
+
+        Assert.Equal(4, read);
+        Assert.Equal([100, -200, 300, -400, 0, 0], output); // trailing space zero-padded
+        Assert.Equal(0, ring.BufferedSamples);
+    }
+
+    [Fact]
+    public void Upsampling_48kHz_ProducesSixTimesSamples_AndInterpolatesSmoothly()
+    {
+        var ring = new PlaybackRingBuffer();
+        ring.Configure(48000);
+        // 160 samples (20 ms at 8 kHz) -> 960 samples (20 ms at 48 kHz)
+        short[] frame = Enumerable.Range(0, 160).Select(i => (short)(i * 100)).ToArray();
+        ring.Enqueue(frame);
+
+        Assert.Equal(960, ring.BufferedSamples);
+        Assert.InRange(ring.BufferedDuration.TotalMilliseconds, 19.9, 20.1);
+
+        short[] outBuf = new short[960];
+        int read = ring.Read(outBuf);
+        Assert.Equal(960, read);
+        // Monotonically non-decreasing ramp from 0 toward 15900
+        for (int i = 1; i < outBuf.Length; i++)
+            Assert.True(outBuf[i] >= outBuf[i - 1], $"not monotonic at {i}: {outBuf[i - 1]} -> {outBuf[i]}");
+    }
+
+    [Fact]
+    public void Overflow_DropsSamplesBeyondOneSecondCapacity()
+    {
+        var ring = new PlaybackRingBuffer();
+        ring.Configure(8000);
+        short[] chunk = Enumerable.Repeat((short)1234, 5000).ToArray();
+        ring.Enqueue(chunk);
+        ring.Enqueue(chunk); // 10,000 samples offered into 8,000 capacity
+
+        Assert.Equal(8000, ring.BufferedSamples);
+        Assert.Equal(TimeSpan.FromSeconds(1), ring.BufferedDuration);
+    }
+}

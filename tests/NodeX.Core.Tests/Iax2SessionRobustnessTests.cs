@@ -329,4 +329,76 @@ public class Iax2SessionRobustnessTests
             Assert.DoesNotContain(errors, e => e.Contains("receive error"));
         }
     }
+
+    [Fact]
+    public async Task ConcurrentOutboundFramesAndInboundTraffic_NeverDuplicateOrReorderSequenceNumbers()
+    {
+        using var remote = new FakeIaxRemote();
+        await using var s = await remote.ConnectSessionAsync(
+            keepAlive: TimeSpan.FromSeconds(30),
+            configure: x => { x.LinkListInterval = TimeSpan.Zero; x.SendNewKeyOnAccept = false; });
+
+        const int outboundCount = 24;
+        var receivedOSeqs = new List<byte>();
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var receiverTask = Task.Run(async () =>
+        {
+            while (receivedOSeqs.Count < outboundCount && !cts.IsCancellationRequested)
+            {
+                var f = await remote.ReceiveFrameAsync(5000);
+                if (Iax2Sequencing.IsReliable(f.FrameType, f.Subclass))
+                {
+                    receivedOSeqs.Add(f.OSeqno);
+                    await remote.SendIaxAsync(IaxControlSubclass.Ack, f.Timestamp);
+                }
+            }
+        });
+
+        // Hammer outbound sequenced frames from multiple threads while the peer also sends inbound frames
+        // that increment _iSeqno and emit ACKs under _sendLock.
+        var inboundTask = Task.Run(async () =>
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                await remote.SendControlAsync(i % 2 == 0 ? ControlSubclass.AstControlKey : ControlSubclass.AstControlUnkey);
+                await Task.Delay(2);
+            }
+        });
+
+        var sendTasks = Enumerable.Range(0, 4)
+            .Select(worker => Task.Run(async () =>
+            {
+                for (int j = 0; j < outboundCount / 4; j++)
+                {
+                    int i = worker * (outboundCount / 4) + j;
+                    if (i % 2 == 0) await s.SendTextAsync($"L {i}");
+                    else await s.SendDtmfAsync((char)('0' + (i % 10)));
+                }
+            }))
+            .ToArray();
+
+        await Task.WhenAll(sendTasks);
+        await inboundTask;
+        await receiverTask;
+
+        // OSeqno started at 1 after the initial NEW (0); the next 24 reliable frames must be 1..24 in order.
+        Assert.Equal(Enumerable.Range(1, outboundCount).Select(x => (byte)x).ToArray(), receivedOSeqs);
+    }
+
+    [Fact]
+    public async Task PreferredLocalPort_BindsWhenFree_AndFallsBackToEphemeralWhenInUse()
+    {
+        int freePort;
+        using (var probe = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0)))
+            freePort = ((IPEndPoint)probe.Client.LocalEndPoint!).Port;
+
+        await using var first = new Iax2Session(freePort);
+        Assert.Equal(freePort, first.BoundLocalPort);
+
+        // Second session asking for the same port falls back to an ephemeral port without throwing.
+        await using var second = new Iax2Session(freePort);
+        Assert.True(second.BoundLocalPort > 0);
+        Assert.NotEqual(freePort, second.BoundLocalPort);
+    }
 }

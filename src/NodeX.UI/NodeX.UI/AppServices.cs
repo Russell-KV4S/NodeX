@@ -41,6 +41,20 @@ public static class AppServices
     public static Action? MicrophonePermissionRequester { get; set; }
 
     /// <summary>
+    /// Set by a mobile head (Android/iOS) to post (true) or dismiss (false) an OS notification when the optional
+    /// station-ID reminder becomes due while the app may be in the background.
+    /// </summary>
+    public static Action<bool>? IdReminderNotifier { get; set; }
+
+    /// <summary>Set by <see cref="ViewModels.MainViewModel"/> so a notification action can acknowledge the ID reminder.</summary>
+    public static Action? AcknowledgeIdHandler { get; set; }
+
+    /// <summary>
+    /// Set by a mobile head (Android/iOS) to provide subtle tactile feedback when PTT keys (true) or unkeys (false).
+    /// </summary>
+    public static Action<bool>? HapticFeedback { get; set; }
+
+    /// <summary>
     /// Set by a head whose audio backend can choose between devices (desktop): lists the microphones and speakers
     /// for the Settings pickers. Null where the OS decides (Android/iOS), which hides the pickers.
     /// </summary>

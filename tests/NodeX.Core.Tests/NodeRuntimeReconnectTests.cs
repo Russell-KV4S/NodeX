@@ -159,7 +159,20 @@ public class NodeRuntimeReconnectTests : IDisposable
     [Fact]
     public async Task LostLink_IsRedialled_AndRecovers_WithoutDroppingBackgroundServices()
     {
-        await using var rt = await CreateAsync();
+        int calls = 0;
+        await using var rt = await CreateAsync(configureSession: s =>
+        {
+            // Only the first call needs a fast watchdog so it times out; the recovered call stays up.
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                s.KeepAliveInterval = TimeSpan.FromMilliseconds(40);
+                s.MaxMissedKeepAlives = 2;
+            }
+            else
+            {
+                s.KeepAliveInterval = TimeSpan.FromSeconds(30);
+            }
+        });
         var activity = Collect<(bool, string?)>(add => rt.LinkActiveChanged += (a, n) => add((a, n)));
         var notices = Collect<string>(add => rt.Notice += add);
         var statuses = Collect<ReconnectStatus>(add => rt.ReconnectChanged += add);
@@ -279,7 +292,7 @@ public class NodeRuntimeReconnectTests : IDisposable
     [Fact]
     public async Task UserDisconnect_DoesNotReconnect()
     {
-        await using var rt = await CreateAsync();
+        await using var rt = await CreateAsync(configureSession: s => s.KeepAliveInterval = TimeSpan.FromSeconds(30));
         var activity = Collect<(bool, string?)>(add => rt.LinkActiveChanged += (a, n) => add((a, n)));
         ushort first = await ConnectAndAcceptAsync(rt);
 
@@ -467,7 +480,7 @@ public class NodeRuntimeReconnectTests : IDisposable
     [Fact]
     public async Task Disconnecting_LeavesTheNodeRegisteredAndBackgroundOn()
     {
-        await using var rt = await CreateAsync();
+        await using var rt = await CreateAsync(configureSession: s => s.KeepAliveInterval = TimeSpan.FromSeconds(30));
         var states = new List<BackgroundState>();
         rt.BackgroundChanged += states.Add;
 
@@ -507,7 +520,7 @@ public class NodeRuntimeReconnectTests : IDisposable
     [Fact]
     public async Task Exit_StopsEverything_AndNothingRestarts()
     {
-        var rt = await CreateAsync();
+        var rt = await CreateAsync(configureSession: s => s.KeepAliveInterval = TimeSpan.FromSeconds(30));
         await Wait.UntilAsync(() => rt.Background.Registered);
         await ConnectAndAcceptAsync(rt);
         var states = new List<BackgroundState>();
@@ -539,7 +552,8 @@ public class NodeRuntimeReconnectTests : IDisposable
     public async Task RegistrationOff_NeedsBackground_OnlyWhileLinked()
     {
         await using var rt = await CreateAsync(
-            new NodeSettings { NodeNumber = "55553", Callsign = "W1AW", RegisterOnStartup = false });
+            new NodeSettings { NodeNumber = "55553", Callsign = "W1AW", RegisterOnStartup = false },
+            configureSession: s => s.KeepAliveInterval = TimeSpan.FromSeconds(30));
         Assert.False(rt.Background.Needed);
 
         await ConnectAndAcceptAsync(rt);

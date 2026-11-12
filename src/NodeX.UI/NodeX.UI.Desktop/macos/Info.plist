@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>NodeX</string>
+	<key>CFBundleDisplayName</key>
+	<string>NodeX</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.kv4s.nodex.desktop</string>
+	<key>CFBundleVersion</key>
+	<string>17</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.15</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleExecutable</key>
+	<string>NodeX.UI.Desktop</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>12.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>NodeX uses the microphone to transmit your voice over the AllStarLink network when you press PTT.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>NodeX connects to Bluetooth headsets and PTT buttons for hands-free radio operation.</string>
+</dict>
+</plist>

@@ -13,6 +13,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>bluetooth-central</string>
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>NodeX uses the microphone to transmit your voice over the AllStarLink network when you press PTT.</string>

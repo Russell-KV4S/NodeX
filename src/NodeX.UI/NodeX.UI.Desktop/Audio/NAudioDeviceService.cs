@@ -22,6 +22,8 @@ public sealed class NAudioDeviceService : IAudioDeviceService
     private WaveOutEvent? _waveOut;
     private BufferedWaveProvider? _buffer;
     private Action<ReadOnlyMemory<short>>? _onPcm;
+    private short[] _captureScratch = new short[AudioFormat.SamplesPerFrame];
+    private byte[] _playbackBytesScratch = new byte[AudioFormat.SamplesPerFrame * 2];
 
     /// <param name="inputDeviceNumber">WaveIn device index, -1 for the system default.</param>
     /// <param name="outputDeviceNumber">WaveOut device index, -1 for the system default.</param>
@@ -114,8 +116,11 @@ public sealed class NAudioDeviceService : IAudioDeviceService
         var buffer = _buffer;
         if (buffer == null || pcm.IsEmpty) return;
 
-        byte[] bytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(pcm.Span).ToArray();
-        buffer.AddSamples(bytes, 0, bytes.Length);
+        var bytesSpan = System.Runtime.InteropServices.MemoryMarshal.AsBytes(pcm.Span);
+        if (_playbackBytesScratch.Length < bytesSpan.Length)
+            _playbackBytesScratch = new byte[bytesSpan.Length];
+        bytesSpan.CopyTo(_playbackBytesScratch);
+        buffer.AddSamples(_playbackBytesScratch, 0, bytesSpan.Length);
     }
 
     private void OnDataAvailable(object? sender, WaveInEventArgs e)
@@ -123,9 +128,11 @@ public sealed class NAudioDeviceService : IAudioDeviceService
         var cb = _onPcm;
         if (cb == null || e.BytesRecorded < 2) return;
 
-        short[] samples = new short[e.BytesRecorded / 2];
-        Buffer.BlockCopy(e.Buffer, 0, samples, 0, samples.Length * 2);
-        cb(samples);
+        int sampleCount = e.BytesRecorded / 2;
+        if (_captureScratch.Length < sampleCount)
+            _captureScratch = new short[sampleCount];
+        Buffer.BlockCopy(e.Buffer, 0, _captureScratch, 0, sampleCount * 2);
+        cb(_captureScratch.AsMemory(0, sampleCount));
     }
 
     private void OnRecordingStopped(object? sender, StoppedEventArgs e)

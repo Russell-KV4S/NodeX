@@ -185,4 +185,45 @@ public class SettingsViewModelTests : IDisposable
         await vm.TestRegistrationCommand.ExecuteAsync(null);
         Assert.Contains("node number", vm.ErrorText);
     }
+
+    [Fact]
+    public async Task AudioDevicePickers_PopulateConnectedAndMissingDevices_AndSaveSelection()
+    {
+        var previous = NodeX.UI.AppServices.AudioDeviceLister;
+        try
+        {
+            NodeX.UI.AppServices.AudioDeviceLister = () => new NodeX.Core.Audio.AudioDeviceCatalog(
+                [new("USB Mic", "USB Mic")],
+                [new("Headphones", "Headphones")]);
+
+            await _config.SaveAsync(new NodeSettings
+            {
+                NodeNumber = "55553",
+                Callsign = "W1AW",
+                InputDeviceId = "Unplugged Rig Mic",
+                OutputDeviceId = "Headphones"
+            }, "pw");
+
+            var vm = Create();
+            await vm.LoadAsync();
+
+            Assert.True(vm.AudioDevicesSupported);
+            Assert.Equal("Unplugged Rig Mic", vm.SelectedInputDevice?.Id);
+            Assert.Equal("Unplugged Rig Mic (not connected)", vm.SelectedInputDevice?.Name);
+            Assert.Equal("Headphones", vm.SelectedOutputDevice?.Id);
+
+            // Switch input to the connected USB Mic and output to System Default.
+            vm.SelectedInputDevice = vm.InputDevices.Single(d => d.Id == "USB Mic");
+            vm.SelectedOutputDevice = NodeX.Core.Audio.AudioDeviceOption.SystemDefault;
+            await vm.SaveCommand.ExecuteAsync(null);
+
+            var saved = await _config.LoadAsync();
+            Assert.Equal("USB Mic", saved.Settings.InputDeviceId);
+            Assert.Null(saved.Settings.OutputDeviceId);
+        }
+        finally
+        {
+            NodeX.UI.AppServices.AudioDeviceLister = previous;
+        }
+    }
 }

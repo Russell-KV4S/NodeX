@@ -57,11 +57,21 @@ public sealed class NodeLink : IAsyncDisposable
         });
 
         Session.StateChanged += OnSessionStateChanged;
+        Session.NodeMessageReceived += OnNodeMessageReceived;
         Session.ErrorOccurred += m => Error?.Invoke(m);
         Audio.ErrorOccurred += m => Error?.Invoke($"Audio: {m}");
     }
 
     public NodeInfo Target { get; }
+
+    /// <summary>Other nodes currently linked to this remote peer (from app_rpt <c>L</c> / <c>STATUS</c> text frames, excluding our own node).</summary>
+    public IReadOnlyList<AslRemoteLink> RemoteLinkedNodes { get; private set; } = [];
+
+    /// <summary>Short summary of <see cref="RemoteLinkedNodes"/> for UI display.</summary>
+    public string RemoteLinkedSummary => AslTextParser.FormatLinkedNodes(RemoteLinkedNodes, Session.LocalNodeNumber);
+
+    /// <summary>Raised when an app_rpt text frame arrives and is parsed.</summary>
+    public event Action<AslTextMessage>? TelemetryReceived;
 
     /// <summary>True once the call has reached Connected at least once (as opposed to never being answered).</summary>
     public bool WasConnected { get; private set; }
@@ -127,12 +137,25 @@ public sealed class NodeLink : IAsyncDisposable
         }
     }
 
+    private void OnNodeMessageReceived(string raw)
+    {
+        var parsed = AslTextParser.Parse(raw);
+        if (parsed.Kind is AslTextMessageKind.LinkList or AslTextMessageKind.Status)
+        {
+            RemoteLinkedNodes = parsed.LinkedNodes
+                .Where(l => !string.Equals(l.NodeNumber, Session.LocalNodeNumber, StringComparison.Ordinal))
+                .ToArray();
+        }
+        TelemetryReceived?.Invoke(parsed);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
         _disposed = true;
 
         Session.StateChanged -= OnSessionStateChanged;
+        Session.NodeMessageReceived -= OnNodeMessageReceived;
         await Ptt.DisposeAsync();      // unkeys first, while the session can still send
         await Audio.DisposeAsync();
         await Session.DisposeAsync();

@@ -35,9 +35,12 @@ public sealed class NodeForegroundService : Service
     public const string ActionStop = "com.kv4s.nodex.action.STOP";
     public const string ActionDisconnect = "com.kv4s.nodex.action.DISCONNECT";
     public const string ActionExit = "com.kv4s.nodex.action.EXIT";
+    public const string ActionAcknowledgeId = "com.kv4s.nodex.action.ACK_ID";
 
     private const string ChannelId = "nodex_link";
+    private const string IdReminderChannelId = "nodex_id_reminder";
     private const int NotificationId = 4569;
+    private const int IdReminderNotificationId = 4570;
 
     private AndroidBackgroundKeeper? _keeper;
     private Action<BackgroundState>? _handler;
@@ -128,6 +131,11 @@ public sealed class NodeForegroundService : Service
 
             case ActionExit:
                 AndroidAppExit.RunFull(this);
+                break;
+
+            case ActionAcknowledgeId:
+                AppServices.AcknowledgeIdHandler?.Invoke();
+                NotifyIdReminder(this, false);
                 break;
         }
 
@@ -350,6 +358,51 @@ public sealed class NodeForegroundService : Service
             ServiceAction(2, ActionExit));
 
         return builder.Build()!;
+    }
+
+    /// <summary>Posts or dismisses a background notification when the optional station-ID reminder becomes due.</summary>
+    public static void NotifyIdReminder(Context context, bool due)
+    {
+        if (context.GetSystemService(NotificationService) is not NotificationManager nm) return;
+        if (!due)
+        {
+            nm.Cancel(IdReminderNotificationId);
+            return;
+        }
+
+        if (OperatingSystem.IsAndroidVersionAtLeast(33)
+            && context.CheckSelfPermission(global::Android.Manifest.Permission.PostNotifications) != Permission.Granted)
+        {
+            return;
+        }
+
+        if (OperatingSystem.IsAndroidVersionAtLeast(26) && nm.GetNotificationChannel(IdReminderChannelId) == null)
+        {
+            var ch = new NotificationChannel(IdReminderChannelId, "Station ID reminder", NotificationImportance.Default)
+            {
+                Description = "Reminds you to identify with your station callsign after transmitting."
+            };
+            nm.CreateNotificationChannel(ch);
+        }
+
+        var open = context.PackageManager?.GetLaunchIntentForPackage(context.PackageName!);
+        var pendingOpen = PendingIntent.GetActivity(context, 10, open,
+            PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent);
+        var ackIntent = new Intent(context, typeof(NodeForegroundService)).SetAction(ActionAcknowledgeId);
+        var pendingAck = PendingIntent.GetService(context, 11, ackIntent,
+            PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent);
+
+        var n = new NotificationCompat.Builder(context, IdReminderChannelId)
+            .SetContentTitle("Time to identify")!
+            .SetContentText("Say your station callsign on the air.")!
+            .SetSmallIcon(Resource.Drawable.ic_stat_nodex)!
+            .SetAutoCancel(true)!
+            .SetCategory(Notification.CategoryReminder)!
+            .SetContentIntent(pendingOpen)!
+            .AddAction(0, "I've identified", pendingAck)!
+            .Build()!;
+
+        nm.Notify(IdReminderNotificationId, n);
     }
 
     private PendingIntent? ServiceAction(int requestCode, string action) =>

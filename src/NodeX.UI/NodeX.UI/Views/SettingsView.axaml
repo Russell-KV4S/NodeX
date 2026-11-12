@@ -195,6 +195,7 @@
                         <ComboBox ItemsSource="{Binding OutputDevices}" SelectedItem="{Binding SelectedOutputDevice}"
                                   HorizontalAlignment="Stretch" AutomationProperties.Name="Speaker" />
                         <TextBlock Classes="hint" Text="Applies the next time you connect. If a chosen device is unplugged, NodeX uses the system default." />
+                        <TextBlock Classes="hint" Text="Tip: Use a headset or headphones on desktop to avoid open-speaker echo when you unkey or monitor multiple nodes." />
                     </StackPanel>
 
                     <CheckBox Content="Clean up my voice (rumble filter, automatic level, limiter)" IsChecked="{Binding MicProcessing}" />

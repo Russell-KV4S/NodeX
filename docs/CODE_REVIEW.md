@@ -3,18 +3,9 @@
 **Date:** 2026-11-11  
 **Scope:** Complete review of `PROJECT_SPEC.md`, `README.md`, `docs/*`, `src/NodeX.Core`, `src/NodeX.UI` (Shared, Desktop, Android, iOS), `tests/NodeX.Core.Tests`, and `tools/*`.
 
-> **Status (2026-11-11, later the same day).** Every item below was checked against the code. The record of what was
-> done is the "Review fixes, third batch" entry in `PROJECT_SPEC.md` §16; the item lists below are left as written.
+> **Status (2026-11-11, fourth batch).** Every item in §§1–4 below has now been resolved and verified against the code and test suite (`626` passing xUnit tests across 5 consecutive runs, 0 warnings across all solution and tool targets). See the "Fourth review & backlog completion batch" entry in `PROJECT_SPEC.md` §16.
 >
-> - **Fixed:** all of §1 (age timer, SCO vs loudspeaker, sequence-number locking, DNS parser bounds, ID reminder
->   acknowledged mid-transmission); from §3 the iOS version, version header and `bluetooth-central`, and the
->   `Iax2Registrar` remark; all of §4.
-> - **Corrected:** §1's spec-vs-code note. "Key-up" in the spec is radio usage for *starting* a transmission, so the
->   spec and code agreed; the wording was clarified. §3's `async void` items are delegates handed to
->   `LinkItemViewModel`, not `[RelayCommand]`s, and each already catches every exception; left as they are.
-> - **Deferred:** §2 (allocations on audio threads, resampler anti-aliasing) changes the live audio path and waits
->   until it can be heard on a device. §3 `PooledConnectionLifetime`: on Android it would replace the native HTTP
->   handler, a larger change than the benefit.
+> - **Fixed in third & fourth batches:** all of §1, all of §2 (zero-allocation real-time audio callbacks in `PortAudioDeviceService`, `IosAudioDeviceService`, `NAudioDeviceService`, `AndroidAudioDeviceService`, `Iax2Session.SendAudioFrameAsync`, and extracted `PlaybackRingBuffer` with exact rational-phase upsampling; note that `PcmResampler` already performs full-span box-car anti-aliasing integration pinned by `InBandTone_KeepsAmplitude_OutOfBandTone_IsAttenuated`), all of §3 (except replacing Android's native `HttpMessageHandler` for `PooledConnectionLifetime`), and all of §4.
 
 ---
 

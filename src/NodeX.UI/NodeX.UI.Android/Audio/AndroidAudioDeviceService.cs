@@ -184,9 +184,16 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
         var track = _track;
         if (track == null || pcm.IsEmpty) return;
 
-        short[] data = pcm.ToArray();
-        // WriteNonBlocking so a stalled sink can never block the playout clock.
-        int written = track.Write(data, 0, data.Length, WriteMode.NonBlocking);
+        int written;
+        if (System.Runtime.InteropServices.MemoryMarshal.TryGetArray(pcm, out var segment) && segment.Array != null)
+        {
+            written = track.Write(segment.Array, segment.Offset, segment.Count, WriteMode.NonBlocking);
+        }
+        else
+        {
+            short[] data = pcm.ToArray();
+            written = track.Write(data, 0, data.Length, WriteMode.NonBlocking);
+        }
         if (written > 0) Interlocked.Add(ref _samplesWritten, written);
         else if (written < 0) ErrorOccurred?.Invoke($"AudioTrack.Write failed ({written}).");
     }

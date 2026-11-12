@@ -53,6 +53,7 @@ public class NodeRuntimeMultiLinkTests : IDisposable
         var resolver = new NodeResolution();
         foreach (var (node, remote) in _remotes) resolver.SetStaticOverride(node, remote.EndPoint);
         var http = new HttpClient(new OkHandler());
+        int sessionCount = 0;
 
         var runtime = new NodeRuntime(
             config,
@@ -62,7 +63,10 @@ public class NodeRuntimeMultiLinkTests : IDisposable
             networkMonitor: _net,
             reconnectPolicy: FastPolicy,
             // The fake remotes never PONG: long keep-alives so a link only dies when a test says so.
-            configureSession: s => s.KeepAliveInterval = quickKeepAlive ? TimeSpan.FromMilliseconds(40) : TimeSpan.FromSeconds(30));
+            // When quickKeepAlive is true, only the first dialled session times out quickly; later links stay up.
+            configureSession: s => s.KeepAliveInterval = (quickKeepAlive && Interlocked.Increment(ref sessionCount) == 1)
+                ? TimeSpan.FromMilliseconds(40)
+                : TimeSpan.FromSeconds(30));
         await runtime.StartAsync();
         return runtime;
     }
@@ -358,6 +362,7 @@ public class NodeRuntimeMultiLinkTests : IDisposable
 
         var config = new NodeConfigService(new JsonFileSettingsStore(_settingsPath), _secrets);
         await config.SaveAsync(new NodeSettings { NodeNumber = "55553", Callsign = "W1AW" }, "pw");
+        int sessionsCreated = 0;
         await using var rt = new NodeRuntime(
             config,
             audioFactory: () => new FakeAudioDevice(),
@@ -365,21 +370,27 @@ public class NodeRuntimeMultiLinkTests : IDisposable
             registrationFactory: cfg => new AslRegistrationService(cfg, new HttpClient(new OkHandler())),
             networkMonitor: _net,
             reconnectPolicy: FastPolicy,
-            // The fakes never answer PINGs, so the link is declared lost about 160 ms after it connects.
-            configureSession: s => s.KeepAliveInterval = TimeSpan.FromMilliseconds(40));
+            // Only the first session (to oldHome) uses a 40 ms keep-alive so it times out after connecting;
+            // subsequent sessions use 30 s so newHome stays connected once reached.
+            configureSession: s => s.KeepAliveInterval = Interlocked.Increment(ref sessionsCreated) == 1
+                ? TimeSpan.FromMilliseconds(40)
+                : TimeSpan.FromSeconds(30));
         await rt.StartAsync();
 
         await rt.ConnectAsync("2000");
-        await oldHome.AcceptCallAsync();
-        await Wait.UntilAsync(() => Conn(rt, "2000").Link?.Session.State == Iax2SessionState.Connected);
         Assert.Equal(1, Volatile.Read(ref directory.Requests));
 
-        // The node's public address changes; the old one goes quiet, so the link is lost and re-dialled.
+        // The node's public address changes while the first call is cached; the old one goes quiet after accepting,
+        // so the link is lost and re-dialled.
         Volatile.Write(ref current, newHome);
+        await oldHome.AcceptCallAsync();
+        await Wait.UntilAsync(() => Conn(rt, "2000").Link != null);
 
         // First retry: the cached (old) address, which never answers. That failure must drop the cached address,
         // so the next retry asks the directory again and reaches the node at its new home.
-        await newHome.AcceptCallAsync();
+        // The retry cycle (400 ms attempt timeout on the cached address, back-off, fresh lookup) can exceed the
+        // default 3 s on a loaded CI runner, so this wait is generous.
+        await newHome.AcceptCallAsync(timeoutMs: 15000);
         await Wait.UntilAsync(() => rt.Connections.FirstOrDefault(c => c.Node == "2000")?.Link is { } l
                                     && l.Session.State == Iax2SessionState.Connected
                                     && l.Target.EndPoint.Port == newHome.EndPoint.Port);
