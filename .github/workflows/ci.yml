@@ -35,7 +35,7 @@ jobs:
           global-json-file: global.json
 
       - name: Install the Android workload
-        run: dotnet workload install android --nologo
+        run: dotnet workload install android
 
       - name: Build Android head (full edition)
         run: dotnet build src/NodeX.UI/NodeX.UI.Android -c Debug --nologo
