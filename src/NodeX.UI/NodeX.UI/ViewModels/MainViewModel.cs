@@ -731,7 +731,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Hung up before the call started (for example during the "just registered" wait): not an error.
+            // Hung up before the call started (for example while resolving the node): not an error.
             LogActivity($"Connect to node {target} cancelled.");
         }
         catch (Exception ex)

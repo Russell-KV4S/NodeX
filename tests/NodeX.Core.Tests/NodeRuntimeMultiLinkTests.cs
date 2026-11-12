@@ -41,8 +41,7 @@ public class NodeRuntimeMultiLinkTests : IDisposable
         Factor = 2,
         NetworkChangeDebounce = TimeSpan.FromMilliseconds(30),
         RegistrationWait = TimeSpan.FromMilliseconds(800),
-        AttemptTimeout = TimeSpan.FromMilliseconds(400),
-        RegistrationSettleDelay = TimeSpan.Zero   // production waits 15 s after registering; tests must not
+        AttemptTimeout = TimeSpan.FromMilliseconds(400)
     };
 
     private async Task<NodeRuntime> CreateAsync(bool quickKeepAlive = false, bool autoReconnect = true)
@@ -314,13 +313,33 @@ public class NodeRuntimeMultiLinkTests : IDisposable
         Assert.Equal("2000", rt.TransmitNode);          // its transmit choice survived the outage
     }
 
-    /// <summary>A runtime that, like production, holds the first dial for a while after registering.</summary>
-    private async Task<NodeRuntime> CreateWithSettleDelayAsync(TimeSpan settle)
+    private sealed class SlowDirectoryHandler(
+        IReadOnlyDictionary<string, FakeIaxRemote> remotes,
+        Func<string, CancellationToken, Task> waitAsync) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            string node = request.RequestUri!.AbsolutePath.Split('/').Last();
+            await waitAsync(node, ct);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"node\":{\"ipaddr\":\"127.0.0.1\",\"port\":" + remotes[node].EndPoint.Port + ",\"callsign\":\"W1AW\"}}",
+                    Encoding.UTF8, "application/json")
+            };
+        }
+    }
+
+    /// <summary>A runtime whose directory lookup pauses until <paramref name="waitAsync"/> completes or is cancelled.</summary>
+    private async Task<NodeRuntime> CreateWithSlowResolveAsync(Func<string, CancellationToken, Task> waitAsync)
     {
         var config = new NodeConfigService(new JsonFileSettingsStore(_settingsPath), _secrets);
         await config.SaveAsync(new NodeSettings { NodeNumber = "55553", Callsign = "W1AW" }, "pw");
-        var resolver = new NodeResolution();
-        foreach (var (node, remote) in _remotes) resolver.SetStaticOverride(node, remote.EndPoint);
+        var resolver = new NodeResolution(new HttpClient(new SlowDirectoryHandler(_remotes, waitAsync)))
+        {
+            PortProbe = null,
+            DnsPort = null
+        };
 
         var runtime = new NodeRuntime(
             config,
@@ -328,7 +347,7 @@ public class NodeRuntimeMultiLinkTests : IDisposable
             resolver: resolver,
             registrationFactory: cfg => new AslRegistrationService(cfg, new HttpClient(new OkHandler())),
             networkMonitor: _net,
-            reconnectPolicy: FastPolicy with { RegistrationSettleDelay = settle },
+            reconnectPolicy: FastPolicy,
             configureSession: s => s.KeepAliveInterval = TimeSpan.FromSeconds(30));
         await runtime.StartAsync();
         await Wait.UntilAsync(() => runtime.IsRegistered);
@@ -398,17 +417,17 @@ public class NodeRuntimeMultiLinkTests : IDisposable
     }
 
     [Fact]
-    public async Task HangUpDuringTheJustRegisteredWait_CancelsTheConnect_AndNothingIsDialled()
+    public async Task HangUpDuringPendingResolve_CancelsTheConnect_AndNothingIsDialled()
     {
-        await using var rt = await CreateWithSettleDelayAsync(TimeSpan.FromSeconds(30));
+        await using var rt = await CreateWithSlowResolveAsync((_, ct) => Task.Delay(Timeout.Infinite, ct));
         int linksCreated = 0;
         rt.LinkAdded += _ => Interlocked.Increment(ref linksCreated);
 
-        var connect = rt.ConnectAsync("2000");                      // held by the "just registered" wait
+        var connect = rt.ConnectAsync("2000");                      // blocked inside ResolveNodeAsync
         await Wait.UntilAsync(() => rt.Connections.Count == 1);     // the row is on screen, so it can be hung up
         await rt.DisconnectAsync("2000");
 
-        // The connect ends promptly (not after the 30 s wait) and reports that it was cancelled.
+        // The connect ends promptly and reports that it was cancelled.
         var finished = await Task.WhenAny(connect, Task.Delay(5000));
         Assert.Same(connect, finished);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => connect);
@@ -423,9 +442,9 @@ public class NodeRuntimeMultiLinkTests : IDisposable
     }
 
     [Fact]
-    public async Task DisconnectAllDuringTheWait_CancelsEveryPendingConnect_AndANewConnectStillWorks()
+    public async Task DisconnectAllDuringPendingResolve_CancelsEveryPendingConnect()
     {
-        await using var rt = await CreateWithSettleDelayAsync(TimeSpan.FromSeconds(30));
+        await using var rt = await CreateWithSlowResolveAsync((_, ct) => Task.Delay(Timeout.Infinite, ct));
 
         var first = rt.ConnectAsync("2000");
         var second = rt.ConnectAsync("3000");
@@ -441,14 +460,16 @@ public class NodeRuntimeMultiLinkTests : IDisposable
     [Fact]
     public async Task AfterACancelledConnect_TheSameNodeCanBeConnectedAgain()
     {
-        await using var rt = await CreateWithSettleDelayAsync(TimeSpan.FromMilliseconds(600));
+        int attempt = 0;
+        await using var rt = await CreateWithSlowResolveAsync((_, ct) =>
+            Interlocked.Increment(ref attempt) == 1 ? Task.Delay(Timeout.Infinite, ct) : Task.CompletedTask);
 
         var cancelled = rt.ConnectAsync("2000");
         await Wait.UntilAsync(() => rt.Connections.Count == 1);
         await rt.DisconnectAsync("2000");
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled.WaitAsync(TimeSpan.FromSeconds(5)));
 
-        var link = await LinkAsync(rt, "2000");                     // waits out the rest of the 600 ms, then dials
+        var link = await LinkAsync(rt, "2000");
         Assert.Equal(Iax2SessionState.Connected, link.Session.State);
         Assert.Equal("2000", rt.TransmitNode);
         Assert.Single(rt.Links);

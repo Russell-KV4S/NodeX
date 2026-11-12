@@ -63,8 +63,7 @@ public class NodeRuntimeTests : IDisposable
             config,
             audioFactory: () => { var d = new FakeAudioDevice(); lock (_devices) _devices.Add(d); return d; },
             resolver: resolver,
-            registrationFactory: cfg => new AslRegistrationService(cfg, new HttpClient(registry)),
-            reconnectPolicy: new ReconnectPolicy { RegistrationSettleDelay = TimeSpan.Zero });   // production waits 15 s after registering
+            registrationFactory: cfg => new AslRegistrationService(cfg, new HttpClient(registry)));
         return (runtime, config, registry);
     }
 
@@ -200,8 +199,7 @@ public class NodeRuntimeTests : IDisposable
         var resolver = new NodeResolution(new HttpClient(new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound))),
             dnsResolver: (_, _) => Task.FromException<IPAddress[]>(new System.Net.Sockets.SocketException(11001)));
         await using var rt2 = new NodeRuntime(config, () => new FakeAudioDevice(), resolver,
-            registrationFactory: c => new AslRegistrationService(c, new HttpClient(new StubHandler(_ => RegistryOk()))),
-            reconnectPolicy: new ReconnectPolicy { RegistrationSettleDelay = TimeSpan.Zero });
+            registrationFactory: c => new AslRegistrationService(c, new HttpClient(new StubHandler(_ => RegistryOk()))));
         await rt2.StartAsync();
 
         Assert.Null(await rt2.ConnectAsync("99999"));
@@ -330,5 +328,22 @@ public class NodeRuntimeTests : IDisposable
         _devices.Single().RaiseError("mic unplugged");
 
         lock (errors) Assert.Contains(errors, e => e.Contains("mic unplugged"));
+    }
+
+    [Fact]
+    public async Task Connect_DialsImmediatelyAfterRegistering_WithDefaultPolicy()
+    {
+        var (rt, config, _) = Create();
+        await using var _ = rt;
+        await config.SaveAsync(Station, "pw");
+        await rt.StartAsync();
+        await WaitUntil(() => rt.IsRegistered);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await rt.ConnectAsync("2000").WaitAsync(TimeSpan.FromSeconds(2));
+        await _remote.AcceptCallAsync();
+        await WaitUntil(() => rt.Link?.Session.State == Iax2SessionState.Connected);
+
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"Expected immediate dial after registering, took {sw.Elapsed}");
     }
 }

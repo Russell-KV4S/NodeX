@@ -439,12 +439,11 @@ public sealed class NodeRuntime : IAsyncDisposable
         UpdateActive();
         ConnectionsChanged?.Invoke();
 
-        // The user can hang this node up while we are still waiting or resolving (the row is already on screen).
+        // The user can hang this node up while we are still resolving (the row is already on screen).
         // That must stop the connect, not let it dial a node that is no longer in the list.
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, c.Abandoned.Token);
         try
         {
-            await WaitForRegistrationToSettleAsync(linked.Token);
             var info = await DialAsync(c, linked.Token);
             if (info == null) RemoveConnection(c, byUser: true, "its address could not be looked up");
             return info;
@@ -454,23 +453,6 @@ public sealed class NodeRuntime : IAsyncDisposable
             RemoveConnection(c, byUser: true, $"the connect did not start: {ex.GetType().Name}: {ex.Message}");
             throw;
         }
-    }
-
-    /// <summary>
-    /// Hubs hang up on a node whose registration they have not seen yet. If we registered only moments ago, hold the
-    /// first dial until <see cref="ReconnectPolicy.RegistrationSettleDelay"/> has passed instead of failing and retrying.
-    /// </summary>
-    private async Task WaitForRegistrationToSettleAsync(CancellationToken cancellationToken)
-    {
-        var since = RegisteredSince;
-        if (!IsRegistered || since == null || _policy.RegistrationSettleDelay <= TimeSpan.Zero) return;
-
-        var wait = _policy.RegistrationSettleDelay - (DateTimeOffset.UtcNow - since.Value);
-        if (wait <= TimeSpan.Zero) return;
-
-        Log.Info("dial", $"registered {(_policy.RegistrationSettleDelay - wait).TotalSeconds:0.0} s ago; waiting {wait.TotalSeconds:0.0} s before dialling");
-        Notice?.Invoke($"Just registered; waiting {Math.Ceiling(wait.TotalSeconds):0} s for the network to learn about this node before connecting.");
-        await Task.Delay(wait, cancellationToken);
     }
 
     /// <summary>Resolves and starts a call, publishing the new link. Used for the first dial and for retries.</summary>

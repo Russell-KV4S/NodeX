@@ -1,5 +1,10 @@
 # Change log
 
+## 2026-11-12: immediate first-node connect (1.18 / code 20)
+
+- **Removed the 15-second pre-dial registration settle wait** (`ReconnectPolicy.RegistrationSettleDelay` and `NodeRuntime.WaitForRegistrationToSettleAsync`): `ConnectAsync` now resolves and dials immediately after registration instead of pausing up to 15 s on every startup. Remotes whose local node lists have not refreshed yet remain covered by the existing `EarlyHangup` retry loop.
+- Validation: 693 Core tests and 18 headless UI tests pass; full solution builds with 0 warnings and 0 errors.
+
 ## 2026-11-12: linked nodes "randomly" dropping (1.17 / code 19)
 
 Owner report: on the latest install a linked node (523800) would later be gone. The log excerpt supplied shows six nodes all hanging up about 100 ms after accepting, straight after a network change, with Wi-Fi lost again 9 s later; it does not include the moment a node was removed, so the cause on the phone is **not confirmed**. Four ways a node could vanish or be mis-handled were found in the code and fixed or made visible:

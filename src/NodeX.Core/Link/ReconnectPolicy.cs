@@ -48,13 +48,6 @@ public sealed record ReconnectPolicy
 
     /// <summary>A link that stayed up at least this long was healthy, so its next drop starts a fresh retry count.</summary>
     public TimeSpan StableLinkTime { get; init; } = TimeSpan.FromMinutes(5);
-
-    /// <summary>
-    /// A first dial made sooner than this after registering waits out the difference. Seen live 2026-11-07: dialling
-    /// 5 s after registering got hung up on for ~30 s, while dialling 30 s after registering worked first time.
-    /// Zero disables the wait.
-    /// </summary>
-    public TimeSpan RegistrationSettleDelay { get; init; } = TimeSpan.FromSeconds(15);
 }
 
 /// <summary>What the auto-reconnect machinery is doing right now, for display.</summary>

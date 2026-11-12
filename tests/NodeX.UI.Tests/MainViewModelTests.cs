@@ -43,7 +43,6 @@ public class MainViewModelTests
             resolver.SetStaticOverride("3000", B.EndPoint);
             Runtime = new(new NodeConfigService(store, secrets), () => new NullAudioDeviceService(),
                 resolver: resolver, registrationFactory: cfg => new(cfg, _http), networkMonitor: new Network(),
-                reconnectPolicy: new() { RegistrationSettleDelay = TimeSpan.Zero },
                 configureSession: session => { session.KeepAliveInterval = TimeSpan.FromMinutes(1); session.HangupAckWait = TimeSpan.Zero; });
             Vm = new(Runtime);
         }
