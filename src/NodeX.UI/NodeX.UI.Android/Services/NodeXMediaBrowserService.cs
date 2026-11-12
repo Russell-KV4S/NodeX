@@ -25,7 +25,7 @@ namespace NodeX.UI.Android;
 /// the transmission. The wheel's Next/Back never dial: they step through the connected nodes. Every car key is
 /// released when the car session ends, audio focus is lost, the car time limit passes or this service is destroyed.
 /// </summary>
-[Service(Name = "com.kv4s.nodex.NodeXMediaBrowserService", Exported = true, Label = "NodeX", Icon = "@drawable/ic_car_media")]
+[Service(Name = "com.kv4s.nodex.NodeXMediaBrowserService", Exported = true, Label = "NodeX", Icon = "@mipmap/ic_launcher")]
 [IntentFilter(new[] { "android.media.browse.MediaBrowserService" })]
 public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager.IOnAudioFocusChangeListener
 {

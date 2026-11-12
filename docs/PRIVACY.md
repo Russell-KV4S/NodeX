@@ -1,6 +1,6 @@
 # NodeX privacy policy
 
-*Last updated: 2026-11-11. Applies to NodeX on Android, Windows, Linux and macOS.*
+*Last updated: 2026-11-12. Applies to NodeX on Android, Windows, Linux and macOS.*
 
 NodeX is a free, open-source AllStarLink node app. It has no accounts, no advertising, no analytics and no telemetry. The developer runs no server that receives your data.
 
@@ -19,6 +19,11 @@ NodeX is a free, open-source AllStarLink node app. It has no accounts, no advert
 
 **Not collected:** your location, contacts, photos, files, advertising ID, or anything about other apps. Bluetooth permissions are used only to find and read a push-to-talk button you choose, and the "neverForLocation" flag is set.
 
+**GitHub updates (full sideload Android edition only)**
+- Opening the phone app checks the project's latest stable GitHub release at most once per day while the process stays running; Settings also has a manual check. GitHub receives your public IP address and a generic NodeX updater user-agent, but no node password, callsign, node number or GitHub credentials.
+- An APK downloads only when you choose Download and install. It is kept in the app's private cache and shared temporarily with Android's package installer after verification. Android asks you to approve installation. The Play edition does not use this updater or request installation permission.
+- Releases are currently private. The app contains no GitHub token and reports the update feed as unavailable until anonymous access is enabled. Authorized users can download releases directly through GitHub.
+
 ## Diagnostic log
 
 NodeX keeps a small rolling log file on your device (node numbers, callsign, IP addresses, connection events; never the password). It is not sent anywhere. If you choose **Settings → Troubleshooting → Send logs**, Android's share sheet opens and you decide where it goes.
@@ -33,6 +38,7 @@ NodeX keeps a small rolling log file on your device (node numbers, callsign, IP 
 | Foreground service, wake lock | Keep the link and audio alive with the screen off |
 | Bluetooth (connect, scan) | Optional Bluetooth push-to-talk button or headset |
 | Ignore battery optimisation (request only) | Optional, so Android does not stop a link you left running |
+| Request package installs (full sideload edition only) | Open Android's installer for an update you choose; Android still requires your confirmation |
 
 ## Children
 

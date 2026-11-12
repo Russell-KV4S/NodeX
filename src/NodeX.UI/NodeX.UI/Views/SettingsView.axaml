@@ -75,6 +75,21 @@
                 </StackPanel>
             </Border>
 
+            <Border Classes="card" IsVisible="{Binding Updates.Supported}">
+                <StackPanel Spacing="10">
+                    <TextBlock Classes="sectionTitle" Text="App updates" />
+                    <TextBlock Classes="hint" Text="This full Android edition checks GitHub once a day when opened. Downloads start only when you choose. Android asks you to approve installation." />
+                    <TextBlock Text="{Binding Updates.Status}" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextPrimaryBrush}" AutomationProperties.LiveSetting="Polite" />
+                    <ProgressBar Minimum="0" Maximum="100" Value="{Binding Updates.Progress}"
+                                 IsVisible="{Binding Updates.IsBusy}" />
+                    <Button Content="Check for updates" Command="{Binding Updates.CheckCommand}" IsEnabled="{Binding Updates.IsIdle}" />
+                    <Button Content="Download and install" Command="{Binding Updates.InstallCommand}"
+                            IsVisible="{Binding Updates.HasUpdate}" IsEnabled="{Binding Updates.IsIdle}" />
+                    <Button Content="Cancel update" Command="{Binding Updates.CancelCommand}" IsVisible="{Binding Updates.IsBusy}" />
+                </StackPanel>
+            </Border>
+
             <!-- STATION -->
             <Border Classes="card">
                 <StackPanel Spacing="14">

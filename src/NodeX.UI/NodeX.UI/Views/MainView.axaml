@@ -247,6 +247,12 @@
                 </StackPanel>
             </Grid>
 
+            <Button Command="{Binding OpenSettingsCommand}"
+                    IsVisible="{Binding Settings.Updates.HasUpdate}" HorizontalAlignment="Stretch"
+                    AutomationProperties.Name="App update available. Open Settings.">
+                <TextBlock Text="{Binding Settings.Updates.AvailableText}" TextWrapping="Wrap" />
+            </Button>
+
             <!-- Links strip: always visible, so scrolling to the log never hides what you are connected to -->
             <WrapPanel x:Name="HeaderLinksStrip" Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
                 <TextBlock Text="{Binding LinkCountText, StringFormat='LINKED {0}'}" IsVisible="{Binding HasLinks}"

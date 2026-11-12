@@ -35,7 +35,8 @@ namespace NodeX.UI.Android
 #pragma warning disable CA1422
                     : info.VersionCode;
 #pragma warning restore CA1422
-                return $"{info.VersionName} ({code})";
+                string edition = NodeX.Core.BuildFlavor.CarTalkAllowed ? "Full · GitHub" : "Google Play";
+                return $"{info.VersionName} ({code}) · {edition}";
             }
             catch (System.Exception) { return null; }
         }
@@ -63,6 +64,10 @@ namespace NodeX.UI.Android
                 new NodeX.Core.Audio.NodeAudioEngineOptions { OpenMicOnlyWhileKeyed = true },
                 networkMonitor: new AndroidNetworkMonitor(this),
                 appVersion: AndroidVersionName());
+
+#if !PLAY_STORE
+            AndroidAppUpdater.Configure(this);
+#endif
 
             // Keep the process alive while NodeX has work: a configured node stays registered (and follows IP
             // changes) even when nothing is linked; while linked the service also holds the CPU/Wi-Fi locks and

@@ -15,6 +15,7 @@ namespace NodeX.UI;
 /// </summary>
 public static class AppServices
 {
+    public static ViewModels.AppUpdateViewModel Updates { get; set; } = new();
     private static NodeRuntime? _runtime;
     private static readonly object Gate = new();
 

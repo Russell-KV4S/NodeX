@@ -1,5 +1,13 @@
 # Change log
 
+## 2026-11-12: GitHub releases, Android sideload updater, Android Auto icon (1.16 / code 18)
+
+- Android Auto now uses the color launcher icon, with a separate monochrome tintable attribution icon.
+- Added a tag-driven GitHub release workflow for signed full-edition Android plus Windows/Linux/macOS x64 and ARM64 packages; iOS excluded. Shared desktop/Android versions, checksums, and an Android update manifest are generated consistently. Repository/releases remain private by owner decision.
+- Added full-Android update checks and an available-update notice, explicit verified download, cancellation, package/version/signing-key validation and Android installer consent. Blocks installation while linked or in Android Auto. Play builds exclude the updater entry point, FileProvider and installer permission.
+- Private releases cannot be fetched anonymously by the app: in-app delivery stays pending public access; there are no embedded GitHub credentials. Hardware icon/update checks remain outstanding.
+- Local validation: 680 Core/service tests and 18 headless UI tests pass; full and Play Android Debug builds have zero warnings/errors. Generated manifests confirm the full build has the installer permission/provider and the Play build has neither; full car service uses the color launcher. Workflow actionlint, PowerShell parsing and update-manifest generation pass. Hosted multi-platform release outcome is recorded separately.
+
 ## 2026-11-11: desktop BLE, accessibility, permission explanations and coverage
 
 - Added desktop BLE through the existing Learn wizard and PTT safety rules, native Windows/Linux/Apple Silicon bindings, and fake-driver lifecycle tests.

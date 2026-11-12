@@ -1,0 +1,170 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing version tag to build and publish (for example v1.16)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Validate release tag
+        id: version
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [xml]$props = Get-Content Directory.Build.props -Raw
+          $expected = 'v' + $props.SelectSingleNode('//NodeXVersion').InnerText
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+(\.\d+)?$' -or $env:RELEASE_TAG -cne $expected) { throw "Tag must match version $expected" }
+          git rev-parse --verify "refs/tags/$env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) { throw 'Release requires an existing tag.' }
+          "tag=$env:RELEASE_TAG" >> $env:GITHUB_OUTPUT
+      - name: Core and service tests
+        run: dotnet test tests/NodeX.Core.Tests -c Release --nologo
+      - name: Headless UI tests
+        run: dotnet test tests/NodeX.UI.Tests -c Release --nologo
+
+  desktop:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, rid: win-x64 }
+          - { os: windows-latest, rid: win-arm64 }
+          - { os: ubuntu-24.04, rid: linux-x64 }
+          - { os: ubuntu-24.04, rid: linux-arm64 }
+          - { os: macos-latest, rid: osx-arm64 }
+          - { os: macos-latest, rid: osx-x64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Package desktop app
+        shell: pwsh
+        env:
+          NODEX_BUILD_ROOT: ${{ runner.temp }}/nodex-build
+        run: ./tools/package-release.ps1 -Runtime '${{ matrix.rid }}' -OutputDirectory '${{ runner.temp }}/release-assets'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.rid }}
+          path: ${{ runner.temp }}/release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+  android:
+    needs: validate
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '21'
+      - name: Install Android workload
+        run: dotnet workload install android
+      - name: Build signed full-edition APK
+        shell: pwsh
+        env:
+          NODEX_BUILD_ROOT: ${{ runner.temp }}/nodex-build
+          NODEX_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          NODEX_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          NODEX_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          NODEX_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('NODEX_KEYSTORE_BASE64', 'NODEX_STORE_PASS', 'NODEX_KEY_PASS', 'NODEX_KEY_ALIAS')) {
+            if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Missing Android signing secret: $name" }
+          }
+          $key = Join-Path $env:RUNNER_TEMP 'nodex-release.keystore'
+          try {
+            [IO.File]::WriteAllBytes($key, [Convert]::FromBase64String($env:NODEX_KEYSTORE_BASE64))
+            dotnet publish src/NodeX.UI/NodeX.UI.Android -c Release -p:PlayStore=false -p:AndroidPackageFormat=apk -p:AndroidKeyStore=true "-p:AndroidSigningKeyStore=$key" "-p:AndroidSigningKeyAlias=$env:NODEX_KEY_ALIAS" -p:AndroidSigningStorePass=env:NODEX_STORE_PASS -p:AndroidSigningKeyPass=env:NODEX_KEY_PASS -o "$env:RUNNER_TEMP/android-publish" --nologo
+            if ($LASTEXITCODE -ne 0) { throw 'Android publish failed.' }
+            $apks = @(Get-ChildItem "$env:RUNNER_TEMP/android-publish" -Filter '*-Signed.apk')
+            if ($apks.Count -ne 1) { throw 'Expected exactly one signed universal APK.' }
+            New-Item -ItemType Directory "$env:RUNNER_TEMP/release-assets" -Force | Out-Null
+            Copy-Item -LiteralPath $apks[0].FullName -Destination "$env:RUNNER_TEMP/release-assets/NodeX-android.apk"
+          } finally {
+            if (Test-Path -LiteralPath $key) { Remove-Item -LiteralPath $key -Force }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-android
+          path: ${{ runner.temp }}/release-assets/NodeX-android.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [validate, desktop, android]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Validate assets and write update manifest
+        shell: pwsh
+        run: |
+          $expected = @('NodeX-android.apk', 'NodeX-win-x64.zip', 'NodeX-win-arm64.zip', 'NodeX-linux-x64.tar.gz', 'NodeX-linux-arm64.tar.gz', 'NodeX-osx-arm64.zip', 'NodeX-osx-x64.zip')
+          foreach ($name in $expected) {
+            if (-not (Test-Path -LiteralPath "release-assets/$name") -or (Get-Item "release-assets/$name").Length -eq 0) { throw "Missing or empty release asset: $name" }
+          }
+          ./tools/write-update-manifest.ps1 -AssetDirectory release-assets
+      - name: Publish complete GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Refuse to replace a published release: installed apps depend on stable checksums.
+          if gh release view "$RELEASE_TAG" --json isDraft > "$RUNNER_TEMP/existing-release.json" 2>/dev/null; then
+            if ! jq -e '.isDraft == true' "$RUNNER_TEMP/existing-release.json" > /dev/null; then
+              echo 'This release is already published. Bump the version instead of replacing it.' >&2
+              exit 1
+            fi
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "NodeX $RELEASE_TAG" --notes-file docs/RELEASE_NOTES.md
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --latest

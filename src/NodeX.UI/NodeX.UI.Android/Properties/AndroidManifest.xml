@@ -43,5 +43,6 @@
 		<!-- Android Auto: NodeX is a (listen-only) media app -->
 		<meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
 		<meta-data android:name="com.google.android.gms.car.notification.SmallIcon" android:resource="@drawable/ic_car_media" />
+		<meta-data android:name="androidx.car.app.TintableAttributionIcon" android:resource="@drawable/ic_car_media" />
 	</application>
 </manifest>
