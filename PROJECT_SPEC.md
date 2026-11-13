@@ -1,7 +1,7 @@
 # NodeX — Project Specification & Engineering Guide
 ### Cross-platform, Asterisk-free AllStarLink node (.NET 10 / Avalonia UI)
 
-> **Last updated:** 2026-11-12 · **Tests:** 684 Core/service tests + 18 headless UI tests. Both Android editions build. **Callsign field and "Listen only" option removed (2026-11-12, uncommitted); repository now public.** v1.17 published; **v1.18 (Android code 20)** removes the 15 s pre-dial registration settle wait so first-node connections dial immediately. Package/hardware validation distinctions are recorded in `CHANGELOG.md`.
+> **Last updated:** 2026-11-12 · **Tests:** 684 Core/service tests + 18 headless UI tests. Both Android editions build. **Callsign field and "Listen only" option removed (2026-11-12, shipped in v1.19); repository now public.** v1.17 published; v1.18 (Android code 20) removes the 15 s pre-dial registration settle wait so first-node connections dial immediately. Package/hardware validation distinctions are recorded in `CHANGELOG.md`.
 >
 > This document is written for **humans and AI coding agents** who pick the project up cold. Read §0 first.
 
@@ -151,6 +151,7 @@ In Visual Studio set **`NodeX.UI.Desktop`** as the startup project. The settings
 - **Release prep (2026-11-11):** drafts in [`docs/PRIVACY.md`](docs/PRIVACY.md) and [`docs/PLAY_STORE_LISTING.md`](docs/PLAY_STORE_LISTING.md) (listing text, foreground-service justifications, data-safety answers; none submitted); four demo-data phone-layout screenshots in `docs/screenshots/` (Windows app, demo settings, never connected). Play-edition AAB built as 1.15 (code 17) at `keystore/nodex-1.15-code17-play.aab`, `jarsigner -verify` OK; not uploaded; Android Auto Talk removal in that build is by the compile switch only, not exercised on a device. That bundle predates the current changes/test suite.
 - **1.17 (code 19, 2026-11-12):** Play edition built at `keystore/nodex-1.17-code19-play.aab` and the full sideload APK at `keystore/nodex-1.17-code19-full.apk` (both `jarsigner -verify` OK, from commit `67c0543`). **The Play `.aab` has not been uploaded yet** (owner uploads; the 1.15 bundle was the last one on Play). Standing rule: an "Android bundle" request means both files in `keystore/` plus a GitHub release.
 - **1.18 (code 20, 2026-11-12):** Play edition built at `keystore/nodex-1.18-code20-play.aab` and the full sideload APK at `keystore/nodex-1.18-code20-full.apk` (both `jarsigner -verify` OK, from commit `1958707`). **The Play `.aab` has not been uploaded yet.**
+- **1.19 (code 21, 2026-11-13):** callsign and "Listen only" removed. Play edition at `keystore/nodex-1.19-code21-play.aab` and full sideload APK at `keystore/nodex-1.19-code21-full.apk` (both `jarsigner -verify` OK). **The Play `.aab` has not been uploaded yet.** Tag `v1.19` triggers the GitHub release.
 - **Still needed before any wider track:** privacy policy URL, data-safety form, content rating, target audience, store listing, and **foreground-service declarations** (microphone, media playback, connected device, special use) with justifications. A newer personal developer account may also need a closed test (about 12 testers for 14 days) before production.
 
 ### 3.6 iOS release (TestFlight) — **not started; handover only**

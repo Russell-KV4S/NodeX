@@ -1,5 +1,10 @@
 # Change log
 
+## 2026-11-13: 1.19 / code 21
+
+- Release carrying the callsign and "Listen only" removal below (version bump only; no further code changes). Android Play `.aab` and full sideload `.apk` built, `jarsigner -verify` OK.
+- Validation: 684 Core tests and 18 headless UI tests pass. Not run on a phone.
+
 ## 2026-11-12: callsign and "Listen only" removed; repository public
 
 - **Callsign setting removed.** It was display-only (header badge, activity log) and never sent to AllStarLink or any node, so it only added friction. The settings field, validator rules, header callsign and the "Add callsign" button are gone; the header badge now shows the node number. Old `Callsign`/`ListenOnly` keys in a saved `settings.json` are ignored.
