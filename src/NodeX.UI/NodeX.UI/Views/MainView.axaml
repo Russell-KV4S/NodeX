@@ -203,16 +203,14 @@
                         BorderThickness="1" CornerRadius="20" Padding="14,6">
                     <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="4">
                         <TextBlock Text="STATION:" FontWeight="SemiBold" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding LocalCallsign}" FontWeight="Bold" FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource CyanAccentBrush}" VerticalAlignment="Center" />
-                        <TextBlock Text="•" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding LocalNodeNumber, StringFormat='Node {0}'}" FontWeight="Bold" FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding LocalNodeNumber, StringFormat='Node {0}'}" FontWeight="Bold" FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource CyanAccentBrush}" VerticalAlignment="Center" />
                     </WrapPanel>
                 </Border>
 
                 <!-- Registration + Bluetooth badges (wrap onto a second line when space is tight) -->
                 <WrapPanel x:Name="BadgesPanel" Grid.Column="2" Orientation="Horizontal"
                            ItemSpacing="10" LineSpacing="6" VerticalAlignment="Center">
-                    <!-- Always visible on the Radio screen while transmitting is off (listen-only setting or microphone denied) -->
+                    <!-- Always visible on the Radio screen while transmitting is off (microphone denied) -->
                     <Border x:Name="ListenOnlyChip" IsVisible="{Binding IsTransmitBlocked}" CornerRadius="12" Padding="10,5"
                             Background="{DynamicResource WarningBackgroundBrush}" BorderBrush="{DynamicResource AmberAccentBrush}" BorderThickness="1"
                             ToolTip.Tip="{Binding TransmitBlockedText}" AutomationProperties.Name="Listen only: transmitting is off">
@@ -399,7 +397,7 @@
                                         CornerRadius="12" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" />
                             </Grid>
 
-                            <!-- Shown when transmitting is off (listen only, or microphone access denied). Listening still works. -->
+                            <!-- Shown when transmitting is off (microphone access denied). Listening still works. -->
                             <Border x:Name="TxBlockedBanner" IsVisible="{Binding IsTransmitBlocked}"
                                     Background="{DynamicResource WarningBackgroundBrush}" BorderBrush="{DynamicResource AmberAccentBrush}" BorderThickness="1"
                                     CornerRadius="8" Padding="12,8">
@@ -408,9 +406,6 @@
                                                Foreground="{DynamicResource WarningTextBrush}" AutomationProperties.LiveSetting="Polite" />
                                     <Button Content="Allow microphone" Command="{Binding FixMicrophoneCommand}"
                                             IsVisible="{Binding CanFixMicrophone}" HorizontalAlignment="Left"
-                                            Padding="12,6" CornerRadius="6" FontSize="{DynamicResource FontSize12}" />
-                                    <Button Content="Add callsign" Command="{Binding AddCallsignCommand}"
-                                            IsVisible="{Binding CanAddCallsign}" HorizontalAlignment="Left"
                                             Padding="12,6" CornerRadius="6" FontSize="{DynamicResource FontSize12}" />
                                 </StackPanel>
                             </Border>

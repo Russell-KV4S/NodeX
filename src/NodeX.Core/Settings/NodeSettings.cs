@@ -15,18 +15,6 @@ public sealed record NodeSettings
     /// <summary>Your AllStarLink node number (from the allstarlink.org portal).</summary>
     public string NodeNumber { get; init; } = "";
 
-    /// <summary>
-    /// Your amateur radio callsign. Required unless <see cref="ListenOnly"/> is on. It is shown in the UI;
-    /// the app does not verify it against a licence database.
-    /// </summary>
-    public string Callsign { get; init; } = "";
-
-    /// <summary>
-    /// For users without a callsign: connect and listen, but never transmit (PTT is disabled).
-    /// When false, a callsign is required.
-    /// </summary>
-    public bool ListenOnly { get; init; }
-
     /// <summary>Node pre-filled in the connect box.</summary>
     public string DefaultTargetNode { get; init; } = "";
 

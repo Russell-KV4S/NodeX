@@ -24,15 +24,14 @@ public class CarTransmitTests
     [Fact]
     public void Unkey_is_never_refused()
     {
-        // Even with the feature off, a dead link, no mic and a listen-only block, a keyed transmitter can always be released.
+        // Even with the feature off, a dead link, no mic and a blocked microphone, a keyed transmitter can always be released.
         Assert.Equal(CarTalkAction.Unkey,
-            Decide(enabled: false, nowPlaying: null, transmit: null, connected: false, mic: false, keyed: true, block: TransmitBlock.ListenOnly).Action);
+            Decide(enabled: false, nowPlaying: null, transmit: null, connected: false, mic: false, keyed: true, block: TransmitBlock.MicrophoneDenied).Action);
     }
 
     [Theory]
     [InlineData("none")]
     [InlineData("disconnected")]
-    [InlineData("listenonly")]
     [InlineData("micdenied")]
     [InlineData("othertransmit")]
     [InlineData("notransmit")]
@@ -43,7 +42,6 @@ public class CarTransmitTests
         {
             "none" => Decide(nowPlaying: null),
             "disconnected" => Decide(connected: false),
-            "listenonly" => Decide(block: TransmitBlock.ListenOnly),
             "micdenied" => Decide(block: TransmitBlock.MicrophoneDenied),
             "othertransmit" => Decide(nowPlaying: "2000", transmit: "3000"),   // the car never redirects to another node
             "notransmit" => Decide(transmit: null),

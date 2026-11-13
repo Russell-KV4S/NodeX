@@ -46,9 +46,7 @@ public static class CarTransmit
         if (nowPlayingNode == null || !linkConnected)
             return new(CarTalkAction.Refuse, "Not connected to a node.");
         if (block != TransmitBlock.None)
-            return new(CarTalkAction.Refuse, block == TransmitBlock.ListenOnly
-                ? "Listen only: add your callsign in NodeX Settings to talk."
-                : "Microphone access is off in NodeX.");
+            return new(CarTalkAction.Refuse, "Microphone access is off in NodeX.");
         if (nowPlayingNode != transmitNode)
             return new(CarTalkAction.Refuse, $"Node {nowPlayingNode} is listen-only. Choose it as the transmit node on your phone to talk.");
         if (!micUsable)

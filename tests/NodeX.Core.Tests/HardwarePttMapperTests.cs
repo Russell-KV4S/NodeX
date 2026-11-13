@@ -161,7 +161,7 @@ public class PttButtonTests
     public async Task Button_IsRefused_WhenTransmitIsBlocked()
     {
         using var s = NewSession();
-        using var c = new NodePttController(s) { Policy = new TransmitPolicy { ListenOnly = true } };
+        using var c = new NodePttController(s) { Policy = new TransmitPolicy { MicrophoneAllowed = false } };
 
         await c.HandleButtonAsync(true, PttSource.MediaKey);
         Assert.False(c.IsPttActive);

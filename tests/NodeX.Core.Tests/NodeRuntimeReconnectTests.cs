@@ -90,7 +90,7 @@ public class NodeRuntimeReconnectTests : IDisposable
         Action<Iax2Session>? configureSession = null)
     {
         var config = new NodeConfigService(new JsonFileSettingsStore(_settingsPath), _secrets);
-        await config.SaveAsync(settings ?? new NodeSettings { NodeNumber = "55553", Callsign = "W1AW" }, "pw");
+        await config.SaveAsync(settings ?? new NodeSettings { NodeNumber = "55553" }, "pw");
 
         var resolver = new NodeResolution();
         resolver.SetStaticOverride("2000", _remote.EndPoint);
@@ -343,7 +343,7 @@ public class NodeRuntimeReconnectTests : IDisposable
     public async Task RemoteHangup_OnAnEstablishedLink_IsNotRedialled_WhenAutoReconnectIsOff()
     {
         await using var rt = await CreateAsync(
-            new NodeSettings { NodeNumber = "55553", Callsign = "W1AW", AutoReconnect = false },
+            new NodeSettings { NodeNumber = "55553", AutoReconnect = false },
             policy: LateHangupPolicy, configureSession: s => s.KeepAliveInterval = TimeSpan.FromSeconds(30));
         var notices = Collect<string>(add => rt.Notice += add);
 
@@ -406,7 +406,7 @@ public class NodeRuntimeReconnectTests : IDisposable
     public async Task EarlyHangup_IsNotRetried_WhenAutoReconnectIsOff()
     {
         await using var rt = await CreateAsync(
-            new NodeSettings { NodeNumber = "55553", Callsign = "W1AW", AutoReconnect = false },
+            new NodeSettings { NodeNumber = "55553", AutoReconnect = false },
             configureSession: s => s.KeepAliveInterval = TimeSpan.FromSeconds(30));
         var notices = Collect<string>(add => rt.Notice += add);
 
@@ -454,7 +454,7 @@ public class NodeRuntimeReconnectTests : IDisposable
     [Fact]
     public async Task AutoReconnectDisabled_DoesNotRedial()
     {
-        await using var rt = await CreateAsync(new NodeSettings { NodeNumber = "55553", Callsign = "W1AW", AutoReconnect = false });
+        await using var rt = await CreateAsync(new NodeSettings { NodeNumber = "55553", AutoReconnect = false });
         var errors = Collect<string>(add => rt.ErrorOccurred += add);
         ushort first = await ConnectAndAcceptAsync(rt);
 
@@ -663,7 +663,7 @@ public class NodeRuntimeReconnectTests : IDisposable
     public async Task RegistrationOff_NeedsBackground_OnlyWhileLinked()
     {
         await using var rt = await CreateAsync(
-            new NodeSettings { NodeNumber = "55553", Callsign = "W1AW", RegisterOnStartup = false },
+            new NodeSettings { NodeNumber = "55553", RegisterOnStartup = false },
             configureSession: s => s.KeepAliveInterval = TimeSpan.FromSeconds(30));
         Assert.False(rt.Background.Needed);
 

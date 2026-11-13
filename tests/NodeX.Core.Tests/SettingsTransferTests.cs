@@ -8,7 +8,7 @@ public class SettingsTransferTests
     private static NodeSettings Sample() => new()
     {
         NodeNumber = "523802",
-        Callsign = "KV4S",
+       
         FavoriteNodes = ["27339", "2000"],
         FavoriteLabels = new() { ["27339"] = "East Coast Reflector" },
         MicGain = 2.5f,
@@ -27,7 +27,6 @@ public class SettingsTransferTests
         Assert.Null(result.Password);
         var s = result.Settings!;
         Assert.Equal("523802", s.NodeNumber);
-        Assert.Equal("KV4S", s.Callsign);
         Assert.Equal(["27339", "2000"], s.FavoriteNodes);
         Assert.Equal("East Coast Reflector", s.FavoriteLabels["27339"]);
         Assert.Equal(2.5f, s.MicGain);
@@ -119,9 +118,8 @@ public class SettingsTransferTests
     [Fact]
     public void Import_Normalises_AndLeavesRangeChecksToSave()
     {
-        string text = SettingsTransfer.Export(Sample() with { Callsign = "  kv4s ", TimeOutTimerSeconds = 99999 });
+        string text = SettingsTransfer.Export(Sample() with { TimeOutTimerSeconds = 99999 });
         var s = SettingsTransfer.TryImport(text).Settings!;
-        Assert.Equal("KV4S", s.Callsign);
         // Import only fills the form; Save re-validates, so a bad value in a hand-edited file can't be stored.
         Assert.NotEmpty(NodeSettingsValidator.Validate(s, "pw"));
     }

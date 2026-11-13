@@ -12,7 +12,6 @@ public static partial class NodeSettingsValidator
     {
         public const string NodeNumber = nameof(NodeSettings.NodeNumber);
         public const string Password = "Password";
-        public const string Callsign = nameof(NodeSettings.Callsign);
         public const string DefaultTargetNode = nameof(NodeSettings.DefaultTargetNode);
         public const string FavoriteNodes = nameof(NodeSettings.FavoriteNodes);
         public const string RegistrationUrl = nameof(NodeSettings.RegistrationUrl);
@@ -28,16 +27,12 @@ public static partial class NodeSettingsValidator
     [GeneratedRegex(@"^\d{3,7}$")]
     private static partial Regex NodeNumberPattern();
 
-    [GeneratedRegex(@"^[A-Za-z0-9]{1,6}(/[A-Za-z0-9]{1,6})?$")]
-    private static partial Regex CallsignPattern();
-
     public static bool IsValidNodeNumber(string? value) => value != null && NodeNumberPattern().IsMatch(value);
 
-    /// <summary>Trims text fields, upper-cases the callsign and cleans the favourites list.</summary>
+    /// <summary>Trims text fields and cleans the favourites list.</summary>
     public static NodeSettings Normalize(NodeSettings s) => s with
     {
         NodeNumber = (s.NodeNumber ?? "").Trim(),
-        Callsign = (s.Callsign ?? "").Trim().ToUpperInvariant(),
         DefaultTargetNode = (s.DefaultTargetNode ?? "").Trim(),
         RegistrationUrl = (s.RegistrationUrl ?? "").Trim(),
         FavoriteNodes = (s.FavoriteNodes ?? [])
@@ -85,11 +80,6 @@ public static partial class NodeSettingsValidator
             issues.Add(new(Fields.Password, "Enter your node password (set on the AllStarLink portal)."));
         else if (password.Length > MaxPasswordLength)
             issues.Add(new(Fields.Password, $"Password is too long (maximum {MaxPasswordLength} characters)."));
-
-        if (s.Callsign.Length == 0 && !s.ListenOnly)
-            issues.Add(new(Fields.Callsign, "Enter your callsign, or choose 'Listen only' if you don't have one."));
-        else if (s.Callsign.Length > 0 && !CallsignPattern().IsMatch(s.Callsign))
-            issues.Add(new(Fields.Callsign, "Callsign may contain only letters, digits and one '/'."));
 
         if (s.DefaultTargetNode.Length > 0 && !NodeNumberPattern().IsMatch(s.DefaultTargetNode))
             issues.Add(new(Fields.DefaultTargetNode, "Default target must be a 3 to 7 digit node number."));

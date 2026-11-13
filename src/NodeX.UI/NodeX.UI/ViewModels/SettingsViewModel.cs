@@ -45,15 +45,6 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool ShowPassword { get; set; }
 
-    [ObservableProperty]
-    public partial string Callsign { get; set; } = "";
-
-    /// <summary>For people without a callsign: connect and listen, PTT is turned off.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CallsignLabel))]
-    public partial bool ListenOnly { get; set; }
-
-    public string CallsignLabel => ListenOnly ? "Callsign (optional)" : "Callsign (required to transmit)";
 
     // ----- connecting -----
 
@@ -395,8 +386,6 @@ public partial class SettingsViewModel : ViewModelBase
         TextScale = s.TextScale;
         NodeNumber = s.NodeNumber;
         Password = password;
-        Callsign = s.Callsign;
-        ListenOnly = s.ListenOnly;
         DefaultTargetNode = s.DefaultTargetNode;
         FavoritesText = string.Join(", ", s.FavoriteNodes);
         _favoriteLabels = new Dictionary<string, string>(s.FavoriteLabels);
@@ -587,8 +576,6 @@ public partial class SettingsViewModel : ViewModelBase
             Theme = ThemeIndex == 1 ? "Light" : ThemeIndex == 2 ? "HighContrast" : "Dark",
             TextScale = TextScale,
             NodeNumber = NodeNumber,
-            Callsign = Callsign,
-            ListenOnly = ListenOnly,
             DefaultTargetNode = DefaultTargetNode,
             FavoriteNodes = FavoritesText
                 .Split([',', ' ', ';', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

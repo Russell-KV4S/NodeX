@@ -65,7 +65,7 @@ Keep monitoring the Actions run until completion. An uploaded artifact is not a 
 
 The full Android edition checks the latest stable GitHub release on foreground resume (at most daily per process), provides a manual Settings check, and offers a user-triggered verified download/install. Android's installer requires confirmation; this is not silent installation. Disconnect all nodes and leave Android Auto before installing. The app verifies file size/SHA-256, package ID, increased versionCode and the same signing key; settings/passwords survive normal in-place updates. Keep signing-key backups outside GitHub as well as the Actions secrets.
 
-**Public access is pending.** No GitHub token is shipped in the app. While the repository is private, the updater reports that the feed is unavailable; authorized testers must download through GitHub themselves. Publishing private releases does not enable anonymous in-app downloads. The Play edition omits this updater and its installation permission.
+**The repository and releases are public (owner, 2026-11-12).** No GitHub token is shipped in the app; the updater reads the anonymous public releases feed (verified: the latest-release API answers 200 without credentials). The in-app download and install flow itself is not yet tested end to end against the public feed. The Play edition omits this updater and its installation permission.
 
 ## Release validation checklist
 

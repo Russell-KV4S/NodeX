@@ -4,29 +4,20 @@ namespace NodeX.Core;
 public enum TransmitBlock
 {
     None,
-    /// <summary>The user chose "Listen only" (no callsign).</summary>
-    ListenOnly,
     /// <summary>The operating system has not granted microphone access.</summary>
     MicrophoneDenied
 }
 
 /// <summary>
 /// Single source of truth for "may this app key the transmitter right now?". Receiving never depends on it:
-/// a listen-only user, or one who denied the microphone permission, can still connect and listen.
-/// Inputs: the saved "Listen only" setting and the platform's microphone permission.
+/// a user who denied the microphone permission can still connect and listen. A callsign and AllStarLink login
+/// are always required to use the app at all (see NodeSettingsValidator), so there is no callsign-free mode.
+/// Input: the platform's microphone permission.
 /// </summary>
 public sealed class TransmitPolicy
 {
     private readonly Lock _gate = new();
-    private bool _listenOnly;
     private bool _microphoneAllowed = true;
-
-    /// <summary>True when the user chose to only listen.</summary>
-    public bool ListenOnly
-    {
-        get { lock (_gate) return _listenOnly; }
-        set => Update(ref _listenOnly, value);
-    }
 
     /// <summary>False when the OS denied microphone access. Platform heads set this; default true.</summary>
     public bool MicrophoneAllowed
@@ -42,7 +33,6 @@ public sealed class TransmitPolicy
         {
             lock (_gate)
             {
-                if (_listenOnly) return TransmitBlock.ListenOnly;
                 if (!_microphoneAllowed) return TransmitBlock.MicrophoneDenied;
                 return TransmitBlock.None;
             }
@@ -54,7 +44,6 @@ public sealed class TransmitPolicy
     /// <summary>User-facing explanation, empty when transmitting is allowed.</summary>
     public string Reason => Block switch
     {
-        TransmitBlock.ListenOnly => "Listen only: add your callsign in Settings to transmit.",
         TransmitBlock.MicrophoneDenied => "Microphone access is off, so you can listen but not transmit.",
         _ => ""
     };

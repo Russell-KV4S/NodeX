@@ -47,7 +47,7 @@ public class NodeRuntimeMultiLinkTests : IDisposable
     private async Task<NodeRuntime> CreateAsync(bool quickKeepAlive = false, bool autoReconnect = true)
     {
         var config = new NodeConfigService(new JsonFileSettingsStore(_settingsPath), _secrets);
-        await config.SaveAsync(new NodeSettings { NodeNumber = "55553", Callsign = "W1AW", AutoReconnect = autoReconnect }, "pw");
+        await config.SaveAsync(new NodeSettings { NodeNumber = "55553", AutoReconnect = autoReconnect }, "pw");
 
         var resolver = new NodeResolution();
         foreach (var (node, remote) in _remotes) resolver.SetStaticOverride(node, remote.EndPoint);
@@ -334,7 +334,7 @@ public class NodeRuntimeMultiLinkTests : IDisposable
     private async Task<NodeRuntime> CreateWithSlowResolveAsync(Func<string, CancellationToken, Task> waitAsync)
     {
         var config = new NodeConfigService(new JsonFileSettingsStore(_settingsPath), _secrets);
-        await config.SaveAsync(new NodeSettings { NodeNumber = "55553", Callsign = "W1AW" }, "pw");
+        await config.SaveAsync(new NodeSettings { NodeNumber = "55553" }, "pw");
         var resolver = new NodeResolution(new HttpClient(new SlowDirectoryHandler(_remotes, waitAsync)))
         {
             PortProbe = null,
@@ -380,7 +380,7 @@ public class NodeRuntimeMultiLinkTests : IDisposable
         var resolver = new NodeResolution(new HttpClient(directory)) { PortProbe = null, DnsPort = null };
 
         var config = new NodeConfigService(new JsonFileSettingsStore(_settingsPath), _secrets);
-        await config.SaveAsync(new NodeSettings { NodeNumber = "55553", Callsign = "W1AW" }, "pw");
+        await config.SaveAsync(new NodeSettings { NodeNumber = "55553" }, "pw");
         int sessionsCreated = 0;
         await using var rt = new NodeRuntime(
             config,

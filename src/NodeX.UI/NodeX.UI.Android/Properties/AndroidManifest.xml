@@ -27,7 +27,7 @@
 	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 	<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
-	<!-- Not required: Listen-only mode works without a microphone, so mic-less devices can still install NodeX -->
+	<!-- Not required: Listening works without a microphone, so mic-less devices can still install NodeX -->
 	<uses-feature android:name="android.hardware.microphone" android:required="false" />
 	<uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 

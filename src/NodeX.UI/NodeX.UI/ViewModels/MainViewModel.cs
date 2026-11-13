@@ -105,9 +105,6 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public partial string LocalNodeNumber { get; set; } = NotSet;
 
     [ObservableProperty]
-    public partial string LocalCallsign { get; set; } = "NO CALLSIGN";
-
-    [ObservableProperty]
     public partial bool IsAslRegistered { get; set; }
 
     [ObservableProperty]
@@ -279,7 +276,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public bool CanConnect => LinkItems.Count < NodeRuntime.MaxLinks;
     public bool CanDisconnect => HasLinks || IsReconnecting;
 
-    // --- Transmit permission: listen-only or microphone denied. Listening always works. ---
+    // --- Transmit permission: microphone denied. Listening always works. ---
     public bool CanTransmit => _runtime.Transmit.CanTransmit;
     public bool IsTransmitBlocked => !CanTransmit;
     public string TransmitBlockedText => _runtime.Transmit.Reason;
@@ -303,9 +300,6 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public bool CanFixMicrophone =>
         _runtime.Transmit.Block == TransmitBlock.MicrophoneDenied && AppServices.MicrophonePermissionRequester != null;
 
-    /// <summary>True when transmitting is off only because no callsign has been entered.</summary>
-    public bool CanAddCallsign => _runtime.Transmit.Block == TransmitBlock.ListenOnly;
-
     private void RefreshTransmit()
     {
         OnPropertyChanged(nameof(CanTransmit));
@@ -316,14 +310,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(PttHeadline));
         OnPropertyChanged(nameof(PttCaption));
         OnPropertyChanged(nameof(CanFixMicrophone));
-        OnPropertyChanged(nameof(CanAddCallsign));
     }
 
     [RelayCommand]
     public void FixMicrophone() => AppServices.MicrophonePermissionRequester?.Invoke();
 
-    [RelayCommand]
-    public async Task AddCallsignAsync() => await OpenSettingsAsync();
 
     // --- Radio Activity & PTT Properties ---
     [ObservableProperty]
@@ -665,12 +656,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
             if (!_runtime.Config.IsComplete)
             {
-                LogActivity("Welcome to NodeX. Enter your node number, node password and callsign in Settings to get started (no callsign? choose Listen only).");
+                LogActivity("Welcome to NodeX. Enter your AllStarLink node number and node password in Settings to get started.");
                 await OpenSettingsAsync();
             }
             else
             {
-                LogActivity($"NodeX ready. Station {LocalCallsign}, node {LocalNodeNumber}.");
+                LogActivity($"NodeX ready. Node {LocalNodeNumber}.");
             }
         }
         catch (Exception ex)
@@ -705,7 +696,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     {
         if (!_runtime.Config.IsComplete)
         {
-            LogActivity("[ERROR] Finish your Settings (node number, password, and callsign or Listen only) before connecting.");
+            LogActivity("[ERROR] Finish your Settings (node number and password) before connecting.");
             await OpenSettingsAsync();
             return;
         }
@@ -968,8 +959,6 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         var s = cfg.Settings;
         _idReminder.Configure(s.IdReminderEnabled, TimeSpan.FromMinutes(s.IdReminderMinutes));
         LocalNodeNumber = s.NodeNumber.Length > 0 ? s.NodeNumber : NotSet;
-        LocalCallsign = s.Callsign.Length > 0 ? s.Callsign : s.ListenOnly ? "LISTEN ONLY" : "NO CALLSIGN";
-        _runtime.Transmit.ListenOnly = s.ListenOnly;   // also set by the runtime; keeps the screen right if this runs first
         RefreshTransmit();
 
         FavoriteNodes.Clear();

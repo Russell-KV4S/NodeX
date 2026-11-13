@@ -67,7 +67,7 @@ public class NodeRuntimeTests : IDisposable
         return (runtime, config, registry);
     }
 
-    private static NodeSettings Station => new() { NodeNumber = "55553", Callsign = "W1AW" };
+    private static NodeSettings Station => new() { NodeNumber = "55553" };
 
     /// <summary>
     /// Waits until the audio device has really started. (Audio.IsRunning turns true at the top of

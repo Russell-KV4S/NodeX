@@ -68,8 +68,8 @@ public sealed class NodeRuntime : IAsyncDisposable
     public NodeConfigService ConfigService { get; }
 
     /// <summary>
-    /// Whether this app may transmit. Listening always works. <see cref="TransmitPolicy.ListenOnly"/> follows the
-    /// saved settings; platform heads set <see cref="TransmitPolicy.MicrophoneAllowed"/>.
+    /// Whether this app may transmit. Listening always works. Platform heads set
+    /// <see cref="TransmitPolicy.MicrophoneAllowed"/>.
     /// </summary>
     public TransmitPolicy Transmit { get; } = new();
 
@@ -266,7 +266,6 @@ public sealed class NodeRuntime : IAsyncDisposable
             if (_exited) return;
             var previous = Config;
             Config = cfg;
-            Transmit.ListenOnly = cfg.Settings.ListenOnly;
             Log.Detailed = cfg.Settings.DetailedLogging;
 
             // Changing something unrelated to registration (a favourite, the PTT mode...) must not drop and

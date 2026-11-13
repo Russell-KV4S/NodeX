@@ -26,7 +26,6 @@ public class MediaKeyTransmitTests
     }
 
     [Theory]
-    [InlineData(TransmitBlock.ListenOnly)]
     [InlineData(TransmitBlock.MicrophoneDenied)]
     public void Blocked_RefusesWithReason(TransmitBlock block)
     {
@@ -37,7 +36,7 @@ public class MediaKeyTransmitTests
 
     [Theory]
     [InlineData(false, false, TransmitBlock.None)]
-    [InlineData(false, true, TransmitBlock.ListenOnly)]
+    [InlineData(false, true, TransmitBlock.MicrophoneDenied)]
     [InlineData(true, false, TransmitBlock.MicrophoneDenied)]
     public void WhenKeyed_AlwaysUnkeys(bool enabled, bool connected, TransmitBlock block)
     {

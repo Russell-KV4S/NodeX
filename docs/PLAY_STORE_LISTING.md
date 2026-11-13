@@ -22,12 +22,11 @@ NodeX is a standalone AllStarLink node for your phone. Register your own node nu
 • Find-a-node search and favourites with your own names
 • Push-to-talk on screen (hold or toggle), from a Bluetooth button, or from a headset key
 • Keeps the link alive with the screen off and reconnects when you move between Wi-Fi and mobile data
-• Listen-only mode: no callsign needed, nothing can transmit
 • Optional station-ID reminder. NodeX never transmits for you
 • Android Auto: browse and switch favourite nodes and listen from the car
 • Open source, no ads, no tracking. Your node password stays in the Android Keystore
 
-You need an AllStarLink account and node number. Transmitting needs a valid amateur radio licence, and you are responsible for identifying and for following the rules of the nodes you link. NodeX does not verify callsigns. Linked nodes may be connected to real radio transmitters.
+You need an AllStarLink account with a node number and node password. Transmitting needs a valid amateur radio licence, and you are responsible for identifying and for following the rules of the nodes you link. NodeX does not ask for or verify your callsign. Linked nodes may be connected to real radio transmitters.
 
 NodeX is an independent project and is not affiliated with AllStarLink.
 ```
@@ -61,8 +60,8 @@ A short screen recording (link a node, lock the screen, audio keeps playing, not
 | Collects or shares required data types? | Yes (see rows) |
 | Data encrypted in transit? | Registration: yes (HTTPS). Voice/IAX2 to nodes: **no** (the AllStarLink protocol is unencrypted UDP). Say so honestly; answer "No" to "all data encrypted in transit" |
 | Users can request deletion? | No data is held by the developer. State that in the policy (done) |
-| Audio: voice or sound recordings | Collected: yes, not stored; sent to the linked node at the user's request; purpose App functionality; optional (listen-only needs none) |
-| Personal info: name/user IDs | Node number: shared with AllStarLink and the linked node; App functionality. Callsign: stored locally for the UI and required to enable transmitting; not sent by the app (see PRIVACY.md) |
+| Audio: voice or sound recordings | Collected: yes, not stored; sent to the linked node at the user's request; purpose App functionality; optional (you can listen without it) |
+| Personal info: name/user IDs | Node number: shared with AllStarLink and the linked node; App functionality. NodeX does not collect a callsign |
 | Device or other IDs / IP address | Public IP sent to AllStarLink and linked nodes as part of the protocol; App functionality |
 | App info and performance (logs) | Stays on device unless the user shares it; not collected |
 | Location, contacts, photos, files, financial, health | Not collected |

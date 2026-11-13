@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android Auto Backup (Android 11 and older). Only the settings file is backed up: node number, callsign,
+<!-- Android Auto Backup (Android 11 and older). Only the settings file is backed up: node number,
      favorites and their names, audio and PTT options. The node password is NOT included: it is encrypted with a
      Keystore key that cannot move to another device, so it is entered again after a restore. -->
 <full-backup-content>

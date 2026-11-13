@@ -14,13 +14,10 @@ public class TransmitPolicyTests
     }
 
     [Fact]
-    public void ListenOnly_Blocks_AndTakesPrecedenceOverMicrophone()
+    public void MicrophoneDenied_Blocks()
     {
         var p = new TransmitPolicy { MicrophoneAllowed = false };
         Assert.Equal(TransmitBlock.MicrophoneDenied, p.Block);
-
-        p.ListenOnly = true;
-        Assert.Equal(TransmitBlock.ListenOnly, p.Block);
         Assert.False(p.CanTransmit);
         Assert.NotEqual("", p.Reason);
     }
@@ -33,12 +30,10 @@ public class TransmitPolicyTests
         p.Changed += () => n++;
 
         p.MicrophoneAllowed = true;   // already true
-        p.ListenOnly = false;         // already false
         Assert.Equal(0, n);
 
         p.MicrophoneAllowed = false;
-        p.ListenOnly = true;
-        Assert.Equal(2, n);
+        Assert.Equal(1, n);
     }
 
     [Fact]
@@ -46,7 +41,7 @@ public class TransmitPolicyTests
     {
         using var s = new Iax2Session { LocalNodeNumber = "1234", RemoteNodeNumber = "2000" };
         s.SetStateForTests(Iax2SessionState.Connected);   // keying is refused on a call that is not up
-        var policy = new TransmitPolicy { ListenOnly = true };
+        var policy = new TransmitPolicy { MicrophoneAllowed = false };
         using var c = new NodePttController(s) { Policy = policy };
         var warnings = new List<string>();
         var states = new List<bool>();
@@ -60,7 +55,7 @@ public class TransmitPolicyTests
         Assert.False(c.IsPttActive);
         Assert.Empty(states);
         Assert.Equal(3, warnings.Count);
-        Assert.Contains("Listen only", warnings[0]);
+        Assert.Contains("Microphone", warnings[0]);
     }
 
     [Fact]

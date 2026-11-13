@@ -1,5 +1,12 @@
 # Change log
 
+## 2026-11-12: callsign and "Listen only" removed; repository public
+
+- **Callsign setting removed.** It was display-only (header badge, activity log) and never sent to AllStarLink or any node, so it only added friction. The settings field, validator rules, header callsign and the "Add callsign" button are gone; the header badge now shows the node number. Old `Callsign`/`ListenOnly` keys in a saved `settings.json` are ignored.
+- **"Listen only" option removed.** The claim that you could use NodeX without a callsign or login was wrong: an AllStarLink node number and password are needed to do anything. `TransmitPolicy` now has a single block reason, microphone denied (listening still works then); non-transmit links and the Play car app stay listen-only by design. README, PRIVACY, Play listing draft, manifest comment and PROJECT_SPEC updated.
+- **Repository is public** (owner, 2026-11-12); the anonymous releases API answers 200. Docs that said private/pending are updated; the in-app update flow is not re-tested against the public feed.
+- Validation: 684 Core tests and 18 headless UI tests pass; full solution builds (both Android heads) with 0 warnings and 0 errors. Not run on a phone.
+
 ## 2026-11-12: immediate first-node connect (1.18 / code 20)
 
 - **Removed the 15-second pre-dial registration settle wait** (`ReconnectPolicy.RegistrationSettleDelay` and `NodeRuntime.WaitForRegistrationToSettleAsync`): `ConnectAsync` now resolves and dials immediately after registration instead of pausing up to 15 s on every startup. Remotes whose local node lists have not refreshed yet remain covered by the existing `EarlyHangup` retry loop.

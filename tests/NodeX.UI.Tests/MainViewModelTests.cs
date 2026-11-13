@@ -35,7 +35,7 @@ public class MainViewModelTests
         private readonly HttpClient _http = new(new Registry());
         public Fixture(NodeSettings? settings = null)
         {
-            var store = new Store(settings ?? new() { NodeNumber = "55553", Callsign = "W1AW", RegisterOnStartup = false, AutoReconnect = false });
+            var store = new Store(settings ?? new() { NodeNumber = "55553", RegisterOnStartup = false, AutoReconnect = false });
             var secrets = new InMemorySecretStore();
             secrets.SetAsync(SecretKeys.NodePassword, "test-password").GetAwaiter().GetResult();
             var resolver = new NodeResolution();
@@ -94,10 +94,10 @@ public class MainViewModelTests
         f.Vm.Dispose();
         Assert.False(f.Vm.MeterTimerRunning);
         Assert.False(f.Vm.AgeTimerRunning);
-        string callsign = f.Vm.LocalCallsign;
-        await f.Runtime.ConfigService.SaveAsync(f.Runtime.Config.Settings with { Callsign = "K2ABC" }, "pw");
+        string node = f.Vm.LocalNodeNumber;
+        await f.Runtime.ConfigService.SaveAsync(f.Runtime.Config.Settings with { NodeNumber = "55554" }, "pw");
         Dispatcher.UIThread.RunJobs();
-        Assert.Equal(callsign, f.Vm.LocalCallsign); // disposed view models no longer follow runtime events
+        Assert.Equal(node, f.Vm.LocalNodeNumber); // disposed view models no longer follow runtime events
     }
 
     [AvaloniaFact]
@@ -155,18 +155,16 @@ public class MainViewModelTests
     }
 
     [AvaloniaFact]
-    public async Task ListenOnlyAndPermissionChanges_UpdateUI_AndNeverAllowKeying()
+    public async Task PermissionChanges_UpdateUI_AndNeverAllowKeying()
     {
-        await using var f = new Fixture(new() { NodeNumber = "55553", ListenOnly = true, RegisterOnStartup = false });
+        await using var f = new Fixture(new() { NodeNumber = "55553", RegisterOnStartup = false });
         await f.Vm.InitializeAsync(); await f.Connect("2000");
+        f.Runtime.Transmit.MicrophoneAllowed = false;
+        Dispatcher.UIThread.RunJobs();
         Assert.True(f.Vm.IsTransmitBlocked);
         Assert.Equal("LISTEN ONLY", f.Vm.PttHeadline);
         await f.Vm.PttDownAsync();
         Assert.False(f.Runtime.Link!.Ptt.IsPttActive);
-        await f.Runtime.ConfigService.SaveAsync(f.Runtime.Config.Settings with { ListenOnly = false, Callsign = "W1AW" }, "pw");
-        Dispatcher.UIThread.RunJobs();
-        f.Runtime.Transmit.MicrophoneAllowed = false;
-        Dispatcher.UIThread.RunJobs();
         Assert.False(f.Vm.CanKey);
         await f.Vm.HandleSpacebarPttAsync(true);
         Assert.False(f.Runtime.Link.Ptt.IsPttActive);

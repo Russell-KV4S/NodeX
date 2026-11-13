@@ -44,7 +44,7 @@ public class RxActivityTests
         using var rx = new RxActivity(() => Volatile.Read(ref clock));
         using var remote = new FakeIaxRemote();
 
-        var settings = new NodeSettings { NodeNumber = "68498", Callsign = "KV4S" };
+        var settings = new NodeSettings { NodeNumber = "68498" };
         var target = new NodeInfo("2000", "Hub", remote.EndPoint, "Hub", DateTime.UtcNow);
         await using var link = new NodeLink(settings, target, new NullAudioDeviceService());
         rx.Attach(link);

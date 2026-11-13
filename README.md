@@ -23,9 +23,8 @@ It is built for a **portable node**: register once, link out to other nodes, and
 - Find-a-node search, favourites with custom labels, and DTMF function-code macros
 - Push-to-talk: on-screen (momentary or toggle), Bluetooth LE button with a "Learn" wizard, and headset media key
 - Auto-reconnect and seamless Wi-Fi ↔ cellular network handoff
-- Listen-only mode (no callsign needed, PTT disabled)
 - Optional station-ID reminder (it never transmits for you)
-- Full Android edition: GitHub update checks and a verified download/install flow (public feed access pending)
+- Full Android edition: GitHub update checks and a verified download/install flow
 - Passwords kept in the platform secret store; no telemetry
 - Dark, Light and High contrast themes, with text size from 100% to 150%
 - Permission explanations in Settings, with Android permission review and a Not now option
@@ -64,7 +63,7 @@ Details of what is and is not verified are in [`docs/LIVE_VALIDATION.md`](docs/L
 
 ## Amateur radio and licensing
 
-Many ASL nodes key real radio transmitters. **Transmitting through NodeX is amateur-radio transmission. You need a valid amateur licence to transmit, and you are responsible for identifying yourself as your licence requires.** NodeX does not verify callsigns and never sends an automatic ID or any audio of its own; the ID reminder only prompts you. If you only want to listen, use Listen-only mode.
+Many ASL nodes key real radio transmitters. **Transmitting through NodeX is amateur-radio transmission. You need a valid amateur licence to transmit, and you are responsible for identifying yourself as your licence requires.** NodeX does not ask for or verify your callsign and never sends an automatic ID or any audio of its own; the ID reminder only prompts you. Using NodeX needs an AllStarLink account with a node number and node password.
 
 Respect node owners' linking policies. Don't test by keying a node you don't control without its owner's knowledge.
 

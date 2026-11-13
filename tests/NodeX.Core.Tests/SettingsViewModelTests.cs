@@ -37,7 +37,6 @@ public class SettingsViewModelTests : IDisposable
     {
         vm.NodeNumber = " 55553 ";
         vm.Password = "Sup3rSecret";
-        vm.Callsign = "w1aw";
     }
 
     [Fact]
@@ -60,7 +59,7 @@ public class SettingsViewModelTests : IDisposable
     {
         await _config.SaveAsync(new NodeSettings
         {
-            NodeNumber = "55553", Callsign = "W1AW", DefaultTargetNode = "27339",
+            NodeNumber = "55553", DefaultTargetNode = "27339",
             FavoriteNodes = ["1999", "2000"], TogglePtt = true, TimeOutTimerSeconds = 90, MicGain = 2f, IaxPort = 4570
         }, "pw123");
 
@@ -69,7 +68,6 @@ public class SettingsViewModelTests : IDisposable
 
         Assert.Equal("55553", vm.NodeNumber);
         Assert.Equal("pw123", vm.Password);
-        Assert.Equal("W1AW", vm.Callsign);
         Assert.Equal("27339", vm.DefaultTargetNode);
         Assert.Equal("1999, 2000", vm.FavoritesText);
         Assert.True(vm.TogglePtt);
@@ -114,7 +112,6 @@ public class SettingsViewModelTests : IDisposable
         var cfg = await _config.LoadAsync();
         Assert.True(cfg.IsComplete);
         Assert.Equal("55553", cfg.Settings.NodeNumber);          // trimmed
-        Assert.Equal("W1AW", cfg.Settings.Callsign);              // upper-cased
         Assert.Equal(["1999", "27339", "2000"], cfg.Settings.FavoriteNodes);
         Assert.Equal("Sup3rSecret", cfg.Password);
         Assert.DoesNotContain("Sup3rSecret", await File.ReadAllTextAsync(_path));
@@ -214,7 +211,7 @@ public class SettingsViewModelTests : IDisposable
             await _config.SaveAsync(new NodeSettings
             {
                 NodeNumber = "55553",
-                Callsign = "W1AW",
+               
                 InputDeviceId = "Unplugged Rig Mic",
                 OutputDeviceId = "Headphones"
             }, "pw");

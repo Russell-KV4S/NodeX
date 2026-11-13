@@ -5,7 +5,7 @@ namespace NodeX.Core.Tests;
 
 public class AppearanceSettingsTests
 {
-    private static NodeSettings Valid => new() { NodeNumber = "55553", Callsign = "W1AW" };
+    private static NodeSettings Valid => new() { NodeNumber = "55553" };
 
     [Theory]
     [InlineData("Dark", 1)]

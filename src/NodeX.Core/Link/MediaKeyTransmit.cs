@@ -30,9 +30,7 @@ public static class MediaKeyTransmit
         if (!enabled || !linkConnected) return new(MediaKeyAction.Ignore);
 
         if (block != TransmitBlock.None)
-            return new(MediaKeyAction.Refuse, block == TransmitBlock.ListenOnly
-                ? "Listen only: add your callsign in NodeX Settings to talk."
-                : "Microphone access is off in NodeX.");
+            return new(MediaKeyAction.Refuse, "Microphone access is off in NodeX.");
 
         return new(MediaKeyAction.Key);
     }

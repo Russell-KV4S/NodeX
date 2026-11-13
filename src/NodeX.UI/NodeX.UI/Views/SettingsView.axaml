@@ -111,13 +111,8 @@
                                    Text="This is the password you set for your node on the AllStarLink portal. It is stored encrypted by your operating system and is only ever sent to AllStarLink's registration server, never to other nodes." />
                     </StackPanel>
 
-                    <StackPanel>
-                        <TextBlock Classes="label" Text="{Binding CallsignLabel}" />
-                        <TextBox AutomationProperties.Name="Callsign" Text="{Binding Callsign}" PlaceholderText="e.g. W1AW" MaxLength="14" />
-                        <CheckBox Content="I don't have a callsign: listen only" IsChecked="{Binding ListenOnly}" Margin="0,8,0,0" />
-                        <TextBlock Classes="hint"
-                                   Text="Transmitting needs an amateur radio licence. NodeX does not check your callsign, so you are responsible for using it correctly. In listen-only mode you can still connect to any node and hear it, but the push-to-talk button is turned off." />
-                    </StackPanel>
+                    <TextBlock Classes="hint"
+                               Text="Transmitting needs an amateur radio licence. NodeX does not ask for or check your callsign, so you are responsible for using it and identifying correctly." />
 
                     <CheckBox Content="Register with AllStarLink when the app starts" IsChecked="{Binding RegisterOnStartup}" />
                 </StackPanel>
