@@ -296,6 +296,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         : _runtime.TransmitNode is { } tx && HasMultipleLinks ? $"TO NODE {tx}"
         : "MIC";
 
+    /// <summary>Tells the user which node the DTMF keypad will send to (the transmit node), or why it can't.</summary>
+    public string DtmfTargetText =>
+        NeedsTransmitNode ? "Choose a transmit node first. Tones go only to that node."
+        : _runtime.TransmitNode is { } tx ? $"Sending to node {tx}"
+        : "Connect to a node first. Tones go to the node you transmit to.";
+
     /// <summary>True when the OS denied the microphone and the platform can show its permission prompt.</summary>
     public bool CanFixMicrophone =>
         _runtime.Transmit.Block == TransmitBlock.MicrophoneDenied && AppServices.MicrophonePermissionRequester != null;
@@ -309,6 +315,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(TransmitBlockedText));
         OnPropertyChanged(nameof(PttHeadline));
         OnPropertyChanged(nameof(PttCaption));
+        OnPropertyChanged(nameof(DtmfTargetText));
         OnPropertyChanged(nameof(CanFixMicrophone));
     }
 

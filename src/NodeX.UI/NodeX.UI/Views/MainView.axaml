@@ -806,6 +806,7 @@
                     <Border x:Name="DtmfCard" Classes="card">
                         <StackPanel Spacing="12">
                             <TextBlock Text="DTMF Radio Commands" FontWeight="Bold" FontSize="{DynamicResource FontSize14}" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="{Binding DtmfTargetText}" TextWrapping="Wrap" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" />
 
                             <ItemsControl ItemsSource="{Binding DtmfKeys}">
                                 <ItemsControl.ItemsPanel>
@@ -823,7 +824,7 @@
                             </ItemsControl>
 
                             <StackPanel Spacing="6" Margin="0,4,0,0">
-                                <TextBlock Text="AllStarLink Function Shortcuts" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="AllStarLink function shortcuts. Link and Unlink use the node number typed in the Connect box; they ask the node above to link to or drop that node (the connection itself isn't changed)." TextWrapping="Wrap" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <Grid ColumnDefinitions="*,*,*" Margin="0,2,0,0">
                                     <Button Grid.Column="0" Classes="chip" Content="*3 Link" Command="{Binding SendDtmfMacroCommand}" CommandParameter="link" />
                                     <Button Grid.Column="1" Classes="chip" Content="*1 Unlink" Command="{Binding SendDtmfMacroCommand}" CommandParameter="unlink" />

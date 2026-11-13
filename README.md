@@ -20,7 +20,7 @@ It is built for a **portable node**: register once, link out to other nodes, and
 
 - **Multi-node linking:** register once with AllStarLink and hold up to **8 simultaneous outbound links** with live mixed audio, per-node mute, and a single explicit transmit target
 - **Android Auto integration:** browse linked nodes and favourites, switch listen/transmit focus, mute, and optionally transmit from the car screen or steering wheel (full GitHub edition)
-- Find-a-node search, favourites with custom labels, and DTMF function-code macros
+- Find-a-node search, favourites with custom labels, and a DTMF keypad for node function codes (sent to the transmit node; Link/Unlink use the Connect box's node)
 - Push-to-talk: on-screen (momentary or toggle), Bluetooth LE button with a "Learn" wizard, and headset media key
 - Auto-reconnect and seamless Wi-Fi ↔ cellular network handoff
 - Optional station-ID reminder (it never transmits for you)
