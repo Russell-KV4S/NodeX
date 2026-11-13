@@ -24,3 +24,6 @@ secrets.json
 keystore/
 *.keystore
 *.jks
+
+# Screen recordings (large; e.g. Play review video)
+docs/screenshots/*.mp4
