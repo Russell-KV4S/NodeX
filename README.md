@@ -45,7 +45,7 @@ Take your AllStarLink node on the road as a native Android Auto media app:
 - **Browse & dial safely:** switch between **Active Links** and **Favourites** tabs on your car display, tap a favourite to dial, or select any active link to focus it on Now Playing.
 - **Clear car controls:** Now Playing shows who is talking, your link count, and whether you are listening or armed to transmit, with per-node **Transmit here**, **Mute / Unmute**, and **Disconnect** buttons.
 - **Car-safe media buttons:** **Next / Back** step through connected nodes without dialling new ones, **Pause / Stop** mute audio instead of dropping your links, and **Play** unmutes. Any active car transmission is immediately released if focus is lost, the car disconnects, or any media button is pressed.
-- **Play vs full GitHub edition:** the Google Play edition is **listen-only** in the car (you can still browse, switch nodes, mute, and disconnect). The full GitHub APK edition (`NodeX-android.apk`) adds an optional **Talk** screen button and optional steering-wheel **Next** or **Back** PTT trigger in **Settings** (disabled by default, with audible key/unkey confirmation tones and a car transmission time limit).
+- **Play vs full GitHub edition:** the Google Play edition is **listen-only** in the car (you can still browse, switch nodes, mute, and disconnect). The full GitHub APK edition (`NodeX-android.apk`, [install guide](docs/INSTALL_ANDROID.md)) adds an optional **Talk** screen button and optional steering-wheel **Next** or **Back** PTT trigger in **Settings** (disabled by default, with audible key/unkey confirmation tones and a car transmission time limit).
 
 ## Platforms and status
 
@@ -71,9 +71,11 @@ Respect node owners' linking policies. Don't test by keying a node you don't con
 
 You need an AllStarLink account and a registered node number and password (from the [ASL portal](https://www.allstarlink.org/)). Enter them on the first-run screen.
 
-**Downloads:** [GitHub Releases](https://github.com/Russell-KV4S/NodeX/releases) provide the full Android APK and self-contained Windows, Linux and macOS packages for x64 and ARM64. iOS is excluded. Releases are currently private, so repository access is required. See each release's installation notes and [`docs/RELEASING.md`](docs/RELEASING.md).
+**Downloads:** [GitHub Releases](https://github.com/Russell-KV4S/NodeX/releases) provide the full Android APK and self-contained Windows, Linux and macOS packages for x64 and ARM64. iOS is excluded. Releases are public. See each release's installation notes and [`docs/RELEASING.md`](docs/RELEASING.md).
 
-For Android Auto PTT, use `NodeX-android.apk`, then enable Talk from the car and choose a wheel button in Settings. The Play edition omits car PTT. Switching from Play may require uninstalling because the signing keys differ; export settings first and be prepared to re-enter your node password. Future same-key sideload updates preserve app data. The full edition has Settings → App updates; in-app delivery remains unavailable while releases are private, so download through GitHub manually for now.
+For Android Auto PTT, use `NodeX-android.apk`, then enable Talk from the car and choose a wheel button in Settings. The Play edition omits car PTT. Switching from Play may require uninstalling because the signing keys differ; export settings first and be prepared to re-enter your node password. Future same-key sideload updates preserve app data. The full edition has Settings → App updates.
+
+**New to sideloading, or NodeX missing from the Android Auto launcher?** Android Auto hides apps not installed from the Play Store until you switch on **Unknown sources** in its developer settings (a separate switch from Android's own). Step-by-step instructions: [`docs/INSTALL_ANDROID.md`](docs/INSTALL_ANDROID.md).
 
 **Build from source** (needs the [.NET 10 SDK](https://dotnet.microsoft.com/download); see `global.json`):
 

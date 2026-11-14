@@ -1,5 +1,9 @@
 # Change log
 
+## 2026-11-14: sideload / Android Auto install guide
+
+- Owner installed the GitHub APK and NodeX vanished from Android Auto: Android Auto hides non-Play media apps until its own **Unknown sources** developer option is on. Confirmed the app then appears in Customize launcher. New [`docs/INSTALL_ANDROID.md`](docs/INSTALL_ANDROID.md) covers sideloading, that switch and Play to GitHub switching; README links to it, README's stale "releases are private" wording fixed. Docs only, no code change.
+
 ## 2026-11-13: 1.19 / code 21
 
 - Release carrying the callsign and "Listen only" removal below (version bump only; no further code changes). Android Play `.aab` and full sideload `.apk` built, `jarsigner -verify` OK.
