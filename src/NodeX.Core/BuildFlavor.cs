@@ -13,4 +13,7 @@ public static class BuildFlavor
 #else
     public const bool CarTalkAllowed = true;
 #endif
+
+    /// <summary>The developer's Buy Me a Coffee page, opened from Settings → Support NodeX.</summary>
+    public const string TipJarUrl = "https://buymeacoffee.com/RussellThomas";
 }

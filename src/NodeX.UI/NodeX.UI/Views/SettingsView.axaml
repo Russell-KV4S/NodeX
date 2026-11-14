@@ -315,6 +315,22 @@
                 </StackPanel>
             </Border>
 
+            <!-- SUPPORT (tip jar; shown in every edition) -->
+            <Border Classes="card">
+                <StackPanel Spacing="10">
+                    <TextBlock Classes="sectionTitle" Text="Support NodeX" />
+                    <TextBlock Classes="hint" Margin="0"
+                               Text="NodeX is free, with no ads. If it's useful to you, you can leave a tip to help with development. Tipping is optional and doesn't change anything in the app." />
+                    <Button Content="Buy me a coffee" Click="OnTipJarClick"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                            MinHeight="44" CornerRadius="6"
+                            AutomationProperties.Name="Buy me a coffee (opens buymeacoffee.com in your browser)" />
+                    <TextBlock Classes="hint" Margin="0" Text="Opens buymeacoffee.com/RussellThomas in your browser." />
+                    <TextBlock x:Name="TipJarError" Classes="hint" Margin="0" IsVisible="False"
+                               Foreground="{DynamicResource TxRedBrush}" />
+                </StackPanel>
+            </Border>
+
             <!-- ADVANCED -->
             <Expander Header="Advanced" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                 <StackPanel Spacing="14" Margin="0,8,0,0">

@@ -1,11 +1,9 @@
-NodeX 1.19 removes the callsign field and the "Listen only" option.
+NodeX 1.20 adds an optional tip jar.
 
 **What changed**
-- The callsign setting is gone. It was only ever shown in the header and log, never sent to AllStarLink or any node. Settings now asks for just your AllStarLink node number and node password; the header shows the node number. Transmitting needs an amateur radio licence, and NodeX does not ask for or check your callsign.
-- "Listen only" is gone. Nothing in NodeX works without an AllStarLink node number and password, so the option was misleading. Listening still works when the microphone permission is denied; you just cannot transmit.
-- Old `Callsign` / `ListenOnly` entries in an existing settings file are ignored.
+- Settings has a new "Support NodeX" card with a "Buy me a coffee" button that opens buymeacoffee.com/RussellThomas in your browser. Tipping is optional and doesn't unlock or change anything in the app.
 
-Includes all 1.18 changes (immediate first-node connect).
+Includes all 1.19 changes (callsign field and "Listen only" option removed).
 
 Downloads:
 - **Android:** `NodeX-android.apk` is the full sideload edition, including optional Android Auto Talk and steering-wheel PTT.
@@ -16,4 +14,4 @@ Downloads:
 
 **Switching from Google Play:** Play and sideload signatures differ. Export your settings before uninstalling the Play build; you may need to re-enter the node password.
 
-**Not yet verified:** these changes are unit-tested only; they have not been run on a phone, in a car or against a live node. Full Linux/macOS operation and Android update installation also still need hardware checks. See PROJECT_SPEC.md for the validation record.
+**Not yet verified:** these changes are build- and unit-tested only; they have not been run on a phone, in a car or against a live node. Full Linux/macOS operation and Android update installation also still need hardware checks. See PROJECT_SPEC.md for the validation record.

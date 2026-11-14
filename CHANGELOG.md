@@ -1,5 +1,11 @@
 # Change log
 
+## 2026-11-14: 1.20 / code 22: tip jar
+
+- **Tip jar.** Settings has a new "Support NodeX" card with a "Buy me a coffee" button that opens https://buymeacoffee.com/RussellThomas through Avalonia's `TopLevel.Launcher` (the URL is `BuildFlavor.TipJarUrl`). If no browser opens, the card shows the address. It is shown in **every edition, Google Play included**, by owner decision. Risk: Play's payments policy has rejected apps that link to outside donation pages; if review flags it, hide the card in the Play build with a `PLAY_STORE` switch like `CarTalkAllowed`.
+- Android Play `.aab` and full sideload `.apk` built, `jarsigner -verify` OK. Windows deployed to Program Files.
+- Validation: 684 Core tests and 18 headless UI tests pass; desktop and Play-edition builds compile. The card has not been seen or clicked in the running app on Windows or a phone.
+
 ## 2026-11-14: sideload / Android Auto install guide
 
 - Owner installed the GitHub APK and NodeX vanished from Android Auto: Android Auto hides non-Play media apps until its own **Unknown sources** developer option is on. Confirmed the app then appears in Customize launcher. New [`docs/INSTALL_ANDROID.md`](docs/INSTALL_ANDROID.md) covers sideloading, that switch and Play to GitHub switching; README links to it, README's stale "releases are private" wording fixed. Docs only, no code change.

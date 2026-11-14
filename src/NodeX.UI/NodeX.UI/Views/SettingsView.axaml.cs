@@ -102,6 +102,30 @@ public partial class SettingsView : UserControl
         }
     }
 
+    /// <summary>Opens the tip-jar page in the system browser.</summary>
+    private async void OnTipJarClick(object? sender, RoutedEventArgs e)
+    {
+        TipJarError.IsVisible = false;
+        try
+        {
+            var launcher = TopLevel.GetTopLevel(this)?.Launcher;
+            bool opened = launcher != null
+                && await launcher.LaunchUriAsync(new Uri(NodeX.Core.BuildFlavor.TipJarUrl));
+            if (!opened)
+                ShowTipJarError("Couldn't open a browser. Visit " + NodeX.Core.BuildFlavor.TipJarUrl);
+        }
+        catch (Exception ex)
+        {
+            ShowTipJarError($"Couldn't open a browser ({ex.Message}). Visit {NodeX.Core.BuildFlavor.TipJarUrl}");
+        }
+    }
+
+    private void ShowTipJarError(string message)
+    {
+        TipJarError.Text = message;
+        TipJarError.IsVisible = true;
+    }
+
     /// <summary>Copies the export text, handy for sending to yourself in a chat or e-mail.</summary>
     private async void OnCopyExportClick(object? sender, RoutedEventArgs e)
     {
