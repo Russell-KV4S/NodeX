@@ -188,7 +188,7 @@ public class NodeRuntimeReconnectTests : IDisposable
         lock (activity) Assert.Equal([(true, "2000")], activity);          // never flapped to false
         lock (statuses) Assert.Contains(statuses, s => s.Active && s.Attempt == 1);
         lock (notices) Assert.Contains(notices, n => n.Contains("lost")) ;
-        lock (notices) Assert.Contains(notices, n => n.Contains("Reconnected to node 2000"));
+        await Wait.UntilAsync(() => { lock (notices) return notices.Any(n => n.Contains("Reconnected to node 2000")); });
         Assert.True(_devices.Count >= 2);                                   // a fresh audio device per call
     }
 
@@ -211,6 +211,8 @@ public class NodeRuntimeReconnectTests : IDisposable
                                                           && f.SourceCallNumber != first, 5000);
         await _remote.SendIaxAsync(IaxControlSubclass.Accept);
         await _remote.SendIaxAsync(IaxControlSubclass.Hangup);
+        await Task.Delay(300);
+        lock (notices) Assert.DoesNotContain(notices, n => n.StartsWith("Reconnected to node"));   // accepted, then hung up: not a recovery
 
         // Third attempt: the remote's list has refreshed, so the call stays up.
         await _remote.WaitForFrameAsync(f => f.FrameType == FrameType.IaxControl
@@ -220,9 +222,10 @@ public class NodeRuntimeReconnectTests : IDisposable
         await _remote.SendIaxAsync(IaxControlSubclass.Accept);
 
         await Wait.UntilAsync(() => rt.Link?.Session.State == Iax2SessionState.Connected && !rt.Reconnect.Active);
-        await Task.Delay(150);                                          // it must stay up, not hang up again
+        await Wait.UntilAsync(() => { lock (notices) return notices.Any(n => n.StartsWith("Reconnected to node")); });
         Assert.Equal(Iax2SessionState.Connected, rt.Link!.Session.State);
 
+        lock (notices) Assert.Single(notices, n => n.StartsWith("Reconnected to node"));
         lock (notices) Assert.Contains(notices, n => n.Contains("hung up straight after accepting") && n.Contains("retry 1 of"));
         lock (errors) Assert.Empty(errors);
         lock (activity) Assert.Equal([(true, "2000")], activity);       // link stayed "wanted" throughout
@@ -291,7 +294,7 @@ public class NodeRuntimeReconnectTests : IDisposable
                                     && rt.Link.Session.State == Iax2SessionState.Connected && !rt.Reconnect.Active);
 
         lock (notices) Assert.Contains(notices, n => n.Contains("Node 2000 dropped the link") && n.Contains("try 1 of 5"));
-        lock (notices) Assert.Contains(notices, n => n.Contains("Reconnected to node 2000"));
+        await Wait.UntilAsync(() => { lock (notices) return notices.Any(n => n.Contains("Reconnected to node 2000")); });
         lock (errors) Assert.Empty(errors);
         lock (activity) Assert.Equal([(true, "2000")], activity);       // stayed "wanted": background services kept
         Assert.Equal("2000", rt.TransmitNode);                          // and it is still the transmit node

@@ -921,9 +921,9 @@ public sealed class NodeRuntime : IAsyncDisposable
 
                 if (succeeded)
                 {
-                    Notice?.Invoke(attempt == 1
-                        ? $"Reconnected to node {target}."
-                        : $"Reconnected to node {target} after {attempt} attempts.");
+                    // Do not claim success yet: a node that is not yet in its hub's list accepts and hangs up at once.
+                    // The announcement waits until the call has survived the early-hangup window.
+                    _ = AnnounceReconnectWhenSettledAsync(c, c.Link, attempt);
                     recovered = true;
                     return;
                 }
@@ -958,6 +958,23 @@ public sealed class NodeRuntime : IAsyncDisposable
                 _ = Task.Run(() => HandleLinkEndedAsync(c, live));
             }
         }
+    }
+
+    /// <summary>
+    /// Raises "Reconnected to node N" only once the recovered call is still up after the early-hangup window.
+    /// If it is hung up straight after accepting, the early-hangup path reports the retry instead.
+    /// </summary>
+    private async Task AnnounceReconnectWhenSettledAsync(NodeConnection c, NodeLink? link, int attempt)
+    {
+        if (link == null) return;
+        try { await Task.Delay(_policy.EarlyHangupWindow); }
+        catch (Exception ex) when (ex is ObjectDisposedException or OperationCanceledException) { return; }
+
+        if (!ReferenceEquals(c.Link, link) || link.Session.State != Iax2SessionState.Connected) return;
+
+        Notice?.Invoke(attempt == 1
+            ? $"Reconnected to node {c.Node}."
+            : $"Reconnected to node {c.Node} after {attempt} attempts.");
     }
 
     /// <summary>One dial attempt. True only when the call reaches Connected within the policy's timeout.</summary>
