@@ -158,6 +158,38 @@ public sealed class DiagnosticLog
         }
     }
 
+    /// <summary>
+    /// Log text for sharing as a message body: the newest <paramref name="recentChars"/> first (in time order), then
+    /// the older part, all within <paramref name="maxChars"/>. Apps that receive shared text often cut it off at the
+    /// end (a 2026-11-19 log arrived without its last day, ending mid-word), so the part that matters most comes first.
+    /// </summary>
+    public string ReadForSharing(int maxChars, int recentChars)
+    {
+        string all = ReadAll(int.MaxValue);
+        if (all.Length <= recentChars) return all;
+
+        int split = all.Length - recentChars;
+        int nl = all.IndexOf('\n', split);
+        if (nl < 0 || nl + 1 >= all.Length) return all;
+        split = nl + 1;
+
+        string recent = all[split..];
+        string older = all[..split];
+        const string recentHeading = "===== MOST RECENT ENTRIES (older entries follow below) =====";
+        const string olderHeading = "===== OLDER ENTRIES =====";
+        int room = maxChars - recent.Length - recentHeading.Length - olderHeading.Length - 64;
+        if (room <= 0) return recentHeading + Environment.NewLine + recent;
+
+        if (older.Length > room)
+        {
+            string tail = older[^room..];
+            int cut = tail.IndexOf('\n');
+            older = "[earlier lines omitted]" + Environment.NewLine + (cut >= 0 ? tail[(cut + 1)..] : tail);
+        }
+        return recentHeading + Environment.NewLine + recent + Environment.NewLine +
+               olderHeading + Environment.NewLine + older;
+    }
+
     /// <summary>Writes the retained log, capped as in <see cref="ReadAll"/>, to one new file for sharing; null if nothing to share.</summary>
     public string? CreateShareFile(int maxChars = 2_000_000)
     {

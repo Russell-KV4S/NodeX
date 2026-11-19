@@ -175,6 +175,44 @@ public class FallbackRegistrationTests
     }
 
     [Fact]
+    public async Task AfterFallingBack_IaxIsTriedAgain_AndTakesOverWhenItWorks()
+    {
+        // Phone log 2026-11-19: IAX2 got no reply in the first 17 s after start and NodeX stayed on HTTPS for good.
+        using var registry = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        var iax = new Iax2Registrar("55553", "pw", (IPEndPoint)registry.Client.LocalEndPoint!)
+        {
+            ReplyTimeout = TimeSpan.FromMilliseconds(50),
+            Retries = 0,
+            RetryDelay = TimeSpan.FromMilliseconds(50)
+        };
+        var https = new FakeHttps();
+        await using var reg = new FallbackRegistration(iax, () => https) { IaxRetryInterval = TimeSpan.FromMilliseconds(300) };
+        bool recovered = false;
+        reg.Recovered += () => recovered = true;
+
+        await reg.StartAsync();
+        await Wait.UntilAsync(() => reg.UsingFallback && reg.IsRegistered);     // registry silent: HTTPS
+
+        // The registry starts answering (the network came up).
+        var answering = Task.Run(async () =>
+        {
+            while (true)
+            {
+                var r = await registry.ReceiveAsync();
+                if (!TryParseFrame(r.Buffer, out var req) || req.Subclass != (byte)IaxControlSubclass.RegReq) continue;
+                byte[] ack = new byte[FullHeaderSize];
+                WriteFullFrame(ack, 9, req.SourceCallNumber, 0, 0, 1, FrameType.IaxControl, (byte)IaxControlSubclass.RegAck);
+                await registry.SendAsync(ack, r.RemoteEndPoint);
+            }
+        });
+
+        await Wait.UntilAsync(() => recovered);
+        Assert.False(reg.UsingFallback);
+        Assert.Equal("IAX2", reg.Transport);
+        Assert.True(reg.IsRegistered);
+    }
+
+    [Fact]
     public async Task IaxThatWorked_IsNotAbandonedForOneLostReply()
     {
         using var registry = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));

@@ -29,6 +29,8 @@ try
         "register" when args.Length >= 2 && args[1] == "--iax" => await RegisterIaxAsync(),
         "register" => await RegisterAsync(),
         "netcheck" => await NetCheckAsync(),
+        "regprobe" when args.Length >= 2 => await RegProbeAsync(args[1]),
+        "poke" when args.Length >= 2 => await PokeAsync(args[1]),
         "link" when args.Length >= 2 => await LinkAsync(args),
         "redial" when args.Length >= 2 => await RedialAsync(args[1]),
         "audio" => await AudioAsync(),
@@ -114,6 +116,88 @@ static async Task<int> RegisterIaxAsync()
     Console.WriteLine("network check: " + check.Describe());
     if (check.UserWarning is { } w) Console.WriteLine("WARNING: " + w);
     return ok ? 0 : 1;
+}
+
+// Sends ONE IAX2 REGREQ (username only, no MD5, no password) to the registry and prints every frame that comes
+// back for 6 s, with the CALLTOKEN echoed once. Shows whether the registry speaks IAX2 registration at all; no
+// authentication is attempted, so it cannot change any registration.
+static async Task<int> RegProbeAsync(string node)
+{
+    using var endpoint = new Iax2Endpoint();
+    var addrs = await Dns.GetHostAddressesAsync(Iax2Registrar.DefaultHost);
+    Console.WriteLine($"{Iax2Registrar.DefaultHost} -> {string.Join(", ", addrs.Select(a => a.ToString()))}");
+    var server = new IPEndPoint(addrs.First(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork), 4569);
+    var inbox = System.Threading.Channels.Channel.CreateUnbounded<byte[]>();
+    using var sub = endpoint.Subscribe(server, p => inbox.Writer.TryWrite(p));
+
+    byte[] Req(byte[] token)
+    {
+        var ies = new[]
+        {
+            Iax2InformationElement.String(Iax2Protocol.InformationElementId.Username, node),
+            Iax2InformationElement.UInt16(Iax2Protocol.InformationElementId.Refresh, 60),
+            Iax2InformationElement.Raw(Iax2Protocol.InformationElementId.CallToken, token)
+        };
+        byte[] ie = new byte[256];
+        int n = Iax2Protocol.WriteInformationElements(ie, ies);
+        byte[] buf = new byte[Iax2Protocol.FullHeaderSize + n];
+        Iax2Protocol.WriteFullFrame(buf, 1234, 0, 1, 0, 0, Iax2Protocol.FrameType.IaxControl,
+            (byte)Iax2Protocol.IaxControlSubclass.RegReq, ie.AsSpan(0, n));
+        return buf;
+    }
+
+    await endpoint.SendToAsync(Req([]), server);
+    Console.WriteLine($"sent REGREQ for {node} from local UDP {endpoint.LocalPort} to {server}");
+    bool echoed = false;
+    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+    try
+    {
+        while (true)
+        {
+            byte[] p = await inbox.Reader.ReadAsync(cts.Token);
+            if (!Iax2Protocol.TryParseFrame(p, out var f)) { Console.WriteLine($"  <- {p.Length} bytes, not IAX2"); continue; }
+            string ies = f.IsFullFrame && f.Payload.Length > 0
+                ? string.Join(" ", Iax2Protocol.ParseInformationElements(f.Payload).Select(i => $"IE{(int)i.Id}={(i.Data.All(b => b >= 32 && b < 127) ? Encoding.ASCII.GetString(i.Data) : Convert.ToHexString(i.Data))}"))
+                : "";
+            Console.WriteLine($"  <- type={f.FrameType} subclass=0x{f.Subclass:X2} src={f.SourceCallNumber} dst={f.DestCallNumber} {ies}");
+            if (!echoed && f.FrameType == Iax2Protocol.FrameType.IaxControl && f.Subclass == (byte)Iax2Protocol.IaxControlSubclass.CallToken)
+            {
+                echoed = true;
+                var token = Iax2Protocol.ParseInformationElements(f.Payload).First(i => i.Id == Iax2Protocol.InformationElementId.CallToken).Data;
+                await endpoint.SendToAsync(Req(token), server);
+                Console.WriteLine("  -> REGREQ again with the call token");
+            }
+        }
+    }
+    catch (OperationCanceledException) { Console.WriteLine("(6 s, done)"); }
+    return 0;
+}
+
+// IAX2 POKE to a node (what Asterisk "qualify" sends): shows whether anything answers at its address.
+static async Task<int> PokeAsync(string node)
+{
+    var info = await new NodeResolution().ResolveNodeAsync(node);
+    if (info == null) { Console.WriteLine("could not resolve"); return 1; }
+    Console.WriteLine($"node {node} resolves to {info.EndPoint}");
+    using var endpoint = new Iax2Endpoint();
+    var inbox = System.Threading.Channels.Channel.CreateUnbounded<byte[]>();
+    using var sub = endpoint.Subscribe(info.EndPoint, p => inbox.Writer.TryWrite(p));
+    byte[] buf = new byte[Iax2Protocol.FullHeaderSize];
+    Iax2Protocol.WriteFullFrame(buf, 2345, 0, 1, 0, 0, Iax2Protocol.FrameType.IaxControl, (byte)Iax2Protocol.IaxControlSubclass.Poke);
+    for (int i = 0; i < 3; i++)
+    {
+        await endpoint.SendToAsync(buf, info.EndPoint);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        try
+        {
+            byte[] p = await inbox.Reader.ReadAsync(cts.Token);
+            Iax2Protocol.TryParseFrame(p, out var f);
+            Console.WriteLine($"  answered: type={f.FrameType} subclass=0x{f.Subclass:X2}");
+            return 0;
+        }
+        catch (OperationCanceledException) { Console.WriteLine($"  no answer to POKE {i + 1}"); }
+    }
+    return 1;
 }
 
 // STUN only (no registration, no password): how this network maps one UDP socket to public addresses.

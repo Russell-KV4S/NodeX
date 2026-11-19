@@ -24,6 +24,7 @@ public sealed class FallbackRegistration : INodeRegistration
     private bool _started;
     private bool _disposed;
     private CancellationToken _startToken;
+    private readonly CancellationTokenSource _lifetime = new();   // cancelled on dispose (ends the IAX2 retry wait)
 
     /// <summary>IAX2 attempts in a row with no reply (each already re-sent) before switching to HTTPS.</summary>
     public int NoReplyLimit { get; init; } = 2;
@@ -140,6 +141,57 @@ public sealed class FallbackRegistration : INodeRegistration
         https.RegistrationStatusChanged += (ok, msg) => Forward(https, ok, msg);
         try { FellBack?.Invoke(FallbackReason); } catch { /* a listener must not stop registration */ }
         await https.StartAsync(_startToken);
+        var retryToken = CancellationTokenSource.CreateLinkedTokenSource(_startToken, _lifetime.Token).Token;
+        _ = Task.Run(() => RetryIaxWhileOnHttpsAsync(retryToken));
+    }
+
+    /// <summary>How often IAX2 is tried again while registered over HTTPS.</summary>
+    public TimeSpan IaxRetryInterval { get; init; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>Raised when IAX2 works again and HTTPS has been stopped.</summary>
+    public event Action? Recovered;
+
+    /// <summary>
+    /// The fallback is not for good. A phone log (2026-11-19) showed IAX2 giving up 17 s after the app started,
+    /// two attempts with no reply, most likely before the phone's network was really up; NodeX then stayed on
+    /// HTTPS (and so open to "does not match link IP") for the rest of the session. Every
+    /// <see cref="IaxRetryInterval"/> one IAX2 registration is tried; if it is accepted, HTTPS stops and IAX2 takes over.
+    /// </summary>
+    private async Task RetryIaxWhileOnHttpsAsync(CancellationToken token)
+    {
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(IaxRetryInterval, token);
+                INodeRegistration? https;
+                lock (_gate)
+                {
+                    if (_disposed) return;
+                    https = _https;
+                }
+                if (https == null) return;
+
+                if (!await _iax.RegisterOnceAsync(token)) continue;
+
+                lock (_gate)
+                {
+                    if (_disposed) return;
+                    _https = null;
+                    _active = _iax;
+                    _iaxWorked = true;
+                    _switchTask = null;
+                    FallbackReason = "";
+                }
+                await https.DisposeAsync();
+                RegistrationStatusChanged?.Invoke(true, _iax.LastStatusMessage);
+                try { Recovered?.Invoke(); } catch { }
+                await _iax.StartAsync(_startToken);
+                return;
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) { }
     }
 
     private void Forward(INodeRegistration source, bool ok, string message)
@@ -158,6 +210,7 @@ public sealed class FallbackRegistration : INodeRegistration
             _disposed = true;
             pending = _switchTask;
         }
+        _lifetime.Cancel();
         if (pending != null) { try { await pending; } catch { } }
         _iax.RegistrationStatusChanged -= OnIaxStatus;
         await _iax.DisposeAsync();

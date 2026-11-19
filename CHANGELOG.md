@@ -1,5 +1,20 @@
 # Change log
 
+## 2026-11-19: 1.22 / code 24: retry until you disconnect
+
+Owner's phone log (18 Nov, running 1.20): after 88 minutes every linked node hung up within ten seconds of each other, and each redial was accepted and then hung up 2.4 to 3.6 s later. The 3.3 s ones fell outside the 3 s early-hangup window, counted as ordinary drops, and NodeX stopped after 5 tries (about a minute).
+
+- `ReconnectPolicy.EarlyHangupWindow` 3 s → **10 s**; an early hang-up that followed `!!DISCONNECT!!` is not retried.
+- `EarlyHangupMaxRetries` (was 30) and `RemoteHangupMaxRetries` (was 5) are now `int?`, **null = keep retrying until the user disconnects** (owner decision). Back-off still caps at 60 s. Notices read "(retry n)" / "(try n)"; with a configured limit, "of N" as before.
+- "Reconnected to node N" now appears after the 10 s window instead of 3 s.
+- Not explained by this log: why every node hung up at once at 17:12 and then refused the redials (the log has no registration lines). The pattern matches an address change on a phone; 1.21's shared call socket is aimed at that, untested on this phone.
+- **Never-answered and busy dials are retried too** (until the user disconnects; an explicit rejection is still final; auto-reconnect off keeps the old one-try behaviour). Phone log 19 Nov: 43136 and 44110 got one try each.
+- **IAX2 registration is retried every 5 minutes after falling back to HTTPS** (`FallbackRegistration.IaxRetryInterval`, `Recovered` event); when it is accepted HTTPS stops. Phone log 19 Nov: IAX2 gave up 17 s after app start (two attempts, no reply; very likely before the phone's network was up) and stayed on HTTPS. The fallback notice now says why.
+- **Registrar listens to every address of register.allstarlink.org** (3 on 19 Nov) and rotates re-sends through them, so a reply from a different address than the request went to is not dropped. Its no-reply message names the addresses, the request count and the local port.
+- **Send logs puts the newest ~20,000 characters first** (`DiagnosticLog.ReadForSharing`): the shared 18 Nov log arrived cut off at the end (mid-word), so the day it was sent for was missing.
+- **Live checks from the owner's PC (19 Nov):** register.allstarlink.org answers an IAX2 REGREQ with REGAUTH (MD5 challenge; new LiveCheck `regprobe`, no password sent). 43136 (Ham Radio 2.0 Hub, ASL 3.10.8) does not answer an IAX2 POKE from the PC either (new LiveCheck `poke`); 44110 has no DNS record and no stats (not registered, offline). The registry showed 523802 at 68.90.35.252 in stats and 99.142.43.167 in DNS: two different mobile-carrier addresses.
+- Validation: 705 Core tests and 18 UI tests pass; full solution builds.
+
 ## 2026-11-19: 1.21 / code 23: links refused on carrier NAT ("does not match link IP"); lapsed registration
 
 Field report: Tom (node 41603, NodeX on 5G) could not link to 41605/41604. The far nodes logged `Node 41603 IP 74.254.145.15 does not match link IP 74.254.149.17` (app_rpt drops a caller whose IP differs from the registered one) and, at other times, `Reported node 41603 cannot be found` (registration had lapsed while the badge still said "ASL Registered").

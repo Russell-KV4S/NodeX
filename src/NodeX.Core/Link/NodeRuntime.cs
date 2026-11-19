@@ -385,8 +385,13 @@ public sealed class NodeRuntime : IAsyncDisposable
             fallback.FellBack += reason =>
             {
                 Log.Info("reg", $"IAX2 registration did not work on this network ({reason}); registering over HTTPS instead");
-                Notice?.Invoke("AllStarLink did not accept registration over IAX2 from this network, so NodeX is " +
-                               "registering over HTTPS. On mobile data, nodes may then refuse links.");
+                Notice?.Invoke($"AllStarLink did not accept registration over IAX2 ({reason}), so NodeX is " +
+                               "registering over HTTPS for now and will try IAX2 again every 5 minutes. On mobile data, nodes may refuse links until then.");
+            };
+            fallback.Recovered += () =>
+            {
+                Log.Info("reg", "IAX2 registration works again; HTTPS registration stopped");
+                Notice?.Invoke("Registered over IAX2 again (from the same connection as the calls).");
             };
         }
         _registration = registration;
@@ -937,18 +942,19 @@ public sealed class NodeRuntime : IAsyncDisposable
             // with back-off instead of reporting a failure.
             bool earlyHangup = reason == Iax2DisconnectReason.RemoteHangup
                                && link.WasConnected
-                               && link.ConnectedDuration < _policy.EarlyHangupWindow;
+                               && link.ConnectedDuration < _policy.EarlyHangupWindow
+                               && !link.Session.RemoteRequestedDisconnect;   // a deliberate "!!DISCONNECT!!" is never retried
 
             if (earlyHangup && c.Wanted && Config.Settings.AutoReconnect)
             {
                 int n = Interlocked.Increment(ref c.EarlyHangups);
-                if (n <= _policy.EarlyHangupMaxRetries)
+                if (ReconnectPolicy.WithinLimit(n, _policy.EarlyHangupMaxRetries))
                 {
                     var delay = BackoffDelay(n);
                     await EndLinkAsync(c, link, transient: true);
                     Notice?.Invoke(
                         $"Node {node} hung up straight after accepting; it probably doesn't know this node yet (a busy hub can take 10 minutes or more). " +
-                        $"Retrying in {Math.Ceiling(delay.TotalSeconds):0} s (retry {n} of {_policy.EarlyHangupMaxRetries}).");
+                        $"Retrying in {Math.Ceiling(delay.TotalSeconds):0} s ({ReconnectPolicy.Count("retry", n, _policy.EarlyHangupMaxRetries)}).");
                     StartReconnect(c, immediate: false, initialDelay: delay, attemptOffset: n - 1);
                     return;
                 }
@@ -969,7 +975,7 @@ public sealed class NodeRuntime : IAsyncDisposable
             // The far node hung up an established link without asking to disconnect. That is not somebody ending
             // the link on purpose (app_rpt sends "!!DISCONNECT!!" first when it is): its Asterisk restarted, or it
             // gave up on packets we could not answer during a network gap too short for our own keep-alive watchdog
-            // to notice. app_rpt redials its own links in exactly this case, so do the same, a bounded number of times.
+            // to notice. app_rpt redials its own links in exactly this case, so do the same (until the user disconnects, unless the policy sets a limit).
             bool deliberate = link.Session.RemoteRequestedDisconnect;
             bool remoteDrop = reason == Iax2DisconnectReason.RemoteHangup && link.WasConnected && !earlyHangup && !deliberate;
             int drops = 0;
@@ -977,13 +983,13 @@ public sealed class NodeRuntime : IAsyncDisposable
             if (remoteDrop && c.Wanted && Config.Settings.AutoReconnect)
             {
                 drops = Interlocked.Increment(ref c.RemoteDrops);
-                if (drops <= _policy.RemoteHangupMaxRetries)
+                if (ReconnectPolicy.WithinLimit(drops, _policy.RemoteHangupMaxRetries))
                 {
                     var delay = BackoffDelay(drops);
                     await EndLinkAsync(c, link, transient: true);
                     Notice?.Invoke(
                         $"Node {node} dropped the link{up} without asking to disconnect (a restart or a network gap). " +
-                        $"Reconnecting in {Math.Ceiling(delay.TotalSeconds):0} s (try {drops} of {_policy.RemoteHangupMaxRetries}).");
+                        $"Reconnecting in {Math.Ceiling(delay.TotalSeconds):0} s ({ReconnectPolicy.Count("try", drops, _policy.RemoteHangupMaxRetries)}).");
                     StartReconnect(c, immediate: false, initialDelay: delay);
                     return;
                 }
@@ -1001,6 +1007,25 @@ public sealed class NodeRuntime : IAsyncDisposable
             {
                 await EndLinkAsync(c, link, transient: true);
                 Notice?.Invoke($"Link to node {node} lost{up} (no reply to keep-alives).");
+                StartReconnect(c, immediate: false);
+                return;
+            }
+
+            // A first dial that got no answer at all, or "busy". The node may be restarting, briefly offline, or
+            // dropping packets from an address it does not know yet. Owner decision 2026-11-19: keep trying (with the
+            // usual back-off, up to a minute apart) until the user disconnects, instead of giving up after one try.
+            // An explicit rejection is still final.
+            bool keepTrying = c.Wanted
+                              && Config.Settings.AutoReconnect
+                              && !link.WasConnected
+                              && reason is Iax2DisconnectReason.LinkLost or Iax2DisconnectReason.RemoteBusy;
+            if (keepTrying)
+            {
+                if (reason == Iax2DisconnectReason.LinkLost) _resolver.Invalidate(node);   // look the address up afresh
+                await EndLinkAsync(c, link, transient: true);
+                Notice?.Invoke(reason == Iax2DisconnectReason.RemoteBusy
+                    ? $"Node {node} is busy. NodeX will keep trying until you disconnect it."
+                    : $"No response from node {node} (it may be offline or not accepting this node yet). NodeX will keep trying until you disconnect it.");
                 StartReconnect(c, immediate: false);
                 return;
             }

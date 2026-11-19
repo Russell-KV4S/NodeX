@@ -98,6 +98,12 @@ public static class AppServices
     public const int ShareTextLimit = 120_000;
 
     /// <summary>
+    /// The newest part of the log, put first in the shared text (see <see cref="DiagnosticLog.ReadForSharing"/>):
+    /// small enough to survive an app that keeps only the start of a long message.
+    /// </summary>
+    public const int ShareRecentChars = 20_000;
+
+    /// <summary>
     /// Packages the troubleshooting log and passes it to the head's <see cref="LogSharer"/>. Returns a sentence for the
     /// user: what happened, or why nothing did.
     /// </summary>
@@ -111,7 +117,7 @@ public static class AppServices
 
         try
         {
-            await sharer(path, log.ReadAll(ShareTextLimit));
+            await sharer(path, log.ReadForSharing(ShareTextLimit, ShareRecentChars));
             return "Log ready to send. It includes your node number, callsign and IP addresses but never your password.";
         }
         catch (Exception ex)

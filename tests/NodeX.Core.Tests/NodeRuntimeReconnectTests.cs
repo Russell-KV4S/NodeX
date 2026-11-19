@@ -229,7 +229,7 @@ public class NodeRuntimeReconnectTests : IDisposable
         Assert.Equal(Iax2SessionState.Connected, rt.Link!.Session.State);
 
         lock (notices) Assert.Single(notices, n => n.StartsWith("Reconnected to node"));
-        lock (notices) Assert.Contains(notices, n => n.Contains("hung up straight after accepting") && n.Contains("retry 1 of"));
+        lock (notices) Assert.Contains(notices, n => n.Contains("hung up straight after accepting") && n.Contains("(retry 1)"));
         lock (errors) Assert.Empty(errors);
         lock (activity) Assert.Equal([(true, "2000")], activity);       // link stayed "wanted" throughout
     }
@@ -296,11 +296,52 @@ public class NodeRuntimeReconnectTests : IDisposable
         await Wait.UntilAsync(() => rt.Link != null && !ReferenceEquals(rt.Link, firstLink)
                                     && rt.Link.Session.State == Iax2SessionState.Connected && !rt.Reconnect.Active);
 
-        lock (notices) Assert.Contains(notices, n => n.Contains("Node 2000 dropped the link") && n.Contains("try 1 of 5"));
+        lock (notices) Assert.Contains(notices, n => n.Contains("Node 2000 dropped the link") && n.Contains("(try 1)"));   // no limit by default
         await Wait.UntilAsync(() => { lock (notices) return notices.Any(n => n.Contains("Reconnected to node 2000")); });
         lock (errors) Assert.Empty(errors);
         lock (activity) Assert.Equal([(true, "2000")], activity);       // stayed "wanted": background services kept
         Assert.Equal("2000", rt.TransmitNode);                          // and it is still the transmit node
+    }
+
+    [Fact]
+    public void DefaultPolicy_NeverGivesUp_AndTreatsAHangupWithinTenSecondsAsEarly()
+    {
+        // Phone log 2026-11-18: nodes accepted and hung up 2.4 to 3.6 s later, again and again; the 3 s window
+        // called the 3.3 s ones ordinary drops and NodeX gave up after 5 tries. The owner wants no automatic give-up.
+        var policy = new ReconnectPolicy();
+        Assert.Equal(TimeSpan.FromSeconds(10), policy.EarlyHangupWindow);
+        Assert.Null(policy.EarlyHangupMaxRetries);
+        Assert.Null(policy.RemoteHangupMaxRetries);
+        Assert.Null(policy.MaxAttempts);
+        Assert.True(ReconnectPolicy.WithinLimit(10_000, null));
+        Assert.False(ReconnectPolicy.WithinLimit(6, 5));
+        Assert.Equal("retry 7", ReconnectPolicy.Count("retry", 7, null));
+        Assert.Equal("try 2 of 5", ReconnectPolicy.Count("try", 2, 5));
+    }
+
+    [Fact]
+    public async Task RemoteDrops_KeepBeingRedialled_PastTheOldLimitOfFive()
+    {
+        await using var rt = await CreateAsync(policy: LateHangupPolicy, configureSession: s => s.KeepAliveInterval = TimeSpan.FromSeconds(30));
+        var notices = Collect<string>(add => rt.Notice += add);
+        var errors = Collect<string>(add => rt.ErrorOccurred += add);
+
+        ushort call = await ConnectAndAcceptAsync(rt);
+        for (int i = 0; i < 7; i++)
+        {
+            await Task.Delay(120);                                       // past the (test) early window: an ordinary drop
+            await _remote.SendIaxAsync(IaxControlSubclass.Hangup);
+            var next = await _remote.WaitForFrameAsync(f => f.FrameType == FrameType.IaxControl
+                                                            && f.Subclass == (byte)IaxControlSubclass.New
+                                                            && f.SourceCallNumber != call, 10000);
+            call = next.SourceCallNumber;
+            await _remote.SendIaxAsync(IaxControlSubclass.Accept);
+            await Wait.UntilAsync(() => rt.Link?.Session.State == Iax2SessionState.Connected && !rt.Reconnect.Active);
+        }
+
+        lock (notices) Assert.Contains(notices, n => n.Contains("(try 7)"));
+        lock (errors) Assert.DoesNotContain(errors, e => e.Contains("stopped reconnecting"));
+        Assert.Single(rt.Connections);
     }
 
     [Fact]
@@ -440,9 +481,31 @@ public class NodeRuntimeReconnectTests : IDisposable
     }
 
     [Fact]
-    public async Task CallThatWasNeverAnswered_IsNotRetried_AndReportsNoResponse()
+    public async Task CallThatWasNeverAnswered_KeepsBeingRetried_UntilItAnswers()
     {
+        // Owner decision 2026-11-19 (phone log: 43136 and 44110 got one try each and were dropped): a node that does
+        // not answer is retried with back-off until the user disconnects it.
         await using var rt = await CreateAsync(configureSession: s =>
+        {
+            s.InitialRetransmitTimeout = TimeSpan.FromMilliseconds(30);
+            s.MaxRetransmits = 2;
+        });
+        var notices = Collect<string>(add => rt.Notice += add);
+
+        await rt.ConnectAsync("2000");
+        var neu = await _remote.WaitForIaxAsync(IaxControlSubclass.New);     // first dial: never answered
+
+        await AcceptNextCallAsync(neu.SourceCallNumber);                     // a later attempt is answered
+        await Wait.UntilAsync(() => rt.Link?.Session.State == Iax2SessionState.Connected && !rt.Reconnect.Active);
+
+        lock (notices) Assert.Contains(notices, n => n.Contains("No response from node 2000") && n.Contains("keep trying"));
+        Assert.Single(rt.Connections);
+    }
+
+    [Fact]
+    public async Task CallThatWasNeverAnswered_IsNotRetried_WhenAutoReconnectIsOff()
+    {
+        await using var rt = await CreateAsync(new NodeSettings { NodeNumber = "55553", AutoReconnect = false }, configureSession: s =>
         {
             s.InitialRetransmitTimeout = TimeSpan.FromMilliseconds(30);
             s.MaxRetransmits = 2;
@@ -450,7 +513,7 @@ public class NodeRuntimeReconnectTests : IDisposable
         var errors = Collect<string>(add => rt.ErrorOccurred += add);
 
         await rt.ConnectAsync("2000");
-        var neu = await _remote.WaitForIaxAsync(IaxControlSubclass.New);     // never answered
+        var neu = await _remote.WaitForIaxAsync(IaxControlSubclass.New);
         await Wait.UntilAsync(() => rt.Link == null);
 
         Assert.Equal(0, await NewCallsWithinAsync(neu.SourceCallNumber, 400));

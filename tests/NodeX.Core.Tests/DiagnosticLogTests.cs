@@ -21,6 +21,23 @@ public sealed class DiagnosticLogTests : IDisposable
     }
 
     [Fact]
+    public void Shared_text_puts_the_newest_entries_first()
+    {
+        // A 2026-11-19 shared log arrived cut off at the end, so it lacked the whole day it was sent for.
+        var log = Create();
+        for (int i = 0; i < 400; i++) log.Info("t", $"line {i:000} " + new string('x', 60));
+
+        string text = log.ReadForSharing(maxChars: 20_000, recentChars: 3_000);
+
+        Assert.StartsWith("===== MOST RECENT ENTRIES", text);
+        string firstPart = text[..4_000];
+        Assert.Contains("line 399", firstPart);                 // the newest line survives a cut after 4,000 chars
+        Assert.DoesNotContain("line 000", firstPart);
+        Assert.Contains("===== OLDER ENTRIES", text);
+        Assert.True(text.Length <= 20_000);
+    }
+
+    [Fact]
     public void Unconfigured_log_ignores_writes_and_never_throws()
     {
         var log = new DiagnosticLog();

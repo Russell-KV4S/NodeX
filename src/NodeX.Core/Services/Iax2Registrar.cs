@@ -27,7 +27,7 @@ public sealed class Iax2Registrar : INodeRegistration, IDisposable
 
     private readonly string _node;
     private readonly string _password;
-    private readonly Func<CancellationToken, Task<IPEndPoint?>> _resolveServer;
+    private readonly Func<CancellationToken, Task<IPEndPoint[]>> _resolveServers;
     private readonly Iax2Endpoint _endpoint;
     private readonly bool _ownsEndpoint;
     private readonly bool _endpointUser;
@@ -93,12 +93,14 @@ public sealed class Iax2Registrar : INodeRegistration, IDisposable
         _endpoint = endpoint ?? throw new ArgumentNullException(nameof(endpoint));
         _ownsEndpoint = ownsEndpoint;
         _endpointUser = !ownsEndpoint && endpoint.AddUser();
-        _resolveServer = async ct =>
+        // register.allstarlink.org has several addresses (3 on 2026-11-19). All are listened to, so a reply that comes
+        // back from a different one than the request went to is not dropped, and retries rotate through them.
+        _resolveServers = async ct =>
         {
-            if (server != null) return server;
+            if (server != null) return [server];
             var addrs = await Dns.GetHostAddressesAsync(DefaultHost, ct);
-            var v4 = Array.Find(addrs, a => a.AddressFamily == AddressFamily.InterNetwork);
-            return v4 == null ? null : new IPEndPoint(v4, Iax2Protocol.DefaultPort);
+            return addrs.Where(a => a.AddressFamily == AddressFamily.InterNetwork)
+                        .Select(a => new IPEndPoint(a, Iax2Protocol.DefaultPort)).ToArray();
         };
     }
 
@@ -179,15 +181,25 @@ public sealed class Iax2Registrar : INodeRegistration, IDisposable
         // The background beat and an immediate re-registration must not run two exchanges at once.
         await _exchangeLock.WaitAsync(ct);
         ushort local = 0;
-        IDisposable? subscription = null;
+        var subscriptions = new List<IDisposable>();
         try
         {
-            var server = await _resolveServer(ct);
-            if (server == null) return NoReply("Could not resolve the registry host");
+            IPEndPoint[] servers;
+            try { servers = await _resolveServers(ct); }
+            catch (SocketException ex) { return NoReply($"Could not look up {DefaultHost}: {ex.Message}"); }
+            if (servers.Length == 0) return NoReply($"Could not look up {DefaultHost} (no IPv4 address)");
 
             local = _endpoint.AllocateCallNumber();
-            var inbox = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions { SingleReader = true });
-            subscription = _endpoint.Subscribe(server, p => inbox.Writer.TryWrite(p));
+            var inbox = Channel.CreateUnbounded<(IPEndPoint From, byte[] Packet)>(new UnboundedChannelOptions { SingleReader = true });
+            foreach (var s in servers)
+            {
+                var from = s;
+                subscriptions.Add(_endpoint.Subscribe(s, p => inbox.Writer.TryWrite((from, p))));
+            }
+
+            // Until the registry answers, each re-send goes to the next address; after that, to the one that answered.
+            IPEndPoint? pinned = null;
+            int sends = 0;
 
             byte[]? token = null;
             ushort remote = 0;
@@ -198,14 +210,20 @@ public sealed class Iax2Registrar : INodeRegistration, IDisposable
             for (int step = 0; step < 4; step++)
             {
                 byte[] request = BuildRegReq(local, remote, oseq, iseq, token, md5);
-                Iax2Frame? reply = null;
+                (IPEndPoint From, Iax2Frame Frame)? reply = null;
                 for (int attempt = 0; attempt <= Retries && reply == null; attempt++)
                 {
-                    await SendAsync(server, request, ct);
+                    var target = pinned ?? servers[sends % servers.Length];
+                    sends++;
+                    await SendAsync(target, request, ct);
                     reply = await ReceiveAsync(inbox, local, ct);
                 }
-                if (reply == null) return NoReply("No reply from the registry (IAX2)");
-                var f = reply.Value;
+                if (reply == null)
+                    return NoReply($"No reply from the registry over IAX2 (UDP {string.Join(", ", servers.Select(s => s.Address))}, " +
+                                   $"{sends} request(s) from local port {_endpoint.LocalPort})");
+                pinned = reply.Value.From;
+                var server = pinned;
+                var f = reply.Value.Frame;
 
                 if (f.FrameType != Iax2Protocol.FrameType.IaxControl) continue;
                 switch ((Iax2Protocol.IaxControlSubclass)f.Subclass)
@@ -266,7 +284,7 @@ public sealed class Iax2Registrar : INodeRegistration, IDisposable
         }
         finally
         {
-            subscription?.Dispose();
+            foreach (var s in subscriptions) s.Dispose();
             if (local != 0) _endpoint.ReleaseCallNumber(local);
             _exchangeLock.Release();
         }
@@ -329,7 +347,7 @@ public sealed class Iax2Registrar : INodeRegistration, IDisposable
         await SendAsync(server, ack, ct);
     }
 
-    private async Task<Iax2Frame?> ReceiveAsync(Channel<byte[]> inbox, ushort local, CancellationToken ct)
+    private async Task<(IPEndPoint From, Iax2Frame Frame)?> ReceiveAsync(Channel<(IPEndPoint From, byte[] Packet)> inbox, ushort local, CancellationToken ct)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(ReplyTimeout);
@@ -337,12 +355,12 @@ public sealed class Iax2Registrar : INodeRegistration, IDisposable
         {
             while (true)
             {
-                byte[] packet = await inbox.Reader.ReadAsync(timeout.Token);
+                var (from, packet) = await inbox.Reader.ReadAsync(timeout.Token);
                 if (!Iax2Protocol.TryParseFrame(packet, out var frame)) continue;
                 if (!frame.IsFullFrame || frame.DestCallNumber != local) continue;
                 if (frame.FrameType == Iax2Protocol.FrameType.IaxControl
                     && frame.Subclass == (byte)Iax2Protocol.IaxControlSubclass.Ack) continue;
-                return frame;
+                return (from, frame);
             }
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)

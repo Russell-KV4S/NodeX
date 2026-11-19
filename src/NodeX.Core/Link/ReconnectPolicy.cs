@@ -37,22 +37,35 @@ public sealed record ReconnectPolicy
     /// (verified live 2026-11-05: app_rpt logs "Reported node N cannot be found" and hangs up ~90 ms after
     /// ACCEPT until its local node list has refreshed, which takes minutes). Such a link is retried.
     /// </summary>
-    public TimeSpan EarlyHangupWindow { get; init; } = TimeSpan.FromSeconds(3);
+    /// <remarks>
+    /// Was 3 s. A phone log (2026-11-18) showed four nodes each accepting and then hanging up 2.4 to 3.6 s later,
+    /// over and over, after the phone's address changed: the 3.3 s ones fell outside the window, were treated as
+    /// ordinary drops and gave up after 5 tries. 10 s covers that with room to spare.
+    /// </remarks>
+    public TimeSpan EarlyHangupWindow { get; init; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// How many times an early hangup is retried (back-off from <see cref="InitialDelay"/> up to
-    /// <see cref="MaxDelay"/>; 30 retries is about 28 minutes with the defaults) before telling the user.
-    /// Raised from 10 after a busy hub (27339) took the full ~6 minutes and only just accepted on retry 10.
+    /// <see cref="MaxDelay"/>) before telling the user; null (the default) keeps retrying until the user
+    /// disconnects. Owner decision 2026-11-19: NodeX must not stop retrying on its own.
     /// </summary>
-    public int EarlyHangupMaxRetries { get; init; } = 30;
+    public int? EarlyHangupMaxRetries { get; init; }
 
     /// <summary>
     /// How many times in a row a link is redialled after the far node hangs up an established call
     /// <b>without</b> sending app_rpt's <c>!!DISCONNECT!!</c> first (its Asterisk restarted, or it gave up on
-    /// packets we could not answer during a short network gap). 5 is app_rpt's own <c>MAX_RETRIES</c> for the same
-    /// case. A link that then stays up for <see cref="StableLinkTime"/> starts a fresh count. Zero never redials.
+    /// packets we could not answer during a short network gap). Null (the default, owner decision 2026-11-19; was
+    /// 5, app_rpt's own <c>MAX_RETRIES</c>) keeps redialling until the user disconnects. A deliberate disconnect
+    /// (<c>!!DISCONNECT!!</c>) is still never redialled. A link that stays up for <see cref="StableLinkTime"/>
+    /// starts a fresh count. Zero never redials.
     /// </summary>
-    public int RemoteHangupMaxRetries { get; init; } = 5;
+    public int? RemoteHangupMaxRetries { get; init; }
+
+    /// <summary>True when retry <paramref name="n"/> (1-based) is allowed under <paramref name="max"/> (null = no limit).</summary>
+    public static bool WithinLimit(int n, int? max) => max is null || n <= max;
+
+    /// <summary>"retry 3" or "retry 3 of 5", for notices.</summary>
+    public static string Count(string word, int n, int? max) => max is null ? $"{word} {n}" : $"{word} {n} of {max}";
 
     /// <summary>A link that stayed up at least this long was healthy, so its next drop starts a fresh retry count.</summary>
     public TimeSpan StableLinkTime { get; init; } = TimeSpan.FromMinutes(5);
