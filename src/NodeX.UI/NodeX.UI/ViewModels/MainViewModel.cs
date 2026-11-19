@@ -1319,8 +1319,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 : "-- ms";
         }
 
-        // Once a second is plenty for round-trip times and the "registered for ..." badge.
-        if (_tick % 10 == 0 && _runtime.IsRegistered) ApplyRegistration();
+        // Once a second is plenty for round-trip times and the "registered for ..." badge. A badge that shows
+        // registered is re-checked too, so it turns from green to "lapsed" when refreshes have stopped (the phone
+        // slept) instead of staying green while far nodes no longer know this node.
+        if (_tick % 10 == 0 && (_runtime.IsRegistered || IsAslRegistered || _runtime.RegistrationLapsed))
+        {
+            _runtime.RenewIfLapsed();
+            ApplyRegistration();
+        }
         if (_tick % 10 == 0 && IsReconnecting) RefreshHero(_runtime.Connections);
         if (++_tick % 10 == 0 && LinkItems.Count > 0)
         {

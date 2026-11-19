@@ -35,8 +35,11 @@ public record AslRegistrationConfig(
 /// node number, password and IAX2 port; the reply reports the address and port the server sees, the
 /// refresh interval it wants, and a status string containing "successfully registered" on success.
 /// </summary>
-public sealed class AslRegistrationService : IAsyncDisposable, IDisposable
+public sealed class AslRegistrationService : INodeRegistration, IDisposable
 {
+    /// <inheritdoc/>
+    public string Transport => "HTTPS";
+
     public const string DefaultRegistrationUrl = "https://register.allstarlink.org/";
     public const string UserAgent = "NodeX/1.0 (+AllStarLink radio-less node)";
 
@@ -76,7 +79,13 @@ public sealed class AslRegistrationService : IAsyncDisposable, IDisposable
     {
         ArgumentNullException.ThrowIfNull(config);
         _config = config;
-        _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        // A fresh connection for every request: a pooled one opened over cellular keeps leaving through cellular
+        // after the phone joins Wi-Fi, so the registry would record an address the calls no longer come from.
+        // One TLS handshake a minute costs nothing.
+        _httpClient = httpClient ?? new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.Zero })
+        {
+            Timeout = TimeSpan.FromSeconds(15)
+        };
     }
 
     /// <summary>Builds the request body exactly as the official ASL3 module does.</summary>

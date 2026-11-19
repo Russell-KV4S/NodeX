@@ -34,10 +34,13 @@ public sealed record NodeSettings
     public bool RegisterOnStartup { get; init; } = true;
 
     /// <summary>
-    /// Also register with classic IAX2 REGREQ over UDP every 60 s (in addition to HTTPS). Off by default: the
-    /// registry then records this app's UDP source port for the node instead of <see cref="IaxPort"/>.
+    /// Register over IAX2 (UDP) from the same socket the calls use, instead of over HTTPS. On by default: AllStar
+    /// nodes refuse a link that comes from a different IP than the node registered from, and on carrier NAT an HTTPS
+    /// registration and a UDP call can leave through different public addresses (field report 2026-11-19). Falls
+    /// back to HTTPS by itself if the registry does not answer IAX2 on this network. Replaces the old experimental
+    /// <c>UdpRegistration</c> setting (which ran a second registration from a separate socket).
     /// </summary>
-    public bool UdpRegistration { get; init; }
+    public bool IaxRegistration { get; init; } = true;
 
     /// <summary>Re-dial automatically when an established link is lost or the network changes.</summary>
     public bool AutoReconnect { get; init; } = true;

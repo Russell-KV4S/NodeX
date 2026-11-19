@@ -30,19 +30,19 @@ public sealed class NodeLink : IAsyncDisposable
         IAudioDeviceService device,
         NodeAudioEngineOptions? baseAudioOptions = null,
         Action<Iax2Session>? configureSession = null,
-        TransmitPolicy? transmitPolicy = null)
+        TransmitPolicy? transmitPolicy = null,
+        Iax2Endpoint? endpoint = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(target);
         _device = device ?? throw new ArgumentNullException(nameof(device));
         Target = target;
 
-        Session = new Iax2Session
-        {
-            LocalNodeNumber = settings.NodeNumber,
-            RemoteNodeNumber = target.NodeNumber,
-            Username = LinkUsername
-        };
+        // On the shared call socket when given (the registration's socket), else a socket of its own.
+        Session = endpoint != null ? new Iax2Session(endpoint) : new Iax2Session();
+        Session.LocalNodeNumber = settings.NodeNumber;
+        Session.RemoteNodeNumber = target.NodeNumber;
+        Session.Username = LinkUsername;
 
         configureSession?.Invoke(Session);
 

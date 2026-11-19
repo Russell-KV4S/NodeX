@@ -44,7 +44,13 @@ public enum Iax2DisconnectReason
 /// </summary>
 public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audio.IVoiceChannel
 {
-    private readonly Socket _socket;
+    /// <summary>This session's own socket, or null when it runs on a shared <see cref="Iax2Endpoint"/>.</summary>
+    private readonly Socket? _socket;
+
+    /// <summary>The shared socket this session sends and receives on, or null when it has its own.</summary>
+    private readonly Iax2Endpoint? _endpoint;
+    private IDisposable? _subscription;
+    private System.Threading.Channels.Channel<byte[]>? _inbox;
     private readonly ushort _localCallNumber;
     private ushort _remoteCallNumber;
     private byte _oSeqno;
@@ -171,14 +177,37 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         {
             try { trace(true, packet.ToArray()); } catch { /* diagnostics must never break the call */ }
         }
-        return _socket.SendToAsync(packet, SocketFlags.None, _remoteEndPoint!, cancellationToken);
+        return _endpoint != null
+            ? _endpoint.SendToAsync(packet, _remoteEndPoint!, cancellationToken)
+            : _socket!.SendToAsync(packet, SocketFlags.None, _remoteEndPoint!, cancellationToken);
     }
 
-    /// <summary>The local UDP port bound by this session's socket.</summary>
-    public int BoundLocalPort => (_socket.LocalEndPoint as IPEndPoint)?.Port ?? 0;
+    /// <summary>The local UDP port bound by this session's socket (shared or its own).</summary>
+    public int BoundLocalPort => _endpoint != null
+        ? _endpoint.LocalPort
+        : (_socket!.LocalEndPoint as IPEndPoint)?.Port ?? 0;
 
-    public Iax2Session(int preferredLocalPort = 0)
+    /// <summary>True when this call runs on a shared <see cref="Iax2Endpoint"/> (the registration's socket).</summary>
+    public bool UsesSharedEndpoint => _endpoint != null;
+
+    /// <summary>
+    /// A call on the shared socket that the registration also uses, so the far node sees the call come from the
+    /// address the registry recorded. Falls back to a socket of its own if <paramref name="endpoint"/> has already
+    /// closed (it was replaced after a network change a moment ago).
+    /// </summary>
+    public Iax2Session(Iax2Endpoint endpoint) : this(endpoint, 0) { }
+
+    public Iax2Session(int preferredLocalPort = 0) : this(null, preferredLocalPort) { }
+
+    private Iax2Session(Iax2Endpoint? endpoint, int preferredLocalPort)
     {
+        if (endpoint != null && endpoint.AddUser())
+        {
+            _endpoint = endpoint;
+            _localCallNumber = endpoint.AllocateCallNumber();
+            return;
+        }
+
         // Allocate random 15-bit call number (1..32767)
         _localCallNumber = (ushort)Random.Shared.Next(1, 0x7FFF);
 
@@ -227,6 +256,19 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         }
 
         _remoteEndPoint = targetEndPoint;
+        if (_endpoint != null)
+        {
+            // Datagrams from the far node arrive through the shared socket's dispatcher; this inbox hands them to
+            // the receive loop in order. If processing ever falls behind, the oldest (voice) is dropped.
+            _inbox = System.Threading.Channels.Channel.CreateBounded<byte[]>(
+                new System.Threading.Channels.BoundedChannelOptions(512)
+                {
+                    FullMode = System.Threading.Channels.BoundedChannelFullMode.DropOldest,
+                    SingleReader = true
+                });
+            var inbox = _inbox;
+            _subscription = _endpoint.Subscribe(targetEndPoint, packet => inbox.Writer.TryWrite(packet));
+        }
         _sessionStopwatch.Restart();
         _oSeqno = 0;
         _iSeqno = 0;
@@ -657,8 +699,60 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
     /// throws is reported and the loop carries on, because once it stops the call can never be answered,
     /// acknowledged or hung up. Only cancellation, disposal, or errors with nothing in between end it.
     /// </summary>
-    private async Task ReceiveLoopAsync()
+    private Task ReceiveLoopAsync() => _inbox != null ? InboxLoopAsync(_inbox) : SocketReceiveLoopAsync();
+
+    /// <summary>Receive loop for a call on the shared socket: the dispatcher has already matched the sender.</summary>
+    private async Task InboxLoopAsync(System.Threading.Channels.Channel<byte[]> inbox)
     {
+        try
+        {
+            while (await inbox.Reader.WaitToReadAsync(_cts.Token))
+            {
+                while (inbox.Reader.TryRead(out var packet))
+                {
+                    try
+                    {
+                        await ProcessDatagramAsync(packet, packet.Length);
+                    }
+                    catch (OperationCanceledException) when (_cts.IsCancellationRequested) { return; }
+                    catch (ObjectDisposedException) { return; }
+                    catch (Exception ex)
+                    {
+                        ReportError($"IAX2 frame handling error: {ex.Message}");
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) { }
+    }
+
+    /// <summary>Parses one datagram from the far node and acts on it.</summary>
+    private async Task ProcessDatagramAsync(byte[] buffer, int length)
+    {
+        if (length < Iax2Protocol.MiniHeaderSize) return;
+
+        var packetSpan = buffer.AsSpan(0, length);
+        var rxTrace = PacketTrace;
+        if (rxTrace != null)
+        {
+            try { rxTrace(false, packetSpan.ToArray()); } catch { }
+        }
+        if (!Iax2Protocol.TryParseFrame(packetSpan, out var frame)) return;
+
+        if (frame.IsFullFrame)
+        {
+            await HandleFullFrameAsync(frame);
+        }
+        else
+        {
+            HandleMiniFrame(frame);
+        }
+    }
+
+    private async Task SocketReceiveLoopAsync()
+    {
+        var socket = _socket!;
         byte[] buffer = new byte[2048];
         EndPoint senderEp = new IPEndPoint(IPAddress.Any, 0);
         int consecutiveErrors = 0;
@@ -668,7 +762,7 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
             SocketReceiveFromResult result;
             try
             {
-                result = await _socket.ReceiveFromAsync(buffer, SocketFlags.None, senderEp, _cts.Token);
+                result = await socket.ReceiveFromAsync(buffer, SocketFlags.None, senderEp, _cts.Token);
                 consecutiveErrors = 0;
             }
             catch (OperationCanceledException) { return; }
@@ -690,28 +784,11 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
 
             try
             {
-                if (result.ReceivedBytes < Iax2Protocol.MiniHeaderSize) continue;
-
                 // Outbound-linking design: only the node we dialed may talk to this socket. Anything
                 // else (scans, stale peers, spoofed packets) must not redirect or disturb the call.
                 if (!result.RemoteEndPoint.Equals(_remoteEndPoint)) continue;
 
-                var packetSpan = buffer.AsSpan(0, result.ReceivedBytes);
-                var rxTrace = PacketTrace;
-                if (rxTrace != null)
-                {
-                    try { rxTrace(false, packetSpan.ToArray()); } catch { }
-                }
-                if (!Iax2Protocol.TryParseFrame(packetSpan, out var frame)) continue;
-
-                if (frame.IsFullFrame)
-                {
-                    await HandleFullFrameAsync(frame);
-                }
-                else
-                {
-                    HandleMiniFrame(frame);
-                }
+                await ProcessDatagramAsync(buffer, result.ReceivedBytes);
             }
             catch (OperationCanceledException) when (_cts.IsCancellationRequested) { return; }
             catch (ObjectDisposedException) { return; }
@@ -1166,7 +1243,17 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
         if (_linkListLoopTask != null) await Task.WhenAny(_linkListLoopTask, Task.Delay(loopTimeout));
         if (_retransmitLoopTask != null) await Task.WhenAny(_retransmitLoopTask, Task.Delay(loopTimeout));
 
-        _socket.Dispose();
+        if (_endpoint != null)
+        {
+            _subscription?.Dispose();
+            _inbox?.Writer.TryComplete();
+            _endpoint.ReleaseCallNumber(_localCallNumber);
+            _endpoint.ReleaseUser();        // the shared socket stays open for the other calls and the registration
+        }
+        else
+        {
+            _socket!.Dispose();
+        }
         _cts.Dispose();
         _sendLock.Dispose();
     }

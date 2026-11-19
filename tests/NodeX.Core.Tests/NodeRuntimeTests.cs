@@ -105,6 +105,52 @@ public class NodeRuntimeTests : IDisposable
     }
 
     [Fact]
+    public async Task RegistrationWithNoRecentRefresh_ShowsAsLapsed_AndIsRenewed()
+    {
+        // Field report 2026-11-19: the phone slept, no refresh was sent, nothing failed, and the badge stayed
+        // "ASL Registered" while far nodes said "node cannot be found".
+        var (rt, config, registry) = Create();
+        await using var _ = rt;
+        await config.SaveAsync(Station, "pw");
+        await rt.StartAsync();
+        await WaitUntil(() => rt.IsRegistered);
+        int before = registry.Requests;
+
+        var later = DateTime.UtcNow + TimeSpan.FromMinutes(3);       // two missed 60 s refreshes plus slack have passed
+        rt.UtcNow = () => later;
+
+        Assert.False(rt.IsRegistered);
+        Assert.True(rt.RegistrationLapsed);
+        Assert.Contains("lapsed", rt.RegistrationStatus);
+
+        rt.RenewIfLapsed();
+        await WaitUntil(() => rt.IsRegistered);
+        Assert.True(registry.Requests > before);
+        Assert.False(rt.RegistrationLapsed);
+    }
+
+    [Fact]
+    public async Task DialWithLapsedRegistration_RegistersFirst()
+    {
+        var (rt, config, registry) = Create();
+        await using var _ = rt;
+        await config.SaveAsync(Station, "pw");
+        await rt.StartAsync();
+        await WaitUntil(() => rt.IsRegistered);
+
+        var later = DateTime.UtcNow + TimeSpan.FromMinutes(10);
+        rt.UtcNow = () => later;
+        int before = registry.Requests;
+
+        await rt.ConnectAsync("2000");
+        var neu = await _remote.WaitForIaxAsync(Iax2Protocol.IaxControlSubclass.New);
+
+        Assert.True(registry.Requests > before);       // re-registered before the NEW went out
+        Assert.True(rt.IsRegistered);
+        Assert.True(rt.Link!.Session.UsesSharedEndpoint);
+    }
+
+    [Fact]
     public async Task StartWithSavedConfig_RegistersAndReportsPublicAddress()
     {
         var (rt, config, registry) = Create();

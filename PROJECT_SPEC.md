@@ -1,7 +1,7 @@
 # NodeX — Project Specification & Engineering Guide
 ### Cross-platform, Asterisk-free AllStarLink node (.NET 10 / Avalonia UI)
 
-> **Last updated:** 2026-11-14 · **v1.20 (Android code 22)** adds a tip jar in Settings (all editions). · **Tests:** 684 Core/service tests + 18 headless UI tests. Both Android editions build. **Callsign field and "Listen only" option removed (2026-11-12, shipped in v1.19); repository now public.** v1.17 published; v1.18 (Android code 20) removes the 15 s pre-dial registration settle wait so first-node connections dial immediately. Package/hardware validation distinctions are recorded in `CHANGELOG.md`.
+> **Last updated:** 2026-11-19 · **v1.20 (Android code 22)** adds a tip jar in Settings (all editions). · **Tests:** 700 Core/service tests + 18 headless UI tests. **2026-11-19:** calls and registration share one UDP socket and register over IAX2 (carrier-NAT "does not match link IP" fix, §5.1a); lapsed-registration badge and Android idle wake-up. Both Android editions build. **Callsign field and "Listen only" option removed (2026-11-12, shipped in v1.19); repository now public.** v1.17 published; v1.18 (Android code 20) removes the 15 s pre-dial registration settle wait so first-node connections dial immediately. Package/hardware validation distinctions are recorded in `CHANGELOG.md`.
 >
 > This document is written for **humans and AI coding agents** who pick the project up cold. Read §0 first.
 
@@ -19,7 +19,7 @@
 
 ## 1. Project overview & objective
 
-NodeX is a standalone AllStarLink (ASL) node for **Windows, Linux, macOS, Android and iOS**, built with **.NET 10** and **Avalonia UI**. It is a genuine peer node on the ASL network (IAX2 over UDP 4569, HTTPS registration) — **not** a WebTransceiver or `iaxrpt` guest client — and it needs **no Asterisk and no radio hardware** ("radio-less"). Audio comes from the device microphone/speaker or a paired Bluetooth speaker-mic/headset whose hardware button acts as push-to-talk (PTT).
+NodeX is a standalone AllStarLink (ASL) node for **Windows, Linux, macOS, Android and iOS**, built with **.NET 10** and **Avalonia UI**. It is a genuine peer node on the ASL network (IAX2 over UDP 4569; registration over IAX2 from the call socket, HTTPS as fallback, see §5.1a) — **not** a WebTransceiver or `iaxrpt` guest client — and it needs **no Asterisk and no radio hardware** ("radio-less"). Audio comes from the device microphone/speaker or a paired Bluetooth speaker-mic/headset whose hardware button acts as push-to-talk (PTT).
 
 Primary use case: a **portable node on a phone or laptop** that registers with AllStarLink, links *outbound* to other nodes, and stays connected while the screen is off and while the device moves between Wi-Fi and cellular.
 
@@ -79,7 +79,10 @@ NodeX/
 │   │   │   ├── NodeResolution.cs          # node number -> IP: static overrides, cache, REST, DNS fallback, last known
 │   │   │   ├── DnsPortLookup.cs           # IAX port from AllStarLink DNS (SRV/TXT) by raw UDP DNS
 │   │   │   ├── NodeDirectory.cs  UsStates.cs  # "Find a node" search (stats site list feed), US state matching
-│   │   │   └── Iax2Registrar.cs           # opt-in IAX2 REGREQ registration over UDP (no UI, never run live)
+│   │   │   ├── Iax2Registrar.cs           # IAX2 REGREQ registration from the shared call socket (default; not yet run live)
+│   │   │   ├── FallbackRegistration.cs    # IAX2 first, HTTPS if IAX2 never works on this network
+│   │   │   ├── INodeRegistration.cs       # common registration interface
+│   │   │   └── NetworkCheck.cs            # STUN check: does the carrier keep one public address per socket?
 │   │   ├── Audio/
 │   │   │   ├── IAudioDeviceService.cs   # platform audio contract (8 kHz mono PCM16)
 │   │   │   ├── IVoiceChannel.cs         # what the engine needs from a call
@@ -153,6 +156,7 @@ In Visual Studio set **`NodeX.UI.Desktop`** as the startup project. The settings
 - **1.18 (code 20, 2026-11-12):** Play edition built at `keystore/nodex-1.18-code20-play.aab` and the full sideload APK at `keystore/nodex-1.18-code20-full.apk` (both `jarsigner -verify` OK, from commit `1958707`). **The Play `.aab` has not been uploaded yet.**
 - **1.19 (code 21, 2026-11-13):** callsign and "Listen only" removed. Play edition at `keystore/nodex-1.19-code21-play.aab` and full sideload APK at `keystore/nodex-1.19-code21-full.apk` (both `jarsigner -verify` OK). **The Play `.aab` has not been uploaded yet.** Tag `v1.19` triggers the GitHub release.
 - **1.20 (code 22, 2026-11-14):** tip jar in Settings (all editions, Play included). Play edition at `keystore/nodex-1.20-code22-play.aab` and full sideload APK at `keystore/nodex-1.20-code22-full.apk` (both `jarsigner -verify` OK). **The Play `.aab` has not been uploaded yet.** Tag `v1.20` triggers the GitHub release.
+- **1.21 (code 23, 2026-11-19):** shared call socket + IAX2 registration (carrier-NAT link fix), lapsed-registration badge, Android idle re-registration alarm. Play edition at `keystore/nodex-1.21-code23-play.aab` and full sideload APK at `keystore/nodex-1.21-code23-full.apk`. **The Play `.aab` has not been uploaded yet.** Tag `v1.21` triggers the GitHub release.
 - **Still needed before any wider track:** privacy policy URL, data-safety form, content rating, target audience, store listing, and **foreground-service declarations** (microphone, media playback, connected device, special use) with justifications. A newer personal developer account may also need a closed test (about 12 testers for 14 days) before production.
 
 ### 3.6 iOS release (TestFlight) — **not started; handover only**
@@ -298,6 +302,12 @@ Back-off (`ReconnectPolicy`): first retry after `InitialDelay` 2 s (immediately 
 - Reply JSON: `ipaddr` (public address the registry sees), `port`, `refresh` (seconds), `data` (status text). **Registered iff `data` contains "successfully registered".**
 - Official client re-registers every **60 s**. Registration also keeps the node's public address current in the ASL registry/DNS, which is how remote nodes can validate us (§5.4).
 
+### 5.1a Registering from the call socket (2026-11-19; field-proven need, IAX2 registration not yet run live)
+- **Why:** app_rpt (ASL1 `forward_node_lookup`, seen in the 41605 logs) drops an incoming link whose source **IP** differs from the IP in its downloaded node list: `Node N IP A does not match link IP B`. Only the IP is compared, not the port. On carrier NAT an HTTPS registration (TCP) and a UDP call can leave through different public addresses (Tom, node 41603, 5G: registered from 74.254.145.15, called from 74.254.149.17). A node missing from the list gives `Reported node N cannot be found`.
+- **How:** one `Iax2Endpoint` (UDP socket) carries every call and the IAX2 registration (`REGREQ` username = node number, `REFRESH` 60 → `REGAUTH` MD5 challenge → `REGREQ` with `MD5_RESULT` → `REGACK` with `APPARENT_ADDR` and `REFRESH`), so the registry records the socket's own public mapping. register.allstarlink.org still accepts IAX2 registration (41605 registers that way). `FallbackRegistration` uses HTTPS if IAX2 gets no reply twice or a rejection before it has ever worked; never both at once (HTTPS would overwrite the entry with the TCP path's address).
+- **Keeping the address stable:** a STUN request every 25 s keeps the mapping alive while idle-registered; a dial re-registers first if the last registration is older than 20 s; a network change opens a new socket and re-registers.
+- **Limit:** a carrier that maps one socket to a different public IP per destination cannot be fixed on the phone. `NetworkCheck` detects it (two STUN servers disagree) and warns; only a relay or client-mode design would help (not built).
+
 ### 5.2 IAX2 frames (RFC 5456)
 - Full frame header 12 bytes (F bit + 15-bit source call, R bit + 15-bit dest call, 32-bit timestamp, OSeqno, ISeqno, frame type, C bit + 7-bit subclass); mini frame 4 bytes (source call, 16-bit timestamp). Frame types: DTMF 1, Voice 2, Control 4, IAX 6, Text 7.
 - **IAX subclasses (§8.4):** NEW 1, PING 2, PONG 3, ACK 4, HANGUP 5, REJECT 6, ACCEPT 7, AUTHREQ 8, AUTHREP 9, INVAL 0x0A, **LAGRQ 0x0B, LAGRP 0x0C**, REGREQ 0x0D, REGAUTH 0x0E, REGACK 0x0F, REGREJ 0x10, REGREL 0x11, VNAK 0x12, DPREQ 0x13, DPREP 0x14, DIAL 0x15, TXREQ 0x16, TXCNT 0x17, TXACC 0x18, TXREADY 0x19, TXREL 0x1A, TXREJ 0x1B, QUELCH 0x1C, UNQUELCH 0x1D, **POKE 0x1E**, MWI 0x20, UNSUPPORT 0x21, TRANSFER 0x22; **CALLTOKEN 0x28 is an Asterisk extension** (not in the RFC table; IE 54 / 0x36).
@@ -349,7 +359,7 @@ Read from `AllStarLink/app_rpt` `apps/app_rpt.c` (`remote_hangup_helper`, `handl
 ## 7. Mobile background execution
 
 ### Android (`NodeX.UI.Android`) — implemented; owner has used a physical phone
-- `NodeForegroundService` follows `NodeRuntime.BackgroundChanged`: idle registration uses specialUse (API 34+) or connectedDevice; linked operation uses mediaPlayback/connectedDevice plus microphone when allowed. A refused microphone type falls back to listening. Locks are held only while linked. Unchanged types update the notification without restarting the service. These decisions live in tested `AndroidServicePlan`.
+- `NodeForegroundService` follows `NodeRuntime.BackgroundChanged`: idle registration uses specialUse (API 34+) or connectedDevice; linked operation uses mediaPlayback/connectedDevice plus microphone when allowed. A refused microphone type falls back to listening. Locks are held only while linked; while idle, `RegistrationAlarm` (2026-11-19) wakes the app every 2 min (Doze: ~9 min) to re-register under a short wake lock, because the sleeping CPU otherwise stops the registration timer. Unchanged types update the notification without restarting the service. These decisions live in tested `AndroidServicePlan`.
 - **Bluetooth SCO** routing (`SetCommunicationDevice` on API ≥ 31, legacy `StartBluetoothSco` below) — switches audio mode to *in-communication* **only when a Bluetooth headset is actually present**, and **not while the loudspeaker is chosen** (2026-11-11: `NodeForegroundService.Apply` runs on every change, such as a second node linking or a settings save, and used to start SCO again, pulling the audio back to the headset in communication mode while the Speaker chip still said speaker; unverified on a phone).
 - **Notifications keep their own sounds (2026-11-09).** In communication mode Android replaces other apps' notification sounds with a generic beep. The loudspeaker route (`AndroidAudioRoute.SetSpeaker(true)`) therefore stays in `Mode.Normal` and the `AudioTrack` uses `Media` usage (rebuilt when the route changes); only the phone-earpiece route and a Bluetooth headset still use communication mode. **Not verified on a phone** (whether the generic beep is gone, and that speaker audio and echo are still fine).
 - `MainActivity` requests `RECORD_AUDIO`, `POST_NOTIFICATIONS` (API ≥ 33), `BLUETOOTH_CONNECT` (API ≥ 31) at startup. Manifest declares all required permissions and foreground-service permissions. `MainActivity.OnResume` asks **once** (pref `battery_exemption_asked`) for the battery-optimisation exemption, only after a link is up (so it appears on the next resume after the first connect). **`AndroidNetworkMonitor`** (`ConnectivityManager.RegisterDefaultNetworkCallback`, event-driven, signature = network handle + IPv4 addresses) replaces `SystemNetworkMonitor` on Android. **Battery model:** mic closed unless keyed; UI meter timer and the 1 s "last heard" age timer stopped while backgrounded (ages are refreshed on return).
@@ -445,7 +455,7 @@ Read from `AllStarLink/app_rpt` `apps/app_rpt.c` (`remote_hangup_helper`, `handl
 
 **Completed:** desktop BLE transport; theme/text-size controls; permission explanations; mobile ID notification hooks; iOS BLE/microphone wiring; ASL text parsing; desktop pickers/ring-buffer tests; OS keyring integration; macOS bundle scaffolding; headset advisory; `.editorconfig`; Android compile jobs. Implementation does not imply hardware verification.
 
-**Ports are not a connection bug:** outbound calls deliberately use an available local UDP source port. Replies return to it. `IaxPort` is the port advertised for registration; `Iax2Session` also exposes an optional preferred local bind port for callers that need it, but normal `NodeLink` calls do not use it. Remote destination ports are independently resolved via stats/DNS/probing, including nonstandard ports. Wiring a fixed local bind is not required for the owner's working outbound connections and is not an actionable backlog item.
+**Ports are not a connection bug:** outbound calls use one shared local UDP socket on an available port (since 2026-11-19, so they leave from the address the IAX2 registration recorded, §5.1a). Replies return to it. `IaxPort` is the port advertised in an HTTPS registration; `Iax2Session` also exposes an optional preferred local bind port for its own-socket mode. Remote destination ports are independently resolved via stats/DNS/probing, including nonstandard ports. Wiring a fixed local bind is not required for the owner's working outbound connections and is not an actionable backlog item.
 
 ---
 
@@ -460,6 +470,7 @@ Read from `AllStarLink/app_rpt` `apps/app_rpt.c` (`remote_hangup_helper`, `handl
 The dated results of testing against real nodes and hardware (registration, link, keying, DTMF, Windows audio, re-dial) are in [`docs/LIVE_VALIDATION.md`](docs/LIVE_VALIDATION.md). The console harness is `tools/NodeX.LiveCheck` (see §3.1 and that file). Summary of what is **verified** vs **not** is in §2 and the list below.
 
 **Still unverified / open risks:**
+- **IAX2 registration against the real register.allstarlink.org** (only loopback fakes so far; run `NodeX.LiveCheck register --iax`), and whether it fixes Tom's 5G carrier (depends on the carrier keeping one public IP per socket; the network check will say). The Android idle `RegistrationAlarm` has not run on a phone.
 - Native BLE buttons/headsets on every platform; full Linux/macOS app and real iPhone operation.
 - Measured handoff delay/retry-budget sufficiency across different public IPs. The owner already reports handoff working; instrumentation would quantify it.
 - New permission rationale dialogs and station-ID notification delivery on phones.

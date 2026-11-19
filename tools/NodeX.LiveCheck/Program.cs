@@ -8,7 +8,8 @@ using NodeX.Core;
 // writes a decoded packet trace so behaviour can be compared with PROJECT_SPEC.md section 5.
 //
 //   resolve <node>                         read-only: REST + DNS lookup, prints the raw REST reply
-//   register                               HTTPS registration of YOUR node (env NODEX_NODE, NODEX_PASSWORD)
+//   register [--iax]                       HTTPS (or IAX2 + network check) registration of YOUR node (env NODEX_NODE, NODEX_PASSWORD)
+//   netcheck                               STUN only: does this network keep one public address per UDP socket?
 //   link <target> [--ip a.b.c.d[:port]] [--listen <sec>] [--key <sec>] [--dtmf <digits>] [--trace <file>]
 //                                          dial <target> as IAX user "radio" from NODEX_NODE (no password)
 //
@@ -25,7 +26,9 @@ try
     return cmd switch
     {
         "resolve" when args.Length >= 2 => await ResolveAsync(args[1]),
+        "register" when args.Length >= 2 && args[1] == "--iax" => await RegisterIaxAsync(),
         "register" => await RegisterAsync(),
+        "netcheck" => await NetCheckAsync(),
         "link" when args.Length >= 2 => await LinkAsync(args),
         "redial" when args.Length >= 2 => await RedialAsync(args[1]),
         "audio" => await AudioAsync(),
@@ -91,6 +94,36 @@ static async Task<int> RegisterAsync()
     Console.WriteLine($"registered={ok}  status='{reg.LastStatusMessage}'");
     Console.WriteLine($"perceived address={reg.PerceivedAddress}:{reg.PerceivedPort}  server refresh={reg.ServerRefresh}");
     return ok ? 0 : 1;
+}
+
+// IAX2 registration from a shared call socket (what the app now does), then the STUN network check from the same
+// socket, so the address the registry recorded can be compared with what the internet sees.
+static async Task<int> RegisterIaxAsync()
+{
+    string node = Env("NODEX_NODE"), pw = Env("NODEX_PASSWORD");
+    if (node.Length == 0 || pw.Length == 0) { Console.Error.WriteLine("Set NODEX_NODE and NODEX_PASSWORD."); return 2; }
+
+    using var endpoint = new Iax2Endpoint();
+    await using var reg = new Iax2Registrar(node, pw, endpoint);
+    Console.WriteLine($"IAX2 REGREQ to {Iax2Registrar.DefaultHost}:4569 from local UDP port {endpoint.LocalPort} ...");
+    bool ok = await reg.RegisterOnceAsync();
+    Console.WriteLine($"registered={ok}  status='{reg.LastStatusMessage}'  refresh={reg.RefreshSeconds} s");
+    Console.WriteLine($"registry recorded {reg.PerceivedAddress}:{reg.PerceivedPort}");
+
+    var check = await NetworkCheck.RunAsync(endpoint, reg.PerceivedAddress, "IAX2");
+    Console.WriteLine("network check: " + check.Describe());
+    if (check.UserWarning is { } w) Console.WriteLine("WARNING: " + w);
+    return ok ? 0 : 1;
+}
+
+// STUN only (no registration, no password): how this network maps one UDP socket to public addresses.
+static async Task<int> NetCheckAsync()
+{
+    using var endpoint = new Iax2Endpoint();
+    var check = await NetworkCheck.RunAsync(endpoint, null, "");
+    Console.WriteLine($"local UDP port {endpoint.LocalPort}: " + check.Describe());
+    if (check.UserWarning is { } w) Console.WriteLine("WARNING: " + w);
+    return check.Verdict == NatVerdict.Unknown ? 1 : 0;
 }
 
 static async Task<int> LinkAsync(string[] a)

@@ -32,7 +32,15 @@ public sealed class NodeRuntime : IAsyncDisposable
     private static DiagnosticLog Log => DiagnosticLog.Default;
 
     private INetworkMonitor? _monitor;
-    private AslRegistrationService? _registration;
+    private INodeRegistration? _registration;
+    private readonly Func<NodeConfig, Iax2Endpoint, Iax2Registrar>? _iaxRegistrarFactory;
+
+    /// <summary>
+    /// The one UDP socket every call and the IAX2 registration use (see <see cref="Iax2Endpoint"/>), so far nodes see
+    /// calls come from the address the registry recorded. Replaced when the network changes. Guarded by _endpointLock.
+    /// </summary>
+    private Iax2Endpoint? _endpoint;
+    private readonly object _endpointLock = new();
     private CancellationTokenSource? _debounceCts;
     private TaskCompletionSource _networkSignal = NewSignal();
     private string _lastSignature = "";
@@ -51,13 +59,23 @@ public sealed class NodeRuntime : IAsyncDisposable
         Func<AslRegistrationConfig, AslRegistrationService>? registrationFactory = null,
         INetworkMonitor? networkMonitor = null,
         ReconnectPolicy? reconnectPolicy = null,
-        Action<Iax2Session>? configureSession = null)
+        Action<Iax2Session>? configureSession = null,
+        Func<NodeConfig, Iax2Endpoint, Iax2Registrar>? iaxRegistrarFactory = null)
     {
         ConfigService = configService ?? throw new ArgumentNullException(nameof(configService));
         _audioFactory = audioFactory ?? throw new ArgumentNullException(nameof(audioFactory));
         _resolver = resolver ?? new NodeResolution();
         _audioOptions = audioOptions ?? new NodeAudioEngineOptions();
+
+        // Production registers over IAX2 from the call socket (HTTPS as the fallback). A caller that injects its own
+        // HTTPS registration (the tests' fake registry) gets HTTPS only, unless it also injects an IAX2 registrar.
+        _iaxRegistrarFactory = iaxRegistrarFactory ?? (registrationFactory == null
+            ? (cfg, endpoint) => new Iax2Registrar(cfg.Settings.NodeNumber, cfg.Password ?? "", endpoint)
+            : null);
         _registrationFactory = registrationFactory ?? (cfg => new AslRegistrationService(cfg));
+
+        // The network check and NAT keep-alive talk to public STUN servers; a test with its own fake registry does not.
+        NetworkCheckServers = registrationFactory == null ? NetworkCheck.DefaultServers : [];
         _monitor = networkMonitor;
         _ownsMonitor = networkMonitor == null;      // created lazily in StartAsync so previews never watch the network
         _policy = reconnectPolicy ?? new ReconnectPolicy();
@@ -78,9 +96,60 @@ public sealed class NodeRuntime : IAsyncDisposable
 
     // ----- registration state -----
 
-    public bool IsRegistered { get; private set; }
-    public string RegistrationStatus { get; private set; } = "Not registered";
+    private bool _registered;
+    private string _registrationStatus = "Not registered";
+    private DateTime? _lastRegistrationOk;
+    private TimeSpan _registrationInterval = TimeSpan.FromSeconds(60);
+
+    /// <summary>Clock for the staleness rule; tests replace it.</summary>
+    internal Func<DateTime> UtcNow { get; set; } = () => DateTime.UtcNow;
+
+    /// <summary>
+    /// Registered <b>and</b> the registry accepted this node recently. The last attempt having succeeded is not
+    /// enough: while a phone sleeps no attempt is made at all, nothing fails, and the registry silently drops the
+    /// node after a few minutes. A field report (2026-11-19) showed exactly that: "ASL Registered" in green while
+    /// far nodes said "node cannot be found".
+    /// </summary>
+    public bool IsRegistered => _registered && !RegistrationLapsed;
+
+    /// <summary>
+    /// True when the last attempt succeeded but no refresh has succeeded for <see cref="RegistrationStaleAfter"/>
+    /// (the device slept, or the loop stalled), so the registry has probably dropped the node.
+    /// </summary>
+    public bool RegistrationLapsed =>
+        _registered && _lastRegistrationOk is { } ok && UtcNow() - ok > RegistrationStaleAfter(_registrationInterval);
+
+    private int _renewingLapsed;
+
+    /// <summary>
+    /// Re-registers at once if the registration has <see cref="RegistrationLapsed">lapsed</see> (the UI calls this
+    /// on its clock tick, so a phone that wakes up does not wait for the next beat). One renewal at a time.
+    /// </summary>
+    public void RenewIfLapsed()
+    {
+        if (!RegistrationLapsed || _exited || Interlocked.Exchange(ref _renewingLapsed, 1) == 1) return;
+        Log.Info("reg", $"registration lapsed ({RegistrationStatus}); renewing now");
+        _ = Task.Run(async () =>
+        {
+            try { await RefreshRegistrationAsync(); }
+            finally { Volatile.Write(ref _renewingLapsed, 0); }
+        });
+    }
+
+    /// <summary>Two missed refreshes plus slack: one lost refresh is normal and is retried within seconds.</summary>
+    public static TimeSpan RegistrationStaleAfter(TimeSpan interval) => interval * 2 + TimeSpan.FromSeconds(30);
+
+    public string RegistrationStatus => RegistrationLapsed
+        ? $"Registration lapsed (last accepted {DurationText.Format(UtcNow() - _lastRegistrationOk!.Value)} ago); re-registering…"
+        : _registrationStatus;
+
     public IPAddress? PerceivedAddress { get; private set; }
+
+    /// <summary>How the node is registered right now ("IAX2" or "HTTPS"), or empty when not registered.</summary>
+    public string RegistrationTransport => _registration?.Transport ?? "";
+
+    /// <summary>The last network check (see <see cref="NetworkCheck"/>), or null if none has run on this network.</summary>
+    public NetworkCheckResult? LastNetworkCheck { get; private set; }
 
     /// <summary>
     /// When the current unbroken run of successful registration began (UTC), or null when not registered. The
@@ -278,20 +347,7 @@ public sealed class NodeRuntime : IAsyncDisposable
 
             if (cfg.IsComplete && cfg.Settings.RegisterOnStartup)
             {
-                _registration = _registrationFactory(cfg.ToRegistrationConfig());
-                _registration.RegistrationStatusChanged += OnRegistrationStatus;
-                await _registration.StartAsync(cancellationToken);
-
-                if (cfg.Settings.UdpRegistration)
-                {
-                    _udpRegistrar = new Iax2Registrar(cfg.Settings.NodeNumber, cfg.Password ?? "");
-                    _udpRegistrar.RegistrationStatusChanged += (ok, msg) =>
-                    {
-                        if (ok != _udpRegistered) Notice?.Invoke(msg);
-                        _udpRegistered = ok;
-                    };
-                    await _udpRegistrar.StartAsync(cancellationToken);
-                }
+                await StartRegistrationCoreAsync(cfg, cancellationToken);
             }
             else
             {
@@ -310,18 +366,141 @@ public sealed class NodeRuntime : IAsyncDisposable
         && a.Password == b.Password
         && a.Settings.IaxPort == b.Settings.IaxPort
         && a.Settings.RegistrationUrl == b.Settings.RegistrationUrl
-        && a.Settings.UdpRegistration == b.Settings.UdpRegistration;
+        && a.Settings.IaxRegistration == b.Settings.IaxRegistration;
 
-    private Iax2Registrar? _udpRegistrar;
-    private bool _udpRegistered;
+    /// <summary>
+    /// Creates and starts the registration for <paramref name="cfg"/> (caller holds <see cref="_gate"/>). Returns a
+    /// task that completes with the first attempt's result (or false after <see cref="ReconnectPolicy.RegistrationWait"/>
+    /// plus the IAX2 fallback time).
+    /// </summary>
+    private async Task<Task<bool>> StartRegistrationCoreAsync(NodeConfig cfg, CancellationToken cancellationToken)
+    {
+        var registration = CreateRegistration(cfg);
+        var first = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnFirst(bool ok, string _) => first.TrySetResult(ok);
+        registration.RegistrationStatusChanged += OnFirst;
+        registration.RegistrationStatusChanged += OnRegistrationStatus;
+        if (registration is FallbackRegistration fallback)
+        {
+            fallback.FellBack += reason =>
+            {
+                Log.Info("reg", $"IAX2 registration did not work on this network ({reason}); registering over HTTPS instead");
+                Notice?.Invoke("AllStarLink did not accept registration over IAX2 from this network, so NodeX is " +
+                               "registering over HTTPS. On mobile data, nodes may then refuse links.");
+            };
+        }
+        _registration = registration;
+        Log.Info("reg", $"registration starting over {registration.Transport}" +
+                        (registration is FallbackRegistration f ? $" from UDP port {f.Iax.LocalPort} (the call socket), HTTPS as fallback" : ""));
+        await registration.StartAsync(cancellationToken);
+
+        return first.Task.ContinueWith(t =>
+        {
+            registration.RegistrationStatusChanged -= OnFirst;
+            return t.Result;
+        }, TaskScheduler.Default);
+    }
+
+    private INodeRegistration CreateRegistration(NodeConfig cfg)
+    {
+        if (cfg.Settings.IaxRegistration && _iaxRegistrarFactory != null)
+        {
+            var iax = _iaxRegistrarFactory(cfg, EnsureEndpoint());
+            return new FallbackRegistration(iax, () => _registrationFactory(cfg.ToRegistrationConfig()));
+        }
+        return _registrationFactory(cfg.ToRegistrationConfig());
+    }
+
+    /// <summary>The current shared call socket, created on first use (and again after a network change).</summary>
+    private Iax2Endpoint EnsureEndpoint()
+    {
+        lock (_endpointLock)
+        {
+            if (_endpoint == null || _endpoint.IsDisposed)
+            {
+                _endpoint = new Iax2Endpoint();
+                _networkCheckDone = false;
+                Log.Detail("net", $"call socket opened on UDP port {_endpoint.LocalPort}");
+                _natKeepAliveCts?.Cancel();
+                _natKeepAliveCts = new CancellationTokenSource();
+                var endpoint = _endpoint;
+                var token = _natKeepAliveCts.Token;
+                _ = Task.Run(() => NatKeepAliveLoopAsync(endpoint, token));
+            }
+            return _endpoint;
+        }
+    }
+
+    private CancellationTokenSource? _natKeepAliveCts;     // guarded by _endpointLock
+
+    /// <summary>Gap between NAT keep-alives on the call socket (carrier UDP mappings can expire after ~30 s idle).</summary>
+    internal TimeSpan NatKeepAliveInterval { get; set; } = TimeSpan.FromSeconds(25);
+
+    /// <summary>
+    /// Keeps the call socket's carrier NAT mapping (and so its public address) alive between registrations with a
+    /// tiny STUN request every <see cref="NatKeepAliveInterval"/>, while registered over IAX2. If the mapping
+    /// expired, the next packet could get a different public address than the one the registry and the far nodes'
+    /// node lists hold, and links would be refused again for minutes. The answer also shows when the public address
+    /// has changed anyway; the node then re-registers at once.
+    /// </summary>
+    private async Task NatKeepAliveLoopAsync(Iax2Endpoint endpoint, CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested && !endpoint.IsDisposed)
+            {
+                await Task.Delay(NatKeepAliveInterval, ct);
+                if (NetworkCheckServers.Count == 0 || _registration is not FallbackRegistration { UsingFallback: false })
+                    continue;
+                if (!_registered) continue;
+
+                var (host, port) = NetworkCheckServers[0];
+                IPEndPoint? server;
+                try
+                {
+                    var addrs = await Dns.GetHostAddressesAsync(host, ct);
+                    var v4 = Array.Find(addrs, a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork);
+                    server = v4 == null ? null : new IPEndPoint(v4, port);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException) { server = null; }
+                if (server == null) continue;
+
+                var mapped = await NetworkCheck.QueryAsync(endpoint, server, TimeSpan.FromSeconds(1.5), ct);
+                var registered = PerceivedAddress;
+                if (mapped != null && registered != null && !mapped.Address.Equals(registered))
+                {
+                    Log.Info("net", $"call socket's public address changed from {registered} to {mapped.Address}; re-registering now");
+                    _ = RefreshRegistrationAsync();
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex)
+        {
+            Log.Info("net", $"NAT keep-alive stopped: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The network changed: the old socket's NAT mapping belongs to the old path. New calls and the registration
+    /// get a fresh socket; calls still on the old one keep it until they end.
+    /// </summary>
+    private void RetireEndpoint()
+    {
+        Iax2Endpoint? old;
+        lock (_endpointLock)
+        {
+            old = _endpoint;
+            _endpoint = null;
+            _natKeepAliveCts?.Cancel();
+            _natKeepAliveCts = null;
+        }
+        old?.Retire();
+    }
 
     private async Task StopRegistrationAsync()
     {
-        var udp = _udpRegistrar;
-        _udpRegistrar = null;
-        _udpRegistered = false;
-        if (udp != null) await udp.DisposeAsync();
-
         var old = _registration;
         _registration = null;
         if (old == null) return;
@@ -331,23 +510,80 @@ public sealed class NodeRuntime : IAsyncDisposable
         SetRegistration(false, "Not registered", null);
     }
 
-    private void OnRegistrationStatus(bool registered, string message) =>
-        SetRegistration(registered, message, _registration?.PerceivedAddress);
+    private void OnRegistrationStatus(bool registered, string message)
+    {
+        var registration = _registration;
+        if (registration != null) _registrationInterval = registration.CurrentInterval;
+        SetRegistration(registered, message, registration?.PerceivedAddress);
+        if (registered) _ = RunNetworkCheckOnceAsync();
+    }
 
     private void SetRegistration(bool registered, string status, IPAddress? address)
     {
+        bool wasRegistered = IsRegistered;      // false while lapsed, so a success after a lapse starts a new run
         if (!registered) RegisteredSince = null;
-        else if (!IsRegistered) RegisteredSince = DateTimeOffset.UtcNow;   // false -> true; refreshes keep the start
+        else if (!wasRegistered) RegisteredSince = DateTimeOffset.UtcNow;   // false -> true; refreshes keep the start
 
-        if (registered != IsRegistered || status != RegistrationStatus || !Equals(address, PerceivedAddress))
+        if (registered != wasRegistered || status != _registrationStatus || !Equals(address, PerceivedAddress))
             Log.Info("reg", $"registered={registered} status=\"{status}\" perceivedAddress={address?.ToString() ?? "none"}");
 
-        IsRegistered = registered;
-        RegistrationStatus = status;
+        if (registered) _lastRegistrationOk = UtcNow();
+        else _lastRegistrationOk = null;
+        _registered = registered;
+        _registrationStatus = status;
         PerceivedAddress = address;
         RegistrationChanged?.Invoke();
         PublishBackground();
     }
+
+    // ----- network check -----
+
+    private bool _networkCheckDone;     // guarded by _endpointLock; one check per call socket
+
+    /// <summary>Servers for the network check; tests point it at a fake or turn it off with an empty list.</summary>
+    internal IReadOnlyList<(string Host, int Port)> NetworkCheckServers { get; set; }
+
+    /// <summary>
+    /// Once per call socket, after the first successful registration on it: asks two STUN servers what public
+    /// address the call socket has, compares that with what the registry recorded, logs it, and warns the user when
+    /// far nodes will see a different address than the registry (they then refuse the link).
+    /// </summary>
+    private async Task RunNetworkCheckOnceAsync()
+    {
+        Iax2Endpoint? endpoint;
+        lock (_endpointLock)
+        {
+            if (_networkCheckDone || _endpoint == null || NetworkCheckServers.Count == 0) return;
+            _networkCheckDone = true;
+            endpoint = _endpoint;
+        }
+        await RunNetworkCheckAsync(endpoint);
+    }
+
+    /// <summary>Runs the network check now on the current call socket (also for "Send logs").</summary>
+    public Task<NetworkCheckResult?> RunNetworkCheckAsync() => RunNetworkCheckAsync(EnsureEndpoint());
+
+    private async Task<NetworkCheckResult?> RunNetworkCheckAsync(Iax2Endpoint endpoint)
+    {
+        try
+        {
+            var result = await NetworkCheck.RunAsync(endpoint, PerceivedAddress, RegistrationTransport, NetworkCheckServers);
+            LastNetworkCheck = result;
+            Log.Info("net", $"network check (call socket UDP port {endpoint.LocalPort}): {result.Describe()}");
+            if (result.UserWarning is { } warning) ErrorOccurred?.Invoke(warning);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Log.Info("net", $"network check failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Re-registers now (the Android idle wake-up alarm calls this: while the phone sleeps the normal timer does not run).
+    /// </summary>
+    public Task<bool> RenewRegistrationAsync() => _exited ? Task.FromResult(false) : RefreshRegistrationAsync();
 
     /// <summary>Registers right now (outside the normal cycle), e.g. after the network changed.</summary>
     private async Task<bool> RefreshRegistrationAsync()
@@ -458,13 +694,27 @@ public sealed class NodeRuntime : IAsyncDisposable
     private async Task<NodeInfo?> DialAsync(NodeConnection c, CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
+        var registration = PrepareRegistrationForDial(c.Node);    // runs while the node is looked up
         var info = await _resolver.ResolveNodeAsync(c.Node, cancellationToken);
         Log.Detail("dial", $"node {c.Node}: resolve {(info == null ? "failed" : "ok -> " + info.EndPoint)} in {sw.ElapsedMilliseconds} ms");
         if (info == null) return null;
         ThrowIfAbandoned(c);
         c.Info = info;
 
-        var link = new NodeLink(Config.Settings, info, _audioFactory(), _audioOptions, _configureSession, Transmit);
+        if (!registration.IsCompleted)
+        {
+            var regClock = Stopwatch.StartNew();
+            var done = await Task.WhenAny(registration, Task.Delay(_policy.RegistrationWait, cancellationToken));
+            cancellationToken.ThrowIfCancellationRequested();
+            Log.Detail("dial", done == registration
+                ? $"node {c.Node}: re-registered first (ok={registration.Result}), waited {regClock.ElapsedMilliseconds} ms"
+                : $"node {c.Node}: re-registration still pending after {regClock.ElapsedMilliseconds} ms; dialling anyway");
+            ThrowIfAbandoned(c);
+        }
+
+        // On the shared call socket, so the far node sees the address the registry recorded.
+        var link = new NodeLink(Config.Settings, info, _audioFactory(), _audioOptions, _configureSession, Transmit,
+            EnsureEndpoint());
         link.Ptt.ListenOnlyReason = $"Node {c.Node} is listen-only. Choose it as the transmit node to talk on it.";
         link.Audio.Muted = c.Muted;
         link.Error += m => ErrorOccurred?.Invoke(ForNode(c, m));
@@ -499,6 +749,23 @@ public sealed class NodeRuntime : IAsyncDisposable
             throw;
         }
         return info;
+    }
+
+    /// <summary>
+    /// Renews the registration before a dial when it has lapsed, or (over IAX2) when it is older than
+    /// <see cref="ReconnectPolicy.PreDialRegistrationAge"/>. Completes with true straight away when nothing is needed.
+    /// </summary>
+    private Task<bool> PrepareRegistrationForDial(string node)
+    {
+        var registration = _registration;
+        if (registration == null) return Task.FromResult(false);
+
+        TimeSpan age = _lastRegistrationOk is { } ok ? UtcNow() - ok : TimeSpan.MaxValue;
+        bool due = !IsRegistered || (registration.Transport == "IAX2" && age > _policy.PreDialRegistrationAge);
+        if (!due) return Task.FromResult(true);
+
+        Log.Detail("dial", $"node {node}: registering first ({(IsRegistered ? $"last accepted {age.TotalSeconds:0} s ago" : RegistrationStatus)})");
+        return RefreshRegistrationAsync();
     }
 
     /// <summary>True while <paramref name="c"/> is still one of the nodes the user wants linked.</summary>
@@ -1114,9 +1381,11 @@ public sealed class NodeRuntime : IAsyncDisposable
         // that hops between Wi-Fi and cellular would otherwise run a node out of retries and lose it.
         foreach (var c in SnapshotConnections()) Volatile.Write(ref c.EarlyHangups, 0);
 
-        // 1. Tell the registry our new address right away rather than at the next 60 s cycle; remote
-        //    nodes validate callers against it.
-        Task<bool> registration = available ? RefreshRegistrationAsync() : Task.FromResult(false);
+        // 1. A fresh call socket for the new path (the old one's NAT mapping belongs to the old network; calls still
+        //    on it keep it until they end), then tell the registry our new address right away rather than at the
+        //    next 60 s cycle: remote nodes validate callers against it.
+        RetireEndpoint();
+        Task<bool> registration = await RestartRegistrationForNewNetworkAsync(available);
 
         // 2. A call is bound to the old source address, so it cannot continue: dial again from the new one.
         //    Every established link is affected, so each node recovers on its own.
@@ -1152,6 +1421,33 @@ public sealed class NodeRuntime : IAsyncDisposable
         Log.Info("net", $"handoff: {affected.Length} link(s) hung up and re-dial started {handoffClock.ElapsedMilliseconds} ms after acting on the change");
     }
 
+    /// <summary>
+    /// After a network change. An IAX2 registration is bound to the retired socket, so it is replaced with one on
+    /// the new socket (this also gives IAX2 another chance if it had fallen back to HTTPS on the old network). An
+    /// HTTPS-only registration is just refreshed. Returns the first attempt's result.
+    /// </summary>
+    private async Task<Task<bool>> RestartRegistrationForNewNetworkAsync(bool available)
+    {
+        var current = _registration;
+        if (current == null) return Task.FromResult(false);
+        if (current is not FallbackRegistration)
+            return available ? RefreshRegistrationAsync() : Task.FromResult(false);
+
+        await _gate.WaitAsync();
+        try
+        {
+            if (_exited || _disposed || !ReferenceEquals(_registration, current)) return Task.FromResult(false);
+            var cfg = Config;
+            await StopRegistrationAsync();
+            if (!cfg.IsComplete || !cfg.Settings.RegisterOnStartup) return Task.FromResult(false);
+            return await StartRegistrationCoreAsync(cfg, CancellationToken.None);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     // =====================================================================================
 
     public async ValueTask DisposeAsync()
@@ -1178,5 +1474,6 @@ public sealed class NodeRuntime : IAsyncDisposable
         {
             _gate.Release();
         }
+        RetireEndpoint();
     }
 }

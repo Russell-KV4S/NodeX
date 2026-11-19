@@ -228,6 +228,7 @@ public sealed class NodeForegroundService : Service
             micAllowed, car, AndroidAudioRoute.SpeakerActive, AppServices.Runtime.Config.Settings.MediaKeyPtt);
         if (plan.HoldLocks)
         {
+            RegistrationAlarm.Cancel(this);     // the wake lock keeps the registration timer running
             _keeper.Acquire();
             if (plan.CarAudio)
             {
@@ -250,9 +251,11 @@ public sealed class NodeForegroundService : Service
         }
         else
         {
-            // Idle: registration is a small HTTPS request each minute; no reason to hold the CPU or Wi-Fi awake.
+            // Idle: no reason to hold the CPU or Wi-Fi awake, but then the registration timer stops while the phone
+            // sleeps, so a periodic alarm wakes it briefly to re-register.
             _keeper.StopBluetoothSco();
             _keeper.Release();
+            RegistrationAlarm.Schedule(this);
             AndroidAudioRoute.Reset(this);   // loudspeaker choice only lasts while linked
             _carMode = false;
         }
@@ -308,6 +311,7 @@ public sealed class NodeForegroundService : Service
 
     private void Teardown()
     {
+        RegistrationAlarm.Cancel(this);
         _headset?.Dispose();
         _headset = null;
         _keeper?.Dispose();

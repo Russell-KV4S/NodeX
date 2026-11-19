@@ -18,6 +18,14 @@ public sealed record ReconnectPolicy
     /// <summary>How long a network change waits for the immediate re-registration before re-dialling.</summary>
     public TimeSpan RegistrationWait { get; init; } = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// Registered over IAX2 longer ago than this, a dial first re-registers (waiting up to
+    /// <see cref="RegistrationWait"/>). The carrier may have let the call socket's NAT mapping lapse since, and the new
+    /// mapping can have a different public address; the far node only accepts the call from the registered one.
+    /// A lapsed registration (any transport) is always renewed before dialling.
+    /// </summary>
+    public TimeSpan PreDialRegistrationAge { get; init; } = TimeSpan.FromSeconds(20);
+
     /// <summary>How long one attempt may take to reach the connected state before it counts as failed.</summary>
     public TimeSpan AttemptTimeout { get; init; } = TimeSpan.FromSeconds(12);
 

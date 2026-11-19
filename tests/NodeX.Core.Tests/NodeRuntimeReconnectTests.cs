@@ -211,8 +211,11 @@ public class NodeRuntimeReconnectTests : IDisposable
                                                           && f.SourceCallNumber != first, 5000);
         await _remote.SendIaxAsync(IaxControlSubclass.Accept);
         await _remote.SendIaxAsync(IaxControlSubclass.Hangup);
-        await Task.Delay(300);
-        lock (notices) Assert.DoesNotContain(notices, n => n.StartsWith("Reconnected to node"));   // accepted, then hung up: not a recovery
+        // No pause here: the next attempt's NEW arrives within ~80 ms and gives up after AttemptTimeout (200 ms), so
+        // the 300 ms pause that used to be here answered a call that had already been abandoned and the test never
+        // finished. "Accepted, then hung up is not a recovery" is checked by the Assert.Single at the end (the
+        // announcement waits out the early-hangup window, so it could not have appeared yet anyway).
+        lock (notices) Assert.DoesNotContain(notices, n => n.StartsWith("Reconnected to node"));
 
         // Third attempt: the remote's list has refreshed, so the call stays up.
         await _remote.WaitForFrameAsync(f => f.FrameType == FrameType.IaxControl
