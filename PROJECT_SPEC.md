@@ -304,6 +304,43 @@ Back-off (`ReconnectPolicy`): first retry after `InitialDelay` 2 s (immediately 
 - **Linked nodes card (2026-11-06, `LinksCard`, `LinkItemViewModel`):** shown once anything is linked; header "Linked nodes" + "n / 8 linked" (follows `MaxLinks`); one row per node: "<node> · <favourite name>" (else "Node N"), callsign • description, text status (CONNECTED / CONNECTING… / RECONNECTING (n)) + "RTT n ms", a green **Receiving** pill when audio is arriving from that node, a red **TRANSMIT HERE** tag with a red left edge on the transmit node or a **Listen only** tag + **Transmit here** button on the others, **Mute / Muted · tap to hear**, and **Disconnect** (per node). **Connect** in the Connect card now adds a link (hint text; button stays enabled until `MaxLinks` are linked); its Disconnect button becomes **Disconnect all** when more than one is linked. The hero card shows the transmit node (and "also listening: …"), or "No transmit node" with a hint. The PTT key is inert (headline **CHOOSE TX NODE**, caption NO TX NODE, amber banner "Pick which linked node to transmit to.") when nodes are linked but none is chosen (`NeedsTransmitNode`/`CanKey`); with several nodes the caption reads "TO NODE n". RX card = any link receiving; speaker meter = loudest link; mic meter = transmit link. Log lines are tagged `[node]` when more than one is linked. Placement: narrow = after the hero card; wide = top of the right column. **Not seen on screen with real links.**
 - **`SettingsViewModel`/`SettingsView`:** form for the fields in §4.7 + **Test registration** (really registers using the on-screen values; nothing saved) + Save/Cancel; errors listed as bullets; password masked with a Show toggle.
 
+### 4.9 Private and manually addressed nodes (specced 2026-11-20; **not built**)
+**Goal:** connect to a node that is not in the public AllStarLink directory (private node numbers such as 1000–1999, LAN/VPN nodes, club hubs on dynamic DNS) by giving its address by hand. Everything after address lookup (handshake §5.3, login as user `radio` §5.4, multi-node and transmit-node rules §4.5, retry until the user disconnects §4.6) is unchanged. The owner designs the UI; this section fixes behaviour and data only.
+
+**What exists today:** `NodeResolution.SetStaticOverride(node, IPEndPoint)` is checked before the cache and the public lookups (§4.7), but nothing calls it, it is not saved, it takes an IP only, and it is keyed by node number alone.
+
+**Address entry — one parser, `ManualNodeAddress.TryParse` (Core):** the Connect box and any "add private node" form accept:
+
+| Input | Meaning |
+|---|---|
+| `1999` | public node: normal lookup (today's behaviour) |
+| `1999@host` | node 1999 at `host`, port 4569 |
+| `1999@host:4570` | as above, explicit port |
+| `1999@[2001:db8::5]:4569` | IPv6 literal in brackets (parsed; dialling needs the IPv6 item in §13) |
+| `radio@host:port/1999` and `radio@host:port/1999,NONE` (or `,<ip>`) | a line from a `[nodes]` stanza in rpt.conf, pasted as is; the `1999 =` prefix of a full stanza line is also accepted |
+
+Rules: the node number is validated like any node number (3–7 digits). `host` is a DNS name or IPv4/IPv6 literal, trimmed and lower-cased. In the rpt.conf form the user part must be `radio` (anything else is shown as an error, not silently ignored) and the trailing `,NONE`/`,<ip>` is ignored. Spaces around `@`, `:` and `/` are tolerated. Anything else is a parse error with a message that names the expected forms. Tests: a table of good and bad inputs, including the four rpt.conf variants.
+
+**Storage:** a new settings list `PrivateNodes` of `{ Node, Host, Port, Name? }` (default Port 4569). It lives beside `FavoriteNodes` and is validated and normalised the same way (duplicate (Node, Host, Port) entries removed). A private entry shows in the favourites list and in the car browse tree like a favourite, marked as private. Settings export (§4.7) includes the entries. An entry holds no secret.
+
+**Resolution:**
+- **Resolve the host on every dial.** The address is not cached for 15 minutes: club servers often sit on dynamic DNS, and the existing unanswered-dial rule (§4.7 `Invalidate`) then needs nothing extra. IPv4 is preferred, as for public nodes.
+- **Use the given port exactly.** The public-node port probe with fallback to 4569 (§5 East Coast Reflector note) is **not** applied: the user typed the port.
+- **Private addresses never go to AllStarLink services.** A private entry is never looked up via stats/REST/DNS on allstarlink.org, and the host is not sent anywhere except in the DNS query that resolves it.
+- If the host cannot be resolved, the dial fails with "Cannot find host <host>" and is retried under the normal rules (§4.6), with no public lookup fallback.
+
+**Identity and the one known limit:** a private node number is not unique (two clubs can both run 1999). The link's identity becomes (Node, Host, Port), so a private 1999 and a public 1999 (or two private ones) can be saved side by side. **First version:** `NodeRuntime` still keys links by node number, so linking two nodes with the same number **at the same time** is refused with a clear message ("Node 1999 is already linked via <host>"). Lifting that is a later change in `NodeRuntime`/`LinkItemViewModel`, not part of this item. Log lines and the link row show `1999 @ host` for private links.
+
+**Login:** always IAX user `radio`, no secret, exactly as §5.4. **Per-entry IAX usernames/secrets are deliberately not supported (owner decision 2026-11-20)**: a private server that requires its own IAX user and password cannot be linked. Our node password (registration) is still never sent to a remote node.
+
+**Reachability hint:** when an entry is saved (and on demand), send one IAX POKE to the resolved address and show "reachable" / "no answer". This is information only: a silent POKE does not block saving or dialling (43136 ignored POKEs, §13 item 8).
+
+**Sharing (optional, second step):** a link `nodex://add?node=1999&host=<host>&port=4569&name=<text>` (and the same as a QR code) opens a pre-filled "add private node" form. It never connects and never saves without the user confirming. Android: an intent filter; desktop: a protocol handler where the OS allows it. iOS is parked (§20).
+
+**What NodeX cannot fix — must be explained in the UI/help:** the private server's app_rpt checks **our** calling node number against **its own** node list (§5.4). Unknown → instant hang-up ("Reported node N cannot be found"); wrong IP → "does not match link IP". If the private server downloads the public ASL node list and our node is registered, this works on its own after the list refresh. If the server is offline from ASL, firewalled or LAN-only, its admin must add us to `[nodes]` in rpt.conf, e.g. `<our node> = radio@<our public IP>:<port>/<our node>,NONE`. The help text offers a copy button for that line, filled with our node number and the address the registry last reported (`PerceivedAddress`/`PerceivedPort`, §4.7). The private server must also accept UDP 4569 (or its port) from us; NodeX only dials out and needs no inbound port.
+
+**Tests (when built):** parser table; settings validation/normalisation/round-trip and export; resolution skips allstarlink.org for private entries, resolves the host on every dial, uses the given port without probing; same-number refusal; the link always logs in as `radio` with no secret; deep-link parsing never connects or saves on its own. Live check: one dial to a private node on the owner's own server (ASL3 allows a private node number alongside 523800; **keep that private node unlinked from 47923**, which is a real RF node, see `docs/LIVE_VALIDATION.md`), including the "cannot be found" case before the `[nodes]` line is added.
+
 ---
 
 ## 5. ASL & IAX2 protocol requirements (verified facts)
@@ -469,6 +506,7 @@ Read from `AllStarLink/app_rpt` `apps/app_rpt.c` (`remote_hangup_helper`, `handl
 6. **Remaining test boundaries:** shared Android service policies and MainViewModel behavior are tested; native Android service lifecycle/permissions/audio focus, native BLE drivers and OS keyrings still require platform tests. CI now runs the headless UI suite too; a local pass does not prove a hosted CI run succeeded.
 7. **Optional enhancements:** DTMF BEGIN/END duration, IPv6, additional codecs and inbound mode over VPN. iOS release and iOS idle background registration are intentionally parked (§20); Android idle registration is kept alive by `RegistrationAlarm` (§7).
 8. **Carrier-NAT follow-up (2026-11-19):** confirm on the owner's phone (mobile data) that IAX2 registration holds (log: `[reg] registration starting over IAX2`, no lasting HTTPS fallback, `network check ... verdict=Consistent`) and that 43136 (Ham Radio 2.0 Hub, silent even to an IAX2 POKE from the owner's PC on 2026-11-19) then answers. Run `NodeX.LiveCheck register --iax` once with the password to prove the full MD5 exchange. If the network check says `AddressPerDestination` on a carrier, only a relay or client-mode design helps (owner decision, not built). Retrying forever is an owner preference (2026-11-19); a node that is gone for good (44110 had no DNS record or stats that day) is retried until the user disconnects it.
+9. **Private / manually addressed nodes (specced 2026-11-20, not built):** see §4.9. Order: parser and `PrivateNodes` settings → resolution changes → owner's UI → live dial to a private node on the owner's server → optional share link/QR.
 
 **Completed:** desktop BLE transport; theme/text-size controls; permission explanations; mobile ID notification hooks; iOS BLE/microphone wiring; ASL text parsing; desktop pickers/ring-buffer tests; OS keyring integration; macOS bundle scaffolding; headset advisory; `.editorconfig`; Android compile jobs. Implementation does not imply hardware verification.
 
