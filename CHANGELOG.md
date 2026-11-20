@@ -1,5 +1,16 @@
 # Change log
 
+## 2026-11-20: private and manually addressed nodes (§4.9, unreleased on main)
+
+Implemented full support for connecting to private / manually addressed nodes (such as 1000–1999, LAN/VPN nodes, and club hubs on dynamic DNS) without touching AllStarLink directory services:
+
+- **Unified address parser (`ManualNodeAddress.TryParse`):** the Connect box and Add Private Node quick-paste bar accept plain public nodes (`27339`), `1999@host`, `1999@host:4570`, `1999@[ipv6]:4569` (parsed; IPv6 dialling remains in §13), and pasted `rpt.conf` `[nodes]` stanza lines (`radio@host[:port]/1999[,NONE|,<ip>]` with optional `1999 =` prefix). Non-`radio` IAX users are explicitly rejected.
+- **Storage & transfer (`PrivateNodeEntry`, `NodeSettings.PrivateNodes`):** saves `{ Node, Host, Port, Name? }` with no secrets, deduplicated by `(Node, Host, Port)` so public and private entries with the same node number can coexist. Included in settings export/import and preserved by `SettingsViewModel`.
+- **Direct resolution & non-blocking POKE (`NodeResolution.ResolvePrivateAsync` / `ProbePrivateAsync`):** resolves hostnames fresh on every dial (dynamic DNS ready, IPv4 preferred), uses the exact port without probing, and never contacts `allstarlink.org`. Unresolvable hosts fail with `"Cannot find host <host>"` and retry under normal auto-reconnect rules with no public fallback.
+- **Runtime & Android Auto (`NodeRuntime`, `CarBrowse`, `NodeXMediaBrowserService`):** always logs in as IAX user `radio` with no password; refuses simultaneous links with the same node number (`"Node 1999 is already linked via <host>"`); displays private links as `1999 @ host` in link rows and logs; lists saved private nodes alongside favourites in Android Auto marked as Private.
+- **UI & share links (`PrivateNodesView`, `MainView`, `SettingsView`, `MainActivity`, `Program.cs`):** live Connect-box parsed preview with `+ Save`, unified public + private favourites with `PRIVATE` pills, full-screen `PrivateNodesView` manager (Quick Paste, Add/Edit, informational IAX POKE on demand and on save, collapsible "Will the private server accept my node?" help card with one-tap copy of the pre-filled `rpt.conf` line using `PerceivedAddress`/`PerceivedPort`, and `nodex://add?...` share & confirmation view that never auto-saves or auto-connects). Android `nodex://add` intent filter and desktop CLI arg wired; themed across Dark, Light, and High Contrast (`PrivateBackgroundBrush`/`PrivateBorderBrush`).
+- **Validation:** 759 Core tests (54 new in `PrivateNodesTests`) and 24 headless Avalonia UI tests (6 new in `PrivateNodesUiTests`) pass; full solution builds across all 7 projects (Desktop, Android, iOS, Core, UI, Tests) with 0 warnings and 0 errors (`743fe65`). **Not yet verified:** live dial to a private node on the owner's server (unlinked from 47923), real-device Android/desktop UI check, and tapping a `nodex://add?...` link on Android.
+
 ## 2026-11-19: 1.22 / code 24: retry until you disconnect
 
 Owner's phone log (18 Nov, running 1.20): after 88 minutes every linked node hung up within ten seconds of each other, and each redial was accepted and then hung up 2.4 to 3.6 s later. The 3.3 s ones fell outside the 3 s early-hangup window, counted as ordinary drops, and NodeX stopped after 5 tries (about a minute).
