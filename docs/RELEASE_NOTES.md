@@ -1,9 +1,13 @@
-NodeX 1.20 adds an optional tip jar.
+NodeX 1.23 adds private nodes: nodes on your own or a club's server that aren't in the public AllStarLink directory.
 
 **What changed**
-- Settings has a new "Support NodeX" card with a "Buy me a coffee" button that opens buymeacoffee.com/RussellThomas in your browser. Tipping is optional and doesn't unlock or change anything in the app.
+- **Private nodes:** type `1999@host` or `1999@host:4570` in the Connect box, or paste a line from rpt.conf `[nodes]` (`radio@host:port/1999`). Save it and it appears with your favourites, marked PRIVATE. NodeX dials that address directly, looks the host name up fresh on every dial (so dynamic DNS works), and never asks allstarlink.org about it. It always logs in as `radio` with no password, which is how app_rpt links work.
+- **Private Nodes screen:** add, edit, remove and test (IAX POKE) private nodes. A help card shows the exact `[nodes]` line the server's owner needs to add if their server doesn't load the public node list, with a copy button.
+- **Share links:** `nodex://add?node=1999&host=...` links open NodeX on Android and Windows and ask before saving. They never connect on their own. On Windows, clicking a link while NodeX is open hands it to the running copy.
+- **Android Auto:** private nodes show in the car's favourites, can be found by voice, and "play NodeX" resumes the last one you used.
+- If a private server accepts the call and then hangs up straight away, NodeX now tells you the server probably doesn't know your node and points to the rpt.conf fix.
 
-Includes all 1.19 changes (callsign field and "Listen only" option removed).
+Includes all 1.22 changes (retry until you disconnect).
 
 Downloads:
 - **Android:** `NodeX-android.apk` is the full sideload edition, including optional Android Auto Talk and steering-wheel PTT.
@@ -14,4 +18,4 @@ Downloads:
 
 **Switching from Google Play:** Play and sideload signatures differ. Export your settings before uninstalling the Play build; you may need to re-enter the node password.
 
-**Not yet verified:** these changes are build- and unit-tested only; they have not been run on a phone, in a car or against a live node. Full Linux/macOS operation and Android update installation also still need hardware checks. See PROJECT_SPEC.md for the validation record.
+**Not yet verified:** private nodes are build- and unit-tested only. They haven't yet been dialled against a live private server, and share links, the phone screens and Android Auto haven't been tried on a device or in a car. IPv6 addresses are accepted but can't be dialled yet. macOS/Linux share-link registration is not built.

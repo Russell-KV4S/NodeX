@@ -1,6 +1,6 @@
 # Change log
 
-## 2026-11-20: private and manually addressed nodes (§4.9, unreleased on main)
+## 2026-11-20: 1.23 / code 25: private and manually addressed nodes (§4.9)
 
 Implemented full support for connecting to private / manually addressed nodes (such as 1000–1999, LAN/VPN nodes, and club hubs on dynamic DNS) without touching AllStarLink directory services:
 
