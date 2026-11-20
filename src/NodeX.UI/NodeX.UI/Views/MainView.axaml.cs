@@ -83,6 +83,21 @@ public partial class MainView : UserControl
             _ = vm.RemoveFavoriteAsync(item.Node);
     }
 
+    /// <summary>Opens the favourite's stats.allstarlink.org bubble chart in the system browser.</summary>
+    private async void OnFavoriteBubbleChartClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Control { DataContext: FavoriteItem { BubbleChartUri: { } uri } }) return;
+        try
+        {
+            var launcher = TopLevel.GetTopLevel(this)?.Launcher;
+            if (launcher != null) await launcher.LaunchUriAsync(uri);
+        }
+        catch (Exception)
+        {
+            // No browser available: nothing useful to show from a context menu.
+        }
+    }
+
     private void OnEditPrivateFavoriteClick(object? sender, RoutedEventArgs e)
     {
         if (sender is Control { DataContext: PrivateFavoriteItem item } && DataContext is MainViewModel vm)

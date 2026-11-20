@@ -21,6 +21,10 @@ public sealed record FavoriteItem(string Node, string Label)
     public string Title => HasLabel ? Label : Node;
 
     public string AutomationName => HasLabel ? $"Connect to {Label}, node {Node}" : $"Connect to node {Node}";
+
+    /// <summary>stats.allstarlink.org bubble chart (network map) for this node.</summary>
+    public Uri? BubbleChartUri => NodeX.Core.AllStarStatsLinks.BubbleChart(Node);
+    public bool HasBubbleChart => BubbleChartUri != null;
 }
 
 /// <summary>A saved private node chip shown alongside favourites, clearly marked as private (§4.9).</summary>

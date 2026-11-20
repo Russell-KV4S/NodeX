@@ -525,6 +525,12 @@
                                                 <TextBlock Text="{Binding RemoteLinksText}" IsVisible="{Binding HasRemoteLinks}"
                                                            FontSize="{DynamicResource FontSize11}" TextWrapping="Wrap"
                                                            Foreground="{DynamicResource CyanAccentBrush}" />
+                                                <HyperlinkButton Content="Bubble chart ↗" NavigateUri="{Binding BubbleChartUri}"
+                                                                 IsVisible="{Binding HasBubbleChart}"
+                                                                 AutomationProperties.Name="{Binding BubbleChartAutomationName}"
+                                                                 ToolTip.Tip="Open this node's network map on stats.allstarlink.org"
+                                                                 FontSize="{DynamicResource FontSize11}" Padding="0,4" MinHeight="32"
+                                                                 Foreground="{DynamicResource CyanAccentBrush}" />
                                                 <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
                                                     <Button Grid.Column="0" IsVisible="{Binding CanSelectTransmit}" Content="Transmit here"
                                                             Command="{Binding SelectTransmitCommand}"
@@ -613,6 +619,12 @@
                                                         <TextBlock Text="{Binding RemoteLinksText}" IsVisible="{Binding HasRemoteLinks}"
                                                                    FontSize="{DynamicResource FontSize11}" TextWrapping="Wrap"
                                                                    Foreground="{DynamicResource CyanAccentBrush}" />
+                                                        <HyperlinkButton Content="Bubble chart ↗" NavigateUri="{Binding BubbleChartUri}"
+                                                                         IsVisible="{Binding HasBubbleChart}"
+                                                                         AutomationProperties.Name="{Binding BubbleChartAutomationName}"
+                                                                         ToolTip.Tip="Open this node's network map on stats.allstarlink.org"
+                                                                         FontSize="{DynamicResource FontSize11}" Padding="0,2"
+                                                                         Foreground="{DynamicResource CyanAccentBrush}" />
                                                     </StackPanel>
                                                     <!-- Text pill, so "audio is arriving from this node" is not colour-only -->
                                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Top">
@@ -853,6 +865,9 @@
                                                     Background="{DynamicResource SelectedBackgroundBrush}" CornerRadius="6" BorderThickness="0">
                                                 <Button.ContextFlyout>
                                                     <MenuFlyout>
+                                                        <MenuItem Header="Bubble chart (opens browser)"
+                                                                  IsVisible="{Binding HasBubbleChart}"
+                                                                  Click="OnFavoriteBubbleChartClick" />
                                                         <MenuItem Header="Remove from favorites"
                                                                   Click="OnRemoveFavoriteClick" />
                                                     </MenuFlyout>

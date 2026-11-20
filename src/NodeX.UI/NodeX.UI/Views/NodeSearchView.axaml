@@ -175,6 +175,12 @@
                                                    Foreground="{DynamicResource TextPrimaryBrush}" />
                                         <TextBlock Text="{Binding Place}" FontSize="{DynamicResource FontSize12}" TextTrimming="CharacterEllipsis"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <HyperlinkButton Content="Bubble chart ↗" NavigateUri="{Binding BubbleChartUri}"
+                                                         IsVisible="{Binding HasBubbleChart}"
+                                                         AutomationProperties.Name="{Binding BubbleChartName}"
+                                                         ToolTip.Tip="Open this node's network map on stats.allstarlink.org"
+                                                         FontSize="{DynamicResource FontSize12}" Padding="0,4" MinHeight="32"
+                                                         Foreground="{DynamicResource CyanAccentBrush}" />
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Right">

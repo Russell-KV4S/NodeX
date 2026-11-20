@@ -108,6 +108,8 @@ public class MainViewModelTests
         await f.Connect("2000"); await f.Connect("3000");
         Assert.Equal(2, f.Vm.LinkItems.Count);
         Assert.Equal("2 / 8 linked", f.Vm.LinkCountText);
+        Assert.True(f.Vm.LinkItems[0].HasBubbleChart);
+        Assert.Equal("https://stats.allstarlink.org/stats/2000/networkMap", f.Vm.LinkItems[0].BubbleChartUri!.ToString());
         await f.Vm.RequestDisconnectNodeAsync();
         Assert.True(f.Vm.IsConfirmingDisconnectAll);
         Assert.Equal(2, f.Runtime.Connections.Count);

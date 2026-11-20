@@ -45,10 +45,17 @@ public sealed partial class LinkItemViewModel : ObservableObject
     public string Node { get; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsPublicLink))]
+    [NotifyPropertyChangedFor(nameof(IsPublicLink), nameof(HasBubbleChart))]
     public partial bool IsPrivate { get; set; }
 
     public bool IsPublicLink => !IsPrivate;
+
+    /// <summary>stats.allstarlink.org bubble chart (network map) for a public node; null for private links.</summary>
+    public Uri? BubbleChartUri => AllStarStatsLinks.BubbleChart(Node);
+
+    public bool HasBubbleChart => !IsPrivate && BubbleChartUri != null;
+
+    public string BubbleChartAutomationName => $"Open bubble chart for node {Node} in browser";
 
     [ObservableProperty]
     public partial string Title { get; set; }

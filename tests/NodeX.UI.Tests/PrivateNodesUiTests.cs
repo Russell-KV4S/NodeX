@@ -102,6 +102,7 @@ public class PrivateNodesUiTests
         await Until(() => f.Vm.LinkItems.Count == 1 && f.Vm.LinkItems[0].IsConnected);
 
         Assert.True(f.Vm.LinkItems[0].IsPrivate);
+        Assert.False(f.Vm.LinkItems[0].HasBubbleChart);   // private nodes are not on the stats site
         Assert.Contains("1999 @ 127.0.0.1", f.Vm.LinkItems[0].Title);
         Assert.Contains("1999 @ 127.0.0.1", f.Vm.ConnectedNodeDisplay);
 

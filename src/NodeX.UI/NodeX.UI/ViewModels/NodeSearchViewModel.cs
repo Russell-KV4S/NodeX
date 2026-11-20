@@ -59,6 +59,11 @@ public partial class NodeResultItem : ObservableObject
 
     public string FavoriteName => IsFavorite ? $"Remove node {NodeNumber} from favorites" : $"Add node {NodeNumber} to favorites";
     public string UseName => $"Use node {NodeNumber}";
+
+    /// <summary>stats.allstarlink.org bubble chart (network map) for this node.</summary>
+    public Uri? BubbleChartUri => AllStarStatsLinks.BubbleChart(NodeNumber);
+    public bool HasBubbleChart => BubbleChartUri != null;
+    public string BubbleChartName => $"Open bubble chart for node {NodeNumber} in browser";
 }
 
 /// <summary>
