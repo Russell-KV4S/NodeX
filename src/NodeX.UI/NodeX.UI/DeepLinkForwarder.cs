@@ -70,8 +70,9 @@ public static class DeepLinkForwarder
             }
             catch (Exception ex) when (ex is IOException or OperationCanceledException or UnauthorizedAccessException)
             {
-                // A client that vanished or sent nothing in time; wait briefly so a broken pipe cannot spin.
-                try { await Task.Delay(100, cancellationToken).ConfigureAwait(false); }
+                // A client that vanished or sent nothing in time, or another NodeX copy already owns the pipe
+                // ("all pipe instances are busy"); wait so neither case can spin.
+                try { await Task.Delay(1000, cancellationToken).ConfigureAwait(false); }
                 catch (OperationCanceledException) { return; }
             }
         }

@@ -590,7 +590,8 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
     private string TalkersText()
     {
         var settings = AppServices.Runtime.Config.Settings;
-        return string.Join(", ", _rx.Talking().Select(n => CarBrowse.TitleFor(settings, n)));
+        var links = AppServices.Runtime.Connections;
+        return string.Join(", ", _rx.Talking().Select(n => CarBrowse.LinkTitle(settings, n, links)));
     }
 
     private void RefreshTalkers()
@@ -769,7 +770,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         {
             session.SetMetadata(new MediaMetadata.Builder()
                 .PutString(MediaMetadata.MetadataKeyMediaId, node)!
-                .PutString(MediaMetadata.MetadataKeyTitle, CarBrowse.CardTitle(rt.Config.Settings, node))!
+                .PutString(MediaMetadata.MetadataKeyTitle, CarBrowse.LinkCardTitle(rt.Config.Settings, node, rt.Connections))!
                 .PutString(MediaMetadata.MetadataKeyDisplaySubtitle, subtitle)!
                 .Build());
         }
@@ -880,8 +881,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
     private string? LastRemembered(NodeX.Core.Settings.NodeSettings settings)
     {
         string? last = GetSharedPreferences("nodex_prefs", FileCreationMode.Private)?.GetString(LastNodePref, null);
-        if (last != null && settings.FavoriteNodes.Contains(last)) return last;
-        return settings.FavoriteNodes.FirstOrDefault();
+        return CarBrowse.LastFavorite(settings, last);   // public numbers and private ids
     }
 
     private sealed class Callback(NodeXMediaBrowserService owner) : MediaSession.Callback

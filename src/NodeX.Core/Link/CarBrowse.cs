@@ -51,7 +51,60 @@ public static class CarBrowse
 
     /// <summary>Returns the car media ID for a saved private node.</summary>
     public static string PrivateMediaId(PrivateNodeEntry entry) =>
-        $"{PrivatePrefix}{entry.Node}@{entry.Host}:{entry.Port}";
+        // FormatCanonical brackets IPv6 literals, so the id parses back (an unbracketed "2001:db8::5:4569" does not).
+        PrivatePrefix + ManualNodeAddress.FormatCanonical(entry.Node, entry.Host, entry.Port);
+
+    /// <summary>The saved private entry a private media id refers to, or null.</summary>
+    public static PrivateNodeEntry? FindPrivateEntry(NodeSettings settings, string? mediaId)
+    {
+        if (!TryParsePrivateMediaId(mediaId, out var address) || address == null) return null;
+        return (settings.PrivateNodes ?? []).FirstOrDefault(p => address.SameTargetAs(p.ToManualAddress()));
+    }
+
+    /// <summary>Every playable favourite id: public node numbers first, then private media ids.</summary>
+    public static IReadOnlyList<string> FavoriteMediaIds(NodeSettings settings) =>
+        (settings.FavoriteNodes ?? []).Where(f => !string.IsNullOrWhiteSpace(f))
+            .Concat((settings.PrivateNodes ?? [])
+                .Where(p => !string.IsNullOrWhiteSpace(p.Node) && !string.IsNullOrWhiteSpace(p.Host))
+                .Select(PrivateMediaId))
+            .ToList();
+
+    /// <summary>
+    /// What "play NodeX" with no name plays: the last played favourite if it is still saved (public number or private
+    /// id; an older private id with different spelling is matched by address), else the first favourite, else null.
+    /// </summary>
+    public static string? LastFavorite(NodeSettings settings, string? lastPlayed)
+    {
+        var ids = FavoriteMediaIds(settings);
+        if (!string.IsNullOrEmpty(lastPlayed))
+        {
+            if (ids.Contains(lastPlayed)) return lastPlayed;
+            if (FindPrivateEntry(settings, lastPlayed) is { } entry) return PrivateMediaId(entry);
+        }
+        return ids.Count > 0 ? ids[0] : null;
+    }
+
+    /// <summary>
+    /// Title for a linked node on the now-playing card or in "now talking": a private link's name (else
+    /// <c>1999 @ host</c>), or the public favourite label. Uses the connection, not the number alone, so a private
+    /// 1999 never shows a public favourite's label.
+    /// </summary>
+    public static string LinkTitle(NodeSettings settings, string node, IEnumerable<NodeConnection>? connections)
+    {
+        var conn = connections?.FirstOrDefault(c => c.Node == node);
+        if (conn is { IsPrivate: true })
+            return !string.IsNullOrWhiteSpace(conn.PrivateName) ? conn.PrivateName.Trim() : conn.DisplayNode;
+        return TitleFor(settings, node);
+    }
+
+    /// <summary>Card heading for a linked node: <c>1999 @ host · Club Hub</c> for private links, else <see cref="CardTitle"/>.</summary>
+    public static string LinkCardTitle(NodeSettings settings, string node, IEnumerable<NodeConnection>? connections)
+    {
+        var conn = connections?.FirstOrDefault(c => c.Node == node);
+        if (conn is { IsPrivate: true })
+            return !string.IsNullOrWhiteSpace(conn.PrivateName) ? $"{conn.DisplayNode} · {conn.PrivateName.Trim()}" : conn.DisplayNode;
+        return CardTitle(settings, node);
+    }
 
     /// <summary>True when <paramref name="mediaId"/> names a private favourite; parses its address if so.</summary>
     public static bool TryParsePrivateMediaId(string? mediaId, out ManualNodeAddress? address)
@@ -177,6 +230,8 @@ public static class CarBrowse
     /// <summary>"523801 · UL Cloud Node" like the phone's card heading, or just the node number when it has no label.</summary>
     public static string CardTitle(NodeSettings settings, string node)
     {
+        if (FindPrivateEntry(settings, node) is { } priv)
+            return string.IsNullOrWhiteSpace(priv.Name) ? priv.DisplayAddress : $"{priv.DisplayAddress} · {priv.Name.Trim()}";
         string label = TitleFor(settings, node);
         return label == node ? node : $"{node} · {label}";
     }
@@ -184,6 +239,8 @@ public static class CarBrowse
     /// <summary>The favourite's label, or the node number when it has none.</summary>
     public static string TitleFor(NodeSettings settings, string node)
     {
+        if (FindPrivateEntry(settings, node) is { } priv)
+            return string.IsNullOrWhiteSpace(priv.Name) ? priv.DisplayAddress : priv.Name.Trim();
         if (settings.FavoriteLabels != null
             && settings.FavoriteLabels.TryGetValue(node, out string? label)
             && !string.IsNullOrWhiteSpace(label))
@@ -209,17 +266,27 @@ public static class CarBrowse
 
     /// <summary>
     /// Resolves a spoken or typed query to a favourite: an exact node number, else a label that matches exactly, else
-    /// one that contains the query (case-insensitive). Null when nothing or more than one favourite matches.
+    /// one that contains the query (case-insensitive). Private nodes take part by name (or <c>1999 @ host</c>) and
+    /// return their private media id; a spoken number matches a public favourite first, then a single private node
+    /// with that number. Null when nothing or more than one favourite matches.
     /// </summary>
     public static string? FindFavorite(NodeSettings settings, string? query)
     {
         query = query?.Trim();
         if (string.IsNullOrEmpty(query)) return null;
 
-        var favorites = (settings.FavoriteNodes ?? []).Where(f => !string.IsNullOrWhiteSpace(f)).ToList();
+        var favorites = FavoriteMediaIds(settings).ToList();
 
         string digits = new(query.Where(char.IsDigit).ToArray());
-        if (digits.Length > 0 && favorites.Contains(digits)) return digits;
+        if (digits.Length > 0)
+        {
+            if (favorites.Contains(digits)) return digits;
+            var byNumber = (settings.PrivateNodes ?? []).Where(p => p.Node == digits).ToList();
+            if (byNumber.Count == 1) return PrivateMediaId(byNumber[0]);
+            // Several private nodes share that number: ambiguous. Without this, a "1999 @ host" title (the private
+            // fallback label) would partially match below and pick one of them at random order.
+            if (byNumber.Count > 1) return null;
+        }
 
         var exact = favorites.Where(f => string.Equals(TitleFor(settings, f), query, StringComparison.OrdinalIgnoreCase)).ToList();
         if (exact.Count == 1) return exact[0];

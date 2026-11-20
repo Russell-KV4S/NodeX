@@ -52,6 +52,54 @@ public class CarBrowseTests
         Assert.Null(CarBrowse.FindFavorite(s, "99999"));
     }
 
+    private static NodeSettings WithPrivate(params PrivateNodeEntry[] privates) => Settings("27339") with { PrivateNodes = [.. privates] };
+
+    [Fact]
+    public void Private_media_id_round_trips_even_for_ipv6()
+    {
+        var v6 = new PrivateNodeEntry("1999", "2001:db8::5", 4570);
+        string id = CarBrowse.PrivateMediaId(v6);
+        Assert.Equal("nodex:private:1999@[2001:db8::5]:4570", id);
+        Assert.True(CarBrowse.TryParsePrivateMediaId(id, out var parsed));
+        Assert.Equal("2001:db8::5", parsed!.Host);
+        Assert.Equal(4570, parsed.Port);
+    }
+
+    [Fact]
+    public void Search_and_titles_include_private_nodes()
+    {
+        var club = new PrivateNodeEntry("1999", "club.ddns.net", 4569, "Club Hub");
+        var bare = new PrivateNodeEntry("1888", "10.0.0.5", 4570);
+        var s = WithPrivate(club, bare);
+        string clubId = CarBrowse.PrivateMediaId(club);
+
+        Assert.Equal(clubId, CarBrowse.FindFavorite(s, "club hub"));
+        Assert.Equal(clubId, CarBrowse.FindFavorite(s, "club"));
+        Assert.Equal(clubId, CarBrowse.FindFavorite(s, "1999"));
+        Assert.Equal("27339", CarBrowse.FindFavorite(s, "27339"));           // public first
+        Assert.Equal("Club Hub", CarBrowse.TitleFor(s, clubId));
+        Assert.Equal("1999 @ club.ddns.net · Club Hub", CarBrowse.CardTitle(s, clubId));
+        Assert.Equal("1888 @ 10.0.0.5:4570", CarBrowse.CardTitle(s, CarBrowse.PrivateMediaId(bare)));
+
+        // Two private nodes with the same number: a spoken number is ambiguous.
+        var s2 = WithPrivate(club, new PrivateNodeEntry("1999", "other.example.org"));
+        Assert.Null(CarBrowse.FindFavorite(s2, "1999"));
+    }
+
+    [Fact]
+    public void Last_favorite_keeps_a_private_node_and_falls_back()
+    {
+        var club = new PrivateNodeEntry("1999", "club.ddns.net", 4569, "Club Hub");
+        string clubId = CarBrowse.PrivateMediaId(club);
+        var s = WithPrivate(club);
+
+        Assert.Equal(clubId, CarBrowse.LastFavorite(s, clubId));
+        Assert.Equal(clubId, CarBrowse.LastFavorite(s, "nodex:private:1999@club.ddns.net:4569"));   // older spelling
+        Assert.Equal("27339", CarBrowse.LastFavorite(s, "nodex:private:1999@gone.example.org"));     // removed since
+        Assert.Equal(clubId, CarBrowse.LastFavorite(new NodeSettings { PrivateNodes = [club] }, null)); // only private saved
+        Assert.Null(CarBrowse.LastFavorite(new NodeSettings(), null));
+    }
+
     [Fact]
     public void Root_items_expose_active_links_and_favorites_tabs()
     {
