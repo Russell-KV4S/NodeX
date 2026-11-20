@@ -1,6 +1,6 @@
 # Change log
 
-## Unreleased: bubble chart link on each AllStarLink node
+## 2026-11-20: 1.24 / code 26: bubble chart link on each AllStarLink node
 
 - New **"Bubble chart ↗"** link on every public node: linked-node cards (phone and desktop), Find-a-node results, and the favourite chip's right-click / long-press menu. It opens `https://stats.allstarlink.org/stats/<node>/networkMap` in the browser. That is the same "Bubble" network map the stats site's node list links to; checked live, it returns the chart image. Private links get no link, because they are not on the stats site.
 - `AllStarStatsLinks.BubbleChart` (Core) builds the URL and returns null for anything that is not a plain node number. 776 Core tests (10 new in `AllStarStatsLinksTests`) and 24 UI tests pass, and the solution builds. **Not verified:** the link's look and tapping it on a phone or in the desktop window.
