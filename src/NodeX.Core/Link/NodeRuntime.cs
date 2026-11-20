@@ -1018,7 +1018,10 @@ public sealed class NodeRuntime : IAsyncDisposable
                     var delay = BackoffDelay(n);
                     await EndLinkAsync(c, link, transient: true);
                     Notice?.Invoke(
-                        $"Node {node} hung up straight after accepting; it probably doesn't know this node yet (a busy hub can take 10 minutes or more). " +
+                        (c.IsPrivate
+                            ? $"Node {node} hung up straight after accepting; that server probably doesn't know this node. " +
+                              "If it doesn't load the public AllStarLink node list, its owner must add this node to [nodes] in rpt.conf (see Private nodes, help). "
+                            : $"Node {node} hung up straight after accepting; it probably doesn't know this node yet (a busy hub can take 10 minutes or more). ") +
                         $"Retrying in {Math.Ceiling(delay.TotalSeconds):0} s ({ReconnectPolicy.Count("retry", n, _policy.EarlyHangupMaxRetries)}).");
                     StartReconnect(c, immediate: false, initialDelay: delay, attemptOffset: n - 1);
                     return;

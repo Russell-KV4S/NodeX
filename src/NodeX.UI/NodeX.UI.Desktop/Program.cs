@@ -14,16 +14,34 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        string? link = Array.Find(args, a => a.StartsWith("nodex://", StringComparison.OrdinalIgnoreCase));
+
+        // A clicked nodex:// link starts a new process. If NodeX is already running, hand the link to it and quit,
+        // so only one copy registers the node (§4.9). No running copy: carry on and show the link here.
+        if (link != null && DeepLinkForwarder.TrySend(DeepLinkForwarder.DefaultPipeName, link, TimeSpan.FromMilliseconds(500)))
+            return;
+
         ConfigureServices();
-        foreach (string arg in args)
-        {
-            if (arg.StartsWith("nodex://", StringComparison.OrdinalIgnoreCase))
-            {
-                AppServices.DeliverDeepLink(arg);
-                break;
-            }
-        }
+        if (link != null) AppServices.DeliverDeepLink(link);
+        if (OperatingSystem.IsWindows()) WindowsLinkRegistration.EnsureRegistered();
+        _ = System.Threading.Tasks.Task.Run(() => DeepLinkForwarder.RunServerAsync(
+            DeepLinkForwarder.DefaultPipeName, OnForwardedLink, System.Threading.CancellationToken.None));
+
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+    }
+
+    /// <summary>A link forwarded by a second launch: open the confirmation form and bring the window forward.</summary>
+    private static void OnForwardedLink(string link)
+    {
+        AppServices.DeliverDeepLink(link);
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime { MainWindow: { } w })
+            {
+                if (w.WindowState == Avalonia.Controls.WindowState.Minimized) w.WindowState = Avalonia.Controls.WindowState.Normal;
+                w.Activate();
+            }
+        });
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.

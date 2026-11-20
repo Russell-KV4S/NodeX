@@ -434,6 +434,48 @@ public class PrivateNodesTests
         }
     }
 
+    [Fact]
+    public async Task Runtime_PrivateEarlyHangup_NoticePointsAtRptConfNodes_NotPublicRegistration()
+    {
+        using var remote = new FakeIaxRemote();
+        using var regHttp = new HttpClient(new FakeRegHandler());
+        var resolver = new NodeResolution(
+            httpClient: new HttpClient(new CountingHttpHandler()),
+            dnsResolver: (_, _) => Task.FromResult(new[] { IPAddress.Loopback }));
+
+        var store = new MemStore(new NodeSettings { NodeNumber = "523802", RegisterOnStartup = false, AutoReconnect = true });
+        var secrets = new InMemorySecretStore();
+        await secrets.SetAsync(SecretKeys.NodePassword, "pw");
+
+        await using var runtime = new NodeRuntime(
+            new NodeConfigService(store, secrets),
+            () => new NullAudioDeviceService(),
+            resolver: resolver,
+            registrationFactory: cfg => new AslRegistrationService(cfg, regHttp),
+            networkMonitor: new StubNetwork(),
+            reconnectPolicy: new ReconnectPolicy
+            {
+                InitialDelay = TimeSpan.FromSeconds(30),     // the retry is announced, not awaited
+                MaxDelay = TimeSpan.FromSeconds(30)
+            },
+            configureSession: s => { s.KeepAliveInterval = TimeSpan.FromMinutes(1); s.HangupAckWait = TimeSpan.Zero; });
+        await runtime.StartAsync();
+
+        var notice = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        runtime.Notice += n => { if (n.Contains("hung up straight after accepting")) notice.TrySetResult(n); };
+
+        Assert.NotNull(await runtime.ConnectAsync(new ManualNodeAddress("1999", "club.local", remote.EndPoint.Port)));
+        await remote.WaitForIaxAsync(Iax2Protocol.IaxControlSubclass.New, timeoutMs: 3000);
+        await remote.SendIaxAsync(Iax2Protocol.IaxControlSubclass.Accept);
+        await remote.SendIaxAsync(Iax2Protocol.IaxControlSubclass.Hangup);   // "Reported node ... cannot be found"
+
+        string text = await notice.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Contains("1999 @ club.local", text);
+        Assert.Contains("[nodes] in rpt.conf", text);
+        Assert.DoesNotContain("busy hub", text);
+        await runtime.DisconnectAsync();
+    }
+
     // =========================================================================
     // 6. CarBrowse & SettingsViewModel preservation
     // =========================================================================
