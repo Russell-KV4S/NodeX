@@ -1,6 +1,8 @@
 # Change log
 
-## Unreleased: private card title, false-RX hardening, no automatic mute
+## Unreleased: private card title, false-RX hardening, no automatic mute, hear nodes over the car radio
+
+- **New option: "Android Auto: hear nodes over the car radio"** (Settings, Android, off by default, both editions; owner request). While the car plays its own radio, satellite or another app, node audio plays on the navigation stream and NodeX holds navigation-style "may duck" focus while an unmuted node is heard, so the car turns the radio down for the node and back up 1.5 s after it stops. When NodeX is the car's source nothing changes. Core rules `CarRadioMix` / `RadioDuckGate` (10 new tests, 790 Core total); Android `AndroidRadioDucker` in the foreground service, `CarSession.HasCarAudio` from the car media service. **Not tried in a car**; it assumes the car's radio reaches the phone as a permanent audio-focus loss.
 
 - **Nothing mutes automatically (owner: "unless I press I really don't want anything muted"):** the Android car/media service used to mute every node on a media Pause/Stop, on a navigation prompt or call, and when another app took the audio. Android Auto and Bluetooth stereos send Pause/Stop on their own, so nodes ended up muted with no press. Now Pause/Stop are ignored, Play only takes the car audio back (no unmute), and audio-focus changes don't touch mute. Car transmissions are still released on any media button or focus loss. Only the Mute buttons mute. Node audio now keeps playing through a phone call in the car; not tested in a car.
 

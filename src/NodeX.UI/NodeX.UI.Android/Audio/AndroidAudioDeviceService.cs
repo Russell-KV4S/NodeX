@@ -113,27 +113,38 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
         {
             if (IsPlaying) return;
             AndroidAudioRoute.RouteChanged += OnRouteChanged;
+            CarSession.Changed += OnRouteChanged;
+            CarSession.CarAudioChanged += OnRouteChanged;
             BuildTrack();
             IsPlaying = true;
         }
     }
 
-    private bool _trackIsMedia;
+    private NodeX.Core.PlaybackUsage _trackUsage;
 
     // Loudspeaker and car listening play as ordinary media so the phone never enters communication
     // mode (which turns other apps' notification sounds into a generic beep); the phone-earpiece and
-    // headset routes keep the call stream.
-    private static bool WantMedia => CarSession.Active || AndroidAudioRoute.SpeakerActive;
+    // headset routes keep the call stream. With "hear nodes over the car radio" on and the car playing
+    // something else, node audio uses the navigation stream so the car mixes it over the radio.
+    private static NodeX.Core.PlaybackUsage WantUsage =>
+        NodeX.Core.CarRadioMix.Choose(CarSession.Active, AndroidAudioRoute.SpeakerActive, CarSession.RadioMixApplies);
+
+    private static AudioUsageKind ToAndroid(NodeX.Core.PlaybackUsage u) => u switch
+    {
+        NodeX.Core.PlaybackUsage.Media => AudioUsageKind.Media,
+        NodeX.Core.PlaybackUsage.NavigationGuidance => AudioUsageKind.AssistanceNavigationGuidance,
+        _ => AudioUsageKind.VoiceCommunication
+    };
 
     private void BuildTrack()
     {
         int min = AudioTrack.GetMinBufferSize(AudioFormat.SampleRate, ChannelOut.Mono, Encoding.Pcm16bit);
         int bufBytes = Math.Max(min, AudioFormat.SamplesPerFrame * 2 * 6);
 
-        _trackIsMedia = WantMedia;
+        _trackUsage = WantUsage;
         var track = new AudioTrack.Builder()
             .SetAudioAttributes(new AudioAttributes.Builder()
-                .SetUsage(_trackIsMedia ? AudioUsageKind.Media : AudioUsageKind.VoiceCommunication)!
+                .SetUsage(ToAndroid(_trackUsage))!
                 .SetContentType(AudioContentType.Speech)!
                 .Build()!)!
             .SetAudioFormat(new global::Android.Media.AudioFormat.Builder()
@@ -154,7 +165,7 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
     {
         lock (_gate)
         {
-            if (!IsPlaying || _trackIsMedia == WantMedia) return;
+            if (!IsPlaying || _trackUsage == WantUsage) return;
             var old = _track;
             _track = null; // EnqueuePlaybackPcm drops frames for the instant the stream is swapped
             if (old != null)
@@ -171,6 +182,8 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
         lock (_gate)
         {
             AndroidAudioRoute.RouteChanged -= OnRouteChanged;
+            CarSession.Changed -= OnRouteChanged;
+            CarSession.CarAudioChanged -= OnRouteChanged;
             if (_track == null) return;
             try { _track.Stop(); } catch (Exception) { /* already stopped */ }
             _track.Release();

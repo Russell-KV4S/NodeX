@@ -789,7 +789,8 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
             .SetOnAudioFocusChangeListener(this)!
             .SetWillPauseWhenDucked(false)!
             .Build()!;
-        am.RequestAudioFocus(_focus);
+        var granted = am.RequestAudioFocus(_focus);
+        CarSession.HasCarAudio = granted == AudioFocusRequest.Granted;
     }
 
     private void EndCarSession()
@@ -798,6 +799,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         if (_focus != null && GetSystemService(AudioService) is AudioManager am)
             am.AbandonAudioFocusRequest(_focus);
         _focus = null;
+        CarSession.HasCarAudio = false;
         CarSession.Selected = false;
     }
 
@@ -812,7 +814,16 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", $"audio focus changed: {focusChange} (nodes not muted)");
 
         if (focusChange != AudioFocus.Gain) _ = CarTransmit.UnkeyCarAsync(rt);
-        if (focusChange == AudioFocus.Loss) _focus = null;     // Android has revoked it; Play asks again
+        if (focusChange == AudioFocus.Loss)
+        {
+            _focus = null;     // Android has revoked it; Play asks again
+            // The car's radio or another app is now the car's source: "hear nodes over the radio" takes over.
+            CarSession.HasCarAudio = false;
+        }
+        else if (focusChange == AudioFocus.Gain)
+        {
+            CarSession.HasCarAudio = true;
+        }
     }
 
     // ----- last played favourite (for "play NodeX" with no name) -----

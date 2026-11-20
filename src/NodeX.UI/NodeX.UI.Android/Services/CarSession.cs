@@ -52,6 +52,45 @@ public static class CarSession
         catch (Exception ex) { global::Android.Util.Log.Warn("NodeX", $"Car session change failed: {ex.Message}"); }
     }
 
+    private static volatile bool _hasCarAudio;
+
+    /// <summary>Raised (on any thread) when <see cref="HasCarAudio"/> changes.</summary>
+    public static event Action? CarAudioChanged;
+
+    /// <summary>
+    /// NodeX holds the car's media audio (it is the car's chosen source). False once the car's radio or another app
+    /// took the audio for good; "hear nodes over the radio" (<c>CarRadioMix</c>) only applies then.
+    /// </summary>
+    public static bool HasCarAudio
+    {
+        get => _hasCarAudio;
+        set
+        {
+            if (_hasCarAudio == value) return;
+            _hasCarAudio = value;
+            try { CarAudioChanged?.Invoke(); }
+            catch (Exception ex) { global::Android.Util.Log.Warn("NodeX", $"Car audio change failed: {ex.Message}"); }
+        }
+    }
+
+    private static volatile bool _radioMixEnabled;
+
+    /// <summary>The "hear nodes over the car radio" option, copied from settings by the foreground service.</summary>
+    public static bool RadioMixEnabled
+    {
+        get => _radioMixEnabled;
+        set
+        {
+            if (_radioMixEnabled == value) return;
+            _radioMixEnabled = value;
+            try { CarAudioChanged?.Invoke(); }
+            catch (Exception ex) { global::Android.Util.Log.Warn("NodeX", $"Radio mix change failed: {ex.Message}"); }
+        }
+    }
+
+    /// <summary>True when node audio should be mixed over what the car is playing (<see cref="NodeX.Core.CarRadioMix"/>).</summary>
+    public static bool RadioMixApplies => NodeX.Core.CarRadioMix.Applies(RadioMixEnabled, Active, HasCarAudio);
+
     /// <summary>
     /// True when the foreground service really holds the microphone type, so keying can capture audio. Set by
     /// <see cref="NodeForegroundService"/>; the car's Talk button refuses while it is false.

@@ -91,6 +91,13 @@ public sealed record NodeSettings
     /// </summary>
     public bool MediaKeyPtt { get; init; }
 
+    /// <summary>
+    /// Android Auto: while the car is playing something else (its own FM/AM/satellite radio or another app), node
+    /// audio is played the way navigation prompts are, so the car lowers the radio while a node talks. Off by default
+    /// (owner request 2026-11-20). See <see cref="CarRadioMix"/>.
+    /// </summary>
+    public bool CarRadioMix { get; init; }
+
     // ----- BLE PTT button (learned in Settings; empty address = none) -----
 
     /// <summary>Bluetooth address of the BLE PTT button.</summary>

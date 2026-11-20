@@ -187,6 +187,14 @@
                         </StackPanel>
                     </StackPanel>
 
+                    <!-- Android Auto: node audio over the car's radio (Android; off by default; both editions) -->
+                    <StackPanel Spacing="6" IsVisible="{Binding HardwareKeysSupported}">
+                        <CheckBox Content="Android Auto: hear nodes over the car radio"
+                                  IsChecked="{Binding CarRadioMix}" />
+                        <TextBlock Classes="hint" Margin="28,-4,0,0" TextWrapping="Wrap"
+                                   Text="When the car is playing its own radio, satellite or another app, NodeX plays a node the way navigation prompts are played: the car turns the radio down while someone talks and back up about 1.5 s after they stop. Muted nodes stay silent. When NodeX itself is playing in the car, nothing changes. How it sounds depends on the car (some play navigation audio from one speaker or at a set volume)." />
+                    </StackPanel>
+
                     <!-- A phone button as PTT (Android) -->
                     <StackPanel IsVisible="{Binding HardwareKeysSupported}">
                         <TextBlock Classes="label" Text="Phone button for push-to-talk" />

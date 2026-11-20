@@ -46,6 +46,7 @@ public sealed class NodeForegroundService : Service
     private Action<BackgroundState>? _handler;
     private Action<NodeConfig>? _configHandler;
     private AndroidHeadsetPtt? _headset;
+    private AndroidRadioDucker? _ducker;
     private Action? _carHandler;
     private int? _types;          // the service types of the last successful start; null = not started
     private bool _micGranted;
@@ -264,6 +265,11 @@ public sealed class NodeForegroundService : Service
         _headset ??= new AndroidHeadsetPtt(this);
         _headset.Update(plan.HeadsetKeys);
 
+        // "Hear nodes over the car radio": the option is read here (settings saves re-run Apply); the ducker only acts
+        // while it applies (in a car, while the car plays something else).
+        CarSession.RadioMixEnabled = AppServices.Runtime.Config.Settings.CarRadioMix;
+        _ducker ??= new AndroidRadioDucker(this);
+
         IsRunning = true;
         return true;
     }
@@ -314,6 +320,8 @@ public sealed class NodeForegroundService : Service
         RegistrationAlarm.Cancel(this);
         _headset?.Dispose();
         _headset = null;
+        _ducker?.Dispose();
+        _ducker = null;
         _keeper?.Dispose();
         _keeper = null;
         _types = null;
