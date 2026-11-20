@@ -45,6 +45,12 @@ public sealed partial class LinkItemViewModel : ObservableObject
     public string Node { get; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPublicLink))]
+    public partial bool IsPrivate { get; set; }
+
+    public bool IsPublicLink => !IsPrivate;
+
+    [ObservableProperty]
     public partial string Title { get; set; }
 
     [ObservableProperty]
@@ -154,16 +160,28 @@ public sealed partial class LinkItemViewModel : ObservableObject
     /// <summary>Copies the connection's current state. Call on the UI thread.</summary>
     public void Refresh(NodeConnection c)
     {
-        string label = _labelFor(Node);
-        Title = label.Length > 0 ? $"{Node} · {label}" : $"Node {Node}";
-        ChipTitle = label.Length > 0 ? $"{Node} · {label}" : Node;
+        IsPrivate = c.IsPrivate;
+        if (c.IsPrivate)
+        {
+            string label = c.PrivateName ?? "";
+            Title = label.Length > 0 ? $"{c.DisplayNode} · {label}" : c.DisplayNode;
+            ChipTitle = label.Length > 0 ? $"{c.DisplayNode} · {label}" : c.DisplayNode;
+            IsFavorite = false;
+            Details = $"Direct · port {c.PrivateAddress!.Port} · IAX user radio";
+        }
+        else
+        {
+            string label = _labelFor(Node);
+            Title = label.Length > 0 ? $"{Node} · {label}" : $"Node {Node}";
+            ChipTitle = label.Length > 0 ? $"{Node} · {label}" : Node;
 
-        IsFavorite = _isFavorite(Node);
-        if (label != _shownLabel) { _shownLabel = label; LabelInput = label; }
+            IsFavorite = _isFavorite(Node);
+            if (label != _shownLabel) { _shownLabel = label; LabelInput = label; }
 
-        var info = c.Info;
-        Details = info == null ? "" :
-            string.IsNullOrWhiteSpace(info.Callsign) ? info.Description : $"{info.Callsign} • {info.Description}";
+            var info = c.Info;
+            Details = info == null ? "" :
+                string.IsNullOrWhiteSpace(info.Callsign) ? info.Description : $"{info.Callsign} • {info.Description}";
+        }
 
         var link = c.Link;
         string remoteLinks = link?.RemoteLinkedSummary ?? "";

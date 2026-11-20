@@ -42,5 +42,7 @@
 
         <!-- Fill for buttons that carry white text: #EF4444 gives only 3.8:1 with white, #DC2626 gives 4.8:1. -->
         <SolidColorBrush x:Key="DangerButtonBrush" Color="#DC2626" />
+        <SolidColorBrush x:Key="PrivateBackgroundBrush" Color="#1A2338" />
+        <SolidColorBrush x:Key="PrivateBorderBrush" Color="#06B6D4" />
     </Application.Resources>
 </Application>

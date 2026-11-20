@@ -488,9 +488,17 @@
                                         <Border Classes="linkRow" Classes.tx="{Binding IsTransmitTarget}" Classes.rx="{Binding IsReceiving}" Padding="10,8">
                                             <StackPanel Spacing="6">
                                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                                    <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="{DynamicResource FontSize14}" FontWeight="Bold"
-                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                    <WrapPanel Grid.Column="0" Orientation="Horizontal" ItemSpacing="6" LineSpacing="2" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSize14}" FontWeight="Bold"
+                                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                        <Border IsVisible="{Binding IsPrivate}" CornerRadius="5" Padding="5,1" VerticalAlignment="Center"
+                                                                Background="{DynamicResource PrivateBackgroundBrush}"
+                                                                BorderBrush="{DynamicResource PrivateBorderBrush}" BorderThickness="1">
+                                                            <TextBlock Text="PRIVATE" FontSize="{DynamicResource FontSize10}" FontWeight="Bold"
+                                                                       Foreground="{DynamicResource CyanAccentBrush}" />
+                                                        </Border>
+                                                    </WrapPanel>
                                                     <Border Grid.Column="1" IsVisible="{Binding IsTransmitTarget}" VerticalAlignment="Center"
                                                             CornerRadius="6" Padding="8,3" Background="{DynamicResource TransmitFillBrush}">
                                                         <TextBlock Text="TRANSMIT" FontSize="{DynamicResource FontSize11}" FontWeight="Black" Foreground="{DynamicResource OnRedBrush}" />
@@ -576,9 +584,17 @@
                                             <StackPanel Spacing="8">
                                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                                     <StackPanel Grid.Column="0">
-                                                        <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSize15}" FontWeight="Bold"
-                                                                   TextTrimming="CharacterEllipsis"
-                                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                        <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="2">
+                                                            <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSize15}" FontWeight="Bold"
+                                                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                            <Border IsVisible="{Binding IsPrivate}" CornerRadius="5" Padding="6,1" VerticalAlignment="Center"
+                                                                    Background="{DynamicResource PrivateBackgroundBrush}"
+                                                                    BorderBrush="{DynamicResource PrivateBorderBrush}" BorderThickness="1">
+                                                                <TextBlock Text="PRIVATE" FontSize="{DynamicResource FontSize10}" FontWeight="Bold"
+                                                                           Foreground="{DynamicResource CyanAccentBrush}" />
+                                                            </Border>
+                                                        </WrapPanel>
                                                         <TextBlock Text="{Binding Details}" FontSize="{DynamicResource FontSize11}" TextTrimming="CharacterEllipsis"
                                                                    IsVisible="{Binding HasDetails}"
                                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -610,7 +626,7 @@
                                                                            Foreground="{DynamicResource RxGreenBrush}" />
                                                             </StackPanel>
                                                         </Border>
-                                                        <!-- Favourite this node: star toggles, pencil (favourites only) renames -->
+                                                        <!-- Favourite this node: star toggles, pencil (favourites only) renames (public links only) -->
                                                         <Button Content="✎" FontSize="{DynamicResource FontSize14}" IsVisible="{Binding IsFavorite}"
                                                                 Command="{Binding ToggleEditLabelCommand}"
                                                                 AutomationProperties.Name="{Binding RenameAutomationName}"
@@ -618,6 +634,7 @@
                                                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
                                                         </Button>
                                                         <Button Content="{Binding FavoriteGlyph}" FontSize="{DynamicResource FontSize20}"
+                                                                IsVisible="{Binding IsPublicLink}"
                                                                 Command="{Binding ToggleFavoriteCommand}"
                                                                 AutomationProperties.Name="{Binding FavoriteAutomationName}"
                                                                 MinWidth="40" MinHeight="36" Padding="0" CornerRadius="6"
@@ -706,8 +723,8 @@
                                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
                                     </Button>
                                 </StackPanel>
-                                <TextBox x:Name="TargetBox" AutomationProperties.Name="Node number to connect to" Grid.Column="1" Text="{Binding TargetNodeInput}"
-                                         PlaceholderText="e.g. 27339" Margin="0,0,8,0"
+                                <TextBox x:Name="TargetBox" AutomationProperties.Name="Node number or private address to connect to" Grid.Column="1" Text="{Binding TargetNodeInput}"
+                                         PlaceholderText="e.g. 27339 or 1999@host:4569" Margin="0,0,8,0"
                                          FontSize="{DynamicResource FontSize15}" FontWeight="SemiBold"
                                          CornerRadius="6" VerticalContentAlignment="Center" />
                                 <Grid x:Name="ConnectButtons" Grid.Column="2" ColumnDefinitions="Auto,Auto" ColumnSpacing="6">
@@ -728,6 +745,49 @@
                                             CornerRadius="6" Padding="14,8" />
                                 </Grid>
                             </Grid>
+
+                            <!-- Live parsed feedback for private / manual addresses (§4.9) -->
+                            <Border IsVisible="{Binding HasTargetPrivatePreview}"
+                                    Background="{DynamicResource PrivateBackgroundBrush}"
+                                    BorderBrush="{DynamicResource PrivateBorderBrush}" BorderThickness="1"
+                                    CornerRadius="8" Padding="10,8">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <StackPanel Grid.Column="0" Spacing="2">
+                                        <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="2">
+                                            <Border CornerRadius="5" Padding="6,1" Background="{DynamicResource CardBackgroundBrush}"
+                                                    BorderBrush="{DynamicResource PrivateBorderBrush}" BorderThickness="1">
+                                                <TextBlock Text="PRIVATE" FontSize="{DynamicResource FontSize10}" FontWeight="Bold"
+                                                           Foreground="{DynamicResource CyanAccentBrush}" />
+                                            </Border>
+                                            <TextBlock Text="{Binding TargetPrivatePreviewTitle}" FontFamily="Consolas,Menlo,monospace"
+                                                       FontSize="{DynamicResource FontSize12}" FontWeight="Bold"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                        </WrapPanel>
+                                        <TextBlock Text="{Binding TargetPrivatePreviewSubtitle}" FontSize="{DynamicResource FontSize11}"
+                                                   TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="+ Save" Command="{Binding QuickSavePrivateTargetCommand}"
+                                            IsVisible="{Binding CanQuickSavePrivateTarget}"
+                                            VerticalAlignment="Center" Padding="10,5" CornerRadius="6" FontSize="{DynamicResource FontSize12}" />
+                                </Grid>
+                            </Border>
+
+                            <Border IsVisible="{Binding HasTargetIpv6Warning}"
+                                    Background="{DynamicResource WarningBackgroundBrush}"
+                                    BorderBrush="{DynamicResource AmberAccentBrush}" BorderThickness="1"
+                                    CornerRadius="8" Padding="10,8">
+                                <TextBlock Text="{Binding TargetIpv6WarningText}" TextWrapping="Wrap"
+                                           FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource WarningTextBrush}" />
+                            </Border>
+
+                            <Border IsVisible="{Binding HasConnectError}"
+                                    Background="{DynamicResource ErrorBackgroundBrush}"
+                                    BorderBrush="{DynamicResource TxRedBrush}" BorderThickness="1"
+                                    CornerRadius="8" Padding="10,8">
+                                <TextBlock Text="{Binding ConnectErrorText}" TextWrapping="Wrap"
+                                           FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TxRedBrush}"
+                                           AutomationProperties.LiveSetting="Assertive" />
+                            </Border>
 
                             <!-- Confirmation when multiple links are up so a stray tap does not drop every link -->
                             <Border IsVisible="{Binding IsConfirmingDisconnectAll}"
@@ -762,14 +822,23 @@
                                 </StackPanel>
                             </StackPanel>
 
-                            <Button Command="{Binding OpenSearchCommand}" AutomationProperties.Name="Find a node"
-                                    HorizontalAlignment="Left" Padding="12,8" CornerRadius="6" FontSize="{DynamicResource FontSize13}">
-                                🔍 Find a node…
-                            </Button>
+                            <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8">
+                                <Button Command="{Binding OpenSearchCommand}" AutomationProperties.Name="Find a node"
+                                        Padding="12,8" CornerRadius="6" FontSize="{DynamicResource FontSize13}">
+                                    🔍 Find a node…
+                                </Button>
+                                <Button Command="{Binding OpenPrivateNodesCommand}" AutomationProperties.Name="Manage private nodes"
+                                        Content="{Binding PrivateNodesButtonText}"
+                                        BorderBrush="{DynamicResource PrivateBorderBrush}" BorderThickness="1"
+                                        Padding="12,8" CornerRadius="6" FontSize="{DynamicResource FontSize13}" />
+                                <Button Command="{Binding OpenAddPrivateNodeCommand}" AutomationProperties.Name="Add private node"
+                                        Content="+ Add private"
+                                        Padding="12,8" CornerRadius="6" FontSize="{DynamicResource FontSize13}" />
+                            </WrapPanel>
 
-                            <StackPanel Spacing="6" IsVisible="{Binding HasFavorites}">
-                                <TextBlock Text="Favorites (tap to connect, drag to reorder)" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <ItemsControl x:Name="FavoritesList" ItemsSource="{Binding FavoriteNodes}">
+                            <StackPanel Spacing="6" IsVisible="{Binding HasAnyFavorites}">
+                                <TextBlock Text="Favorites (tap to connect, drag public to reorder)" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ItemsControl x:Name="FavoritesList" ItemsSource="{Binding FavoriteNodes}" IsVisible="{Binding HasFavorites}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
                                             <WrapPanel Orientation="Horizontal" />
@@ -795,6 +864,60 @@
                                                                Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 </StackPanel>
                                             </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!-- Saved private nodes alongside favorites, clearly marked PRIVATE (§4.9) -->
+                                <ItemsControl x:Name="PrivateFavoritesList" ItemsSource="{Binding PrivateFavoriteNodes}" IsVisible="{Binding HasPrivateFavorites}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:PrivateFavoriteItem">
+                                            <Border Margin="0,0,6,6" CornerRadius="6"
+                                                    Background="{DynamicResource PrivateBackgroundBrush}"
+                                                    BorderBrush="{DynamicResource PrivateBorderBrush}" BorderThickness="1">
+                                                <Grid ColumnDefinitions="Auto,Auto">
+                                                    <Button Grid.Column="0"
+                                                            Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).SelectPrivateFavoriteCommand}"
+                                                            CommandParameter="{Binding Entry}"
+                                                            AutomationProperties.Name="{Binding AutomationName}"
+                                                            Padding="10,6" Background="Transparent" BorderThickness="0" CornerRadius="6,0,0,6">
+                                                        <Button.ContextFlyout>
+                                                            <MenuFlyout>
+                                                                <MenuItem Header="Edit private node" Click="OnEditPrivateFavoriteClick" />
+                                                                <MenuItem Header="Remove private node" Click="OnRemovePrivateFavoriteClick" />
+                                                            </MenuFlyout>
+                                                        </Button.ContextFlyout>
+                                                        <StackPanel Spacing="1">
+                                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
+                                                                           Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                                                <Border CornerRadius="4" Padding="5,1" VerticalAlignment="Center"
+                                                                        Background="{DynamicResource CardBackgroundBrush}"
+                                                                        BorderBrush="{DynamicResource PrivateBorderBrush}" BorderThickness="1">
+                                                                    <TextBlock Text="PRIVATE" FontSize="{DynamicResource FontSize10}" FontWeight="Bold"
+                                                                               Foreground="{DynamicResource CyanAccentBrush}" />
+                                                                </Border>
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding Endpoint}" FontFamily="Consolas,Menlo,monospace"
+                                                                       FontSize="{DynamicResource FontSize11}"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        </StackPanel>
+                                                    </Button>
+                                                    <Button Grid.Column="1" Content="✎" FontSize="{DynamicResource FontSize13}"
+                                                            Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).EditPrivateFavoriteCommand}"
+                                                            CommandParameter="{Binding Entry}"
+                                                            AutomationProperties.Name="{Binding Title, StringFormat='Edit private node {0}'}"
+                                                            MinWidth="34" Padding="6,0" Background="Transparent"
+                                                            BorderBrush="{DynamicResource PrivateBorderBrush}" BorderThickness="1,0,0,0"
+                                                            CornerRadius="0,6,6,0" VerticalAlignment="Stretch"
+                                                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+                                                </Grid>
+                                            </Border>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
@@ -927,6 +1050,12 @@
         <Border Grid.RowSpan="4" IsVisible="{Binding IsSearchOpen}"
                 Background="{DynamicResource ConsoleBackgroundBrush}">
             <views:NodeSearchView DataContext="{Binding Search}" />
+        </Border>
+
+        <!-- PRIVATE NODES OVERLAY (§4.9) -->
+        <Border Grid.RowSpan="4" IsVisible="{Binding IsPrivateNodesOpen}"
+                Background="{DynamicResource ConsoleBackgroundBrush}">
+            <views:PrivateNodesView DataContext="{Binding PrivateNodes}" />
         </Border>
 
         <!-- SETTINGS OVERLAY (full screen so it works on phones as well as desktop) -->

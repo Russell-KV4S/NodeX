@@ -83,6 +83,18 @@ public partial class MainView : UserControl
             _ = vm.RemoveFavoriteAsync(item.Node);
     }
 
+    private void OnEditPrivateFavoriteClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: PrivateFavoriteItem item } && DataContext is MainViewModel vm)
+            vm.EditPrivateFavorite(item.Entry);
+    }
+
+    private void OnRemovePrivateFavoriteClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: PrivateFavoriteItem item } && DataContext is MainViewModel vm)
+            _ = vm.RemovePrivateFavoriteAsync(item.Entry);
+    }
+
     // --- Drag favourites to reorder. A plain click still connects (the Button gets it); once the pointer moves
     //     past a small threshold the drag takes over the pointer, so no click fires on release. ---
 

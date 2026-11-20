@@ -10,10 +10,27 @@ public sealed class NodeConnection
     private NodeLink? _link;
     private volatile bool _wanted = true;
 
-    internal NodeConnection(string node) => Node = node;
+    internal NodeConnection(string node, ManualNodeAddress? privateAddress = null, string? privateName = null)
+    {
+        Node = node;
+        PrivateAddress = privateAddress is { IsPrivate: true } ? privateAddress : null;
+        PrivateName = string.IsNullOrWhiteSpace(privateName) ? null : privateName.Trim();
+    }
 
     /// <summary>The remote node number.</summary>
     public string Node { get; }
+
+    /// <summary>Manual host/port for a private link, or null for a public AllStarLink node.</summary>
+    public ManualNodeAddress? PrivateAddress { get; }
+
+    /// <summary>True when this link targets a manually addressed/private node rather than the public ASL directory.</summary>
+    public bool IsPrivate => PrivateAddress != null;
+
+    /// <summary>Optional friendly name for a private node.</summary>
+    public string? PrivateName { get; internal set; }
+
+    /// <summary><c>1999 @ host</c> (with <c>:port</c> if non-default) for private links, or the node number for public links.</summary>
+    public string DisplayNode => PrivateAddress != null ? PrivateAddress.DisplayAddress : Node;
 
     /// <summary>Directory data for the node, once resolved.</summary>
     public NodeInfo? Info { get; internal set; }

@@ -43,8 +43,29 @@ public static class CarBrowse
     /// <summary>Prefix for disconnecting an individual node from the car screen.</summary>
     public const string DisconnectPrefix = "nodex:disconnect:";
 
+    /// <summary>Prefix for a saved private node in the car favourites list (<c>nodex:private:1999@host:4569</c>).</summary>
+    public const string PrivatePrefix = "nodex:private:";
+
     /// <summary>Media ID for disconnecting all nodes from the car screen.</summary>
     public const string DisconnectAllId = "nodex:disconnect:all";
+
+    /// <summary>Returns the car media ID for a saved private node.</summary>
+    public static string PrivateMediaId(PrivateNodeEntry entry) =>
+        $"{PrivatePrefix}{entry.Node}@{entry.Host}:{entry.Port}";
+
+    /// <summary>True when <paramref name="mediaId"/> names a private favourite; parses its address if so.</summary>
+    public static bool TryParsePrivateMediaId(string? mediaId, out ManualNodeAddress? address)
+    {
+        address = null;
+        if (string.IsNullOrEmpty(mediaId) || !mediaId.StartsWith(PrivatePrefix, StringComparison.Ordinal))
+            return false;
+        return ManualNodeAddress.TryParse(mediaId[PrivatePrefix.Length..], out address, out _) && address?.IsPrivate == true;
+    }
+
+    /// <summary>Total count of saved favourites (public + private) for the root folder subtitle.</summary>
+    public static int TotalFavoritesCount(NodeSettings settings) =>
+        (settings.FavoriteNodes ?? []).Count(f => !string.IsNullOrWhiteSpace(f))
+        + (settings.PrivateNodes ?? []).Count(p => !string.IsNullOrWhiteSpace(p.Node) && !string.IsNullOrWhiteSpace(p.Host));
 
     /// <summary>Top-level navigation tabs for Android Auto.</summary>
     public static IReadOnlyList<CarBrowseItem> BuildRootItems(int activeCount, int favoritesCount)
@@ -74,6 +95,20 @@ public static class CarBrowse
                 : $"Node {node}";
             var icon = !isConnected ? CarIcon.Favorite : node == transmitNode ? CarIcon.Transmit : CarIcon.Listen;
             items.Add(new CarBrowseItem(node, TitleFor(settings, node), true, subtitle, icon));
+        }
+
+        foreach (var priv in settings.PrivateNodes ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(priv.Node) || string.IsNullOrWhiteSpace(priv.Host)) continue;
+            bool isConnected = connectedSet.Contains(priv.Node);
+            string title = !string.IsNullOrWhiteSpace(priv.Name) ? $"{priv.Name.Trim()} (Private)" : $"{priv.DisplayAddress} (Private)";
+            string subtitle = isConnected
+                ? (priv.Node == transmitNode
+                    ? $"Private · {priv.DisplayAddress} • Connected (Transmit)"
+                    : $"Private · {priv.DisplayAddress} • Connected (Listen)")
+                : $"Private · {priv.DisplayAddress}";
+            var icon = !isConnected ? CarIcon.Favorite : priv.Node == transmitNode ? CarIcon.Transmit : CarIcon.Listen;
+            items.Add(new CarBrowseItem(PrivateMediaId(priv), title, true, subtitle, icon));
         }
 
         if (items.Count == 0)
@@ -106,7 +141,12 @@ public static class CarBrowse
             bool isConnected = conn.Link?.Session.State == Iax2SessionState.Connected;
 
             string status = StatusLine(isTx, isConnected, conn.Reconnect.Active, isTalking, conn.Muted);
-            items.Add(new CarBrowseItem(node, CardTitle(settings, node), true, status, isTx ? CarIcon.Transmit : CarIcon.Listen));
+            string title = conn.IsPrivate
+                ? (!string.IsNullOrWhiteSpace(conn.PrivateName)
+                    ? $"{conn.DisplayNode} · {conn.PrivateName} (Private)"
+                    : $"{conn.DisplayNode} (Private)")
+                : CardTitle(settings, node);
+            items.Add(new CarBrowseItem(node, title, true, status, isTx ? CarIcon.Transmit : CarIcon.Listen));
         }
 
         if (items.Count == 0)

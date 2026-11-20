@@ -145,6 +145,13 @@ public sealed class NodeRuntime : IAsyncDisposable
 
     public IPAddress? PerceivedAddress { get; private set; }
 
+    /// <summary>Public port the registry last reported for this node (0 when unknown).</summary>
+    public int PerceivedPort { get; private set; }
+
+    /// <summary>Sends one informational IAX POKE to a private host/port without touching AllStarLink services.</summary>
+    public Task<PrivateProbeResult> ProbePrivateNodeAsync(string host, int port, CancellationToken cancellationToken = default) =>
+        _resolver.ProbePrivateAsync(host, port, cancellationToken);
+
     /// <summary>How the node is registered right now ("IAX2" or "HTTPS"), or empty when not registered.</summary>
     public string RegistrationTransport => _registration?.Transport ?? "";
 
@@ -351,7 +358,7 @@ public sealed class NodeRuntime : IAsyncDisposable
             }
             else
             {
-                SetRegistration(false, cfg.IsComplete ? "Registration off" : "Not configured", null);
+                SetRegistration(false, cfg.IsComplete ? "Registration off" : "Not configured", null, 0);
             }
         }
         finally
@@ -512,24 +519,24 @@ public sealed class NodeRuntime : IAsyncDisposable
 
         old.RegistrationStatusChanged -= OnRegistrationStatus;
         await old.DisposeAsync();
-        SetRegistration(false, "Not registered", null);
+        SetRegistration(false, "Not registered", null, 0);
     }
 
     private void OnRegistrationStatus(bool registered, string message)
     {
         var registration = _registration;
         if (registration != null) _registrationInterval = registration.CurrentInterval;
-        SetRegistration(registered, message, registration?.PerceivedAddress);
+        SetRegistration(registered, message, registration?.PerceivedAddress, registration?.PerceivedPort ?? 0);
         if (registered) _ = RunNetworkCheckOnceAsync();
     }
 
-    private void SetRegistration(bool registered, string status, IPAddress? address)
+    private void SetRegistration(bool registered, string status, IPAddress? address, int port = 0)
     {
         bool wasRegistered = IsRegistered;      // false while lapsed, so a success after a lapse starts a new run
         if (!registered) RegisteredSince = null;
         else if (!wasRegistered) RegisteredSince = DateTimeOffset.UtcNow;   // false -> true; refreshes keep the start
 
-        if (registered != wasRegistered || status != _registrationStatus || !Equals(address, PerceivedAddress))
+        if (registered != wasRegistered || status != _registrationStatus || !Equals(address, PerceivedAddress) || port != PerceivedPort)
             Log.Info("reg", $"registered={registered} status=\"{status}\" perceivedAddress={address?.ToString() ?? "none"}");
 
         if (registered) _lastRegistrationOk = UtcNow();
@@ -537,6 +544,7 @@ public sealed class NodeRuntime : IAsyncDisposable
         _registered = registered;
         _registrationStatus = status;
         PerceivedAddress = address;
+        PerceivedPort = port;
         RegistrationChanged?.Invoke();
         PublishBackground();
     }
@@ -629,7 +637,7 @@ public sealed class NodeRuntime : IAsyncDisposable
     {
         int count;
         lock (_connLock) count = _connections.Count;
-        return count > 1 ? $"Node {c.Node}: {message}" : message;
+        return count > 1 ? $"Node {c.DisplayNode}: {message}" : message;
     }
 
     /// <summary>
@@ -638,8 +646,8 @@ public sealed class NodeRuntime : IAsyncDisposable
     /// <see cref="SetTransmitNode"/> chooses them. Connecting again to a node that is already linked redials just that
     /// node. Returns null when the node cannot be resolved.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Not configured, or <see cref="MaxLinks"/> nodes are already linked.</exception>
-    public async Task<NodeInfo?> ConnectAsync(string targetNode, CancellationToken cancellationToken = default)
+    /// <exception cref="InvalidOperationException">Not configured, <see cref="MaxLinks"/> nodes are already linked, or a private node with the same number is already linked.</exception>
+    public Task<NodeInfo?> ConnectAsync(string targetNode, CancellationToken cancellationToken = default)
     {
         if (!Config.IsComplete)
             throw new InvalidOperationException("Enter your node number and password in Settings first.");
@@ -647,16 +655,57 @@ public sealed class NodeRuntime : IAsyncDisposable
         if (!NodeSettingsValidator.IsValidNodeNumber(targetNode))
             throw new ArgumentException("Target must be a 3 to 7 digit node number.", nameof(targetNode));
 
+        return ConnectCoreAsync(new ManualNodeAddress(targetNode), privateName: null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Connects to a parsed public or private node address (§4.9). Private entries resolve their host fresh on every
+    /// dial, use their exact port without probing, and never contact AllStarLink services. Linking two nodes with the
+    /// same number simultaneously (e.g. a public 1999 and a private 1999, or two different hosts for 1999) is refused
+    /// with a clear message.
+    /// </summary>
+    public Task<NodeInfo?> ConnectAsync(ManualNodeAddress address, string? name = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        if (!Config.IsComplete)
+            throw new InvalidOperationException("Enter your node number and password in Settings first.");
+        if (!NodeSettingsValidator.IsValidNodeNumber(address.Node))
+            throw new ArgumentException("Target must be a 3 to 7 digit node number.", nameof(address));
+        if (address.IsIpv6)
+            throw new NotSupportedException("IPv6 dialling is not supported yet.");
+
+        return ConnectCoreAsync(address, name, cancellationToken);
+    }
+
+    private async Task<NodeInfo?> ConnectCoreAsync(
+        ManualNodeAddress address, string? privateName, CancellationToken cancellationToken)
+    {
+        string targetNode = address.Node;
         NodeConnection? existing;
         NodeConnection c;
         lock (_connLock)
         {
             existing = _connections.FirstOrDefault(x => x.Node == targetNode);
-            if (existing == null && _connections.Count >= MaxLinks)
+            if (existing != null)
+            {
+                var existingAddr = existing.PrivateAddress ?? new ManualNodeAddress(existing.Node);
+                if (!address.SameTargetAs(existingAddr))
+                {
+                    string via = existing.PrivateAddress != null
+                        ? existing.PrivateAddress.HostDisplay
+                        : "AllStarLink";
+                    throw new InvalidOperationException($"Node {targetNode} is already linked via {via}.");
+                }
+            }
+            else if (_connections.Count >= MaxLinks)
+            {
                 throw new InvalidOperationException(
                     $"You can link up to {MaxLinks} nodes at once. Disconnect one first.");
+            }
 
-            c = existing ?? new NodeConnection(targetNode);
+            c = existing ?? new NodeConnection(targetNode, address.IsPrivate ? address : null, privateName);
+            if (existing != null && !string.IsNullOrWhiteSpace(privateName))
+                c.PrivateName = privateName.Trim();
             if (existing == null)
             {
                 _connections.Add(c);
@@ -685,7 +734,21 @@ public sealed class NodeRuntime : IAsyncDisposable
         try
         {
             var info = await DialAsync(c, linked.Token);
-            if (info == null) RemoveConnection(c, byUser: true, "its address could not be looked up");
+            if (info == null)
+            {
+                if (c.PrivateAddress is { } priv)
+                {
+                    ErrorOccurred?.Invoke($"Cannot find host {priv.Host}.");
+                    if (c.Wanted && Config.Settings.AutoReconnect)
+                    {
+                        StartReconnect(c, immediate: false);
+                        return null;
+                    }
+                    RemoveConnection(c, byUser: true, $"cannot find host {priv.Host}");
+                    return null;
+                }
+                RemoveConnection(c, byUser: true, "its address could not be looked up");
+            }
             return info;
         }
         catch (Exception ex)
@@ -699,9 +762,11 @@ public sealed class NodeRuntime : IAsyncDisposable
     private async Task<NodeInfo?> DialAsync(NodeConnection c, CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
-        var registration = PrepareRegistrationForDial(c.Node);    // runs while the node is looked up
-        var info = await _resolver.ResolveNodeAsync(c.Node, cancellationToken);
-        Log.Detail("dial", $"node {c.Node}: resolve {(info == null ? "failed" : "ok -> " + info.EndPoint)} in {sw.ElapsedMilliseconds} ms");
+        var registration = PrepareRegistrationForDial(c.DisplayNode);    // runs while the node is looked up
+        NodeInfo? info = c.PrivateAddress is { } priv
+            ? await _resolver.ResolvePrivateAsync(priv, c.PrivateName, cancellationToken)
+            : await _resolver.ResolveNodeAsync(c.Node, cancellationToken);
+        Log.Detail("dial", $"node {c.DisplayNode}: {(c.IsPrivate ? "private " : "")}resolve {(info == null ? "failed" : "ok -> " + info.EndPoint)} in {sw.ElapsedMilliseconds} ms");
         if (info == null) return null;
         ThrowIfAbandoned(c);
         c.Info = info;
@@ -926,7 +991,7 @@ public sealed class NodeRuntime : IAsyncDisposable
             if (Interlocked.Exchange(ref link.EndHandled, 1) != 0) return;
 
             var reason = link.DisconnectReason;
-            string node = link.Target.NodeNumber;
+            string node = c.DisplayNode;
             Log.Info("link", $"node {node}: call ended, reason={reason}, wasConnected={link.WasConnected}, " +
                              $"up={link.ConnectedDuration.TotalSeconds:0.0} s, remoteCause=\"{link.RemoteCause}\"");
 
@@ -1021,7 +1086,7 @@ public sealed class NodeRuntime : IAsyncDisposable
                               && reason is Iax2DisconnectReason.LinkLost or Iax2DisconnectReason.RemoteBusy;
             if (keepTrying)
             {
-                if (reason == Iax2DisconnectReason.LinkLost) _resolver.Invalidate(node);   // look the address up afresh
+                if (reason == Iax2DisconnectReason.LinkLost && !c.IsPrivate) _resolver.Invalidate(c.Node);   // look the address up afresh
                 await EndLinkAsync(c, link, transient: true);
                 Notice?.Invoke(reason == Iax2DisconnectReason.RemoteBusy
                     ? $"Node {node} is busy. NodeX will keep trying until you disconnect it."
@@ -1033,7 +1098,7 @@ public sealed class NodeRuntime : IAsyncDisposable
             switch (reason)
             {
                 case Iax2DisconnectReason.LinkLost when !link.WasConnected:
-                    _resolver.Invalidate(node);     // the address may be out of date: look it up afresh next time
+                    if (!c.IsPrivate) _resolver.Invalidate(c.Node);     // the address may be out of date: look it up afresh next time
                     ErrorOccurred?.Invoke($"No response from node {node}.");
                     break;
                 case Iax2DisconnectReason.LinkLost:
@@ -1178,7 +1243,7 @@ public sealed class NodeRuntime : IAsyncDisposable
         NodeConnection c, bool immediate, CancellationTokenSource cts, TimeSpan? initialDelay = null, int attemptOffset = 0)
     {
         var ct = cts.Token;
-        string target = c.Node;
+        string target = c.DisplayNode;
         int attempt = attemptOffset;
         TimeSpan delay = immediate ? TimeSpan.Zero : initialDelay ?? _policy.InitialDelay;
         bool recovered = false;
@@ -1265,8 +1330,8 @@ public sealed class NodeRuntime : IAsyncDisposable
         if (!ReferenceEquals(c.Link, link) || link.Session.State != Iax2SessionState.Connected) return;
 
         Notice?.Invoke(attempt == 1
-            ? $"Reconnected to node {c.Node}."
-            : $"Reconnected to node {c.Node} after {attempt} attempts.");
+            ? $"Reconnected to node {c.DisplayNode}."
+            : $"Reconnected to node {c.DisplayNode} after {attempt} attempts.");
     }
 
     /// <summary>One dial attempt. True only when the call reaches Connected within the policy's timeout.</summary>
@@ -1290,7 +1355,9 @@ public sealed class NodeRuntime : IAsyncDisposable
 
         if (info == null)
         {
-            ErrorOccurred?.Invoke($"Could not resolve node {c.Node}; will retry.");
+            ErrorOccurred?.Invoke(c.PrivateAddress is { } priv
+                ? $"Cannot find host {priv.Host}; will retry."
+                : $"Could not resolve node {c.Node}; will retry.");
             return false;
         }
 
@@ -1312,7 +1379,7 @@ public sealed class NodeRuntime : IAsyncDisposable
         {
             // Nothing answered at that address. The node may have moved since it was looked up (its public IP
             // changed), so the next attempt must not reuse the cached address for the rest of the cache lifetime.
-            _resolver.Invalidate(c.Node);
+            if (!c.IsPrivate) _resolver.Invalidate(c.Node);
             await EndLinkAsync(c, link, transient: true);
             return false;
         }

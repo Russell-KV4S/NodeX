@@ -24,6 +24,12 @@ public sealed record NodeSettings
     /// <summary>Friendly names for favourites, keyed by node number (e.g. "27339" → "East Coast Reflector").</summary>
     public Dictionary<string, string> FavoriteLabels { get; init; } = [];
 
+    /// <summary>
+    /// Manually addressed (private) nodes outside the public AllStarLink directory. Shown alongside favourites
+    /// and in the car browse tree, marked as private. Holds no secrets.
+    /// </summary>
+    public List<PrivateNodeEntry> PrivateNodes { get; init; } = [];
+
     /// <summary>Registry endpoint; change only for a test registry.</summary>
     public string RegistrationUrl { get; init; } = AslRegistrationService.DefaultRegistrationUrl;
 

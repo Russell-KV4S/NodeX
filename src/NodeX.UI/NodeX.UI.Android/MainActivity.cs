@@ -15,7 +15,13 @@ namespace NodeX.UI.Android;
     Icon = "@mipmap/ic_launcher",
     RoundIcon = "@mipmap/ic_launcher_round",
     MainLauncher = true,
+    LaunchMode = LaunchMode.SingleTop,
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.UiMode)]
+[IntentFilter(
+    new[] { global::Android.Content.Intent.ActionView },
+    Categories = new[] { global::Android.Content.Intent.CategoryDefault, global::Android.Content.Intent.CategoryBrowsable },
+    DataScheme = "nodex",
+    DataHost = "add")]
 public class MainActivity : AvaloniaMainActivity
 {
     private const int PermissionRequestCode = 1001;
@@ -62,6 +68,20 @@ public class MainActivity : AvaloniaMainActivity
         RegisterBackCallback();
         RequestRuntimePermissions();
         UpdateMicrophoneState();
+        HandleDeepLinkIntent(Intent);
+    }
+
+    protected override void OnNewIntent(global::Android.Content.Intent? intent)
+    {
+        base.OnNewIntent(intent);
+        HandleDeepLinkIntent(intent);
+    }
+
+    private static void HandleDeepLinkIntent(global::Android.Content.Intent? intent)
+    {
+        string? data = intent?.DataString;
+        if (!string.IsNullOrWhiteSpace(data) && data.StartsWith("nodex://", StringComparison.OrdinalIgnoreCase))
+            AppServices.DeliverDeepLink(data);
     }
 
     protected override void OnResume()

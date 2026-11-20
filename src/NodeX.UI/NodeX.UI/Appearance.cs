@@ -34,6 +34,8 @@ public static class Appearance
         app.Resources["OnGreenBrush"] = new SolidColorBrush(Color.Parse(light ? "#FFFFFF" : "#000000"));
         app.Resources["OnRedBrush"] = new SolidColorBrush(Color.Parse(contrast ? "#000000" : "#FFFFFF"));
         app.Resources["TransmitFillBrush"] = new SolidColorBrush(Color.Parse(contrast ? "#FF8585" : light ? "#B42318" : "#DC2626"));
+        app.Resources["PrivateBackgroundBrush"] = new SolidColorBrush(Color.Parse(light ? "#E0F4F8" : contrast ? "#102030" : "#1A2338"));
+        app.Resources["PrivateBorderBrush"] = new SolidColorBrush(Color.Parse(light ? "#006B80" : contrast ? "#66EEFF" : "#06B6D4"));
         double scale = double.IsFinite(settings.TextScale) ? Math.Clamp(settings.TextScale, 1, 1.5) : 1;
         for (int size = 8; size <= 64; size++) app.Resources[$"FontSize{size}"] = size * scale;
         app.Resources["ControlMinHeight"] = Math.Max(44, 32 * scale);

@@ -1,0 +1,404 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:NodeX.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="820"
+             x:Class="NodeX.UI.Views.PrivateNodesView"
+             x:DataType="vm:PrivateNodesViewModel"
+             Background="{DynamicResource ConsoleBackgroundBrush}">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="{DynamicResource FontSize12}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="{DynamicResource FontSize11}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="14" />
+        </Style>
+        <Style Selector="Button.iconbtn">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="MinWidth" Value="44" />
+            <Setter Property="MinHeight" Value="44" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+
+        <!-- PINNED HEADER -->
+        <Border Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}"
+                BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,0,0,1" Padding="8,6">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Button Grid.Column="0" Classes="iconbtn" Command="{Binding BackCommand}"
+                        AutomationProperties.Name="Back" Content="←" FontSize="{DynamicResource FontSize20}" />
+                <TextBlock Grid.Column="1" Text="{Binding HeaderTitle}" FontSize="{DynamicResource FontSize18}" FontWeight="Bold"
+                           Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="4,0,0,0" />
+                <Button Grid.Column="2" Content="+ Add" IsVisible="{Binding IsListMode}"
+                        Command="{Binding StartAddCommand}" AutomationProperties.Name="Add private node"
+                        Background="{DynamicResource RxGreenBrush}" Foreground="{DynamicResource OnGreenBrush}"
+                        FontWeight="Bold" CornerRadius="8" Padding="14,6" MinHeight="40" Margin="0,0,6,0" />
+            </Grid>
+        </Border>
+
+        <!-- SCROLLING BODY -->
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="16" Spacing="14" MaxWidth="640" HorizontalAlignment="Stretch">
+
+                <!-- ==================== MODE 0: SAVED PRIVATE NODES LIST ==================== -->
+                <StackPanel IsVisible="{Binding IsListMode}" Spacing="12">
+
+                    <Border Background="{DynamicResource PrivateBackgroundBrush}"
+                            BorderBrush="{DynamicResource PrivateBorderBrush}"
+                            BorderThickness="1" CornerRadius="10" Padding="12">
+                        <TextBlock TextWrapping="Wrap" FontSize="{DynamicResource FontSize12}"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                   Text="Private addresses never contact AllStarLink services. Hostnames resolve fresh on every dial (dynamic DNS supported) and use the exact port you enter. NodeX always logs in as IAX user 'radio' with no secret." />
+                    </Border>
+
+                    <!-- Empty state -->
+                    <Border Classes="card" IsVisible="{Binding IsEmpty}" Padding="20">
+                        <StackPanel Spacing="10" HorizontalAlignment="Center">
+                            <TextBlock Text="No private nodes saved yet" FontSize="{DynamicResource FontSize15}" FontWeight="Bold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" HorizontalAlignment="Center" />
+                            <TextBlock Classes="hint" HorizontalAlignment="Center" TextAlignment="Center"
+                                       Text="Add a private node (such as 1000–1999, a LAN/VPN server, or a club dynamic DNS hub) to show it alongside your favorites and in Android Auto." />
+                            <Button Content="+ Add private node" Command="{Binding StartAddCommand}"
+                                    HorizontalAlignment="Center"
+                                    Background="{DynamicResource RxGreenBrush}" Foreground="{DynamicResource OnGreenBrush}"
+                                    FontWeight="Bold" CornerRadius="8" Padding="16,10" MinHeight="44" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Saved list -->
+                    <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding HasItems}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><StackPanel Spacing="10" /></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PrivateNodeRowViewModel">
+                                <Border Classes="card">
+                                    <StackPanel Spacing="10">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                            <StackPanel Grid.Column="0" Spacing="3">
+                                                <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="4">
+                                                    <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSize15}" FontWeight="Bold"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                                    <Border CornerRadius="6" Padding="6,2" VerticalAlignment="Center"
+                                                            Background="{DynamicResource PrivateBackgroundBrush}"
+                                                            BorderBrush="{DynamicResource PrivateBorderBrush}" BorderThickness="1">
+                                                        <TextBlock Text="PRIVATE" FontSize="{DynamicResource FontSize10}" FontWeight="Bold"
+                                                                   Foreground="{DynamicResource CyanAccentBrush}" />
+                                                    </Border>
+                                                </WrapPanel>
+                                                <TextBlock Text="{Binding EndpointText}" FontFamily="Consolas,Menlo,monospace"
+                                                           FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource CyanAccentBrush}" />
+                                                <TextBlock Text="{Binding MetaText}" FontSize="{DynamicResource FontSize11}"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding PokeText}" IsVisible="{Binding HasPokeText}"
+                                                           FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource AmberAccentBrush}"
+                                                           AutomationProperties.LiveSetting="Polite" />
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Content="Connect" Command="{Binding ConnectCommand}"
+                                                    AutomationProperties.Name="{Binding ConnectAutomationName}"
+                                                    VerticalAlignment="Top" MinHeight="44" Padding="14,8" CornerRadius="8"
+                                                    Background="{DynamicResource RxGreenBrush}" Foreground="{DynamicResource OnGreenBrush}"
+                                                    FontWeight="Bold" />
+                                        </Grid>
+
+                                        <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
+                                            <Button Content="Test (POKE)" Command="{Binding TestPokeCommand}"
+                                                    IsEnabled="{Binding !IsPokeTesting}"
+                                                    Padding="10,6" CornerRadius="6" FontSize="{DynamicResource FontSize12}" />
+                                            <Button Content="Share" Command="{Binding ShareCommand}"
+                                                    AutomationProperties.Name="{Binding ShareAutomationName}"
+                                                    Padding="10,6" CornerRadius="6" FontSize="{DynamicResource FontSize12}" />
+                                            <Button Content="Edit" Command="{Binding EditCommand}"
+                                                    AutomationProperties.Name="{Binding EditAutomationName}"
+                                                    Padding="10,6" CornerRadius="6" FontSize="{DynamicResource FontSize12}" />
+                                            <Button Content="Remove" Command="{Binding RemoveCommand}"
+                                                    AutomationProperties.Name="{Binding RemoveAutomationName}"
+                                                    Foreground="{DynamicResource TxRedBrush}"
+                                                    Padding="10,6" CornerRadius="6" FontSize="{DynamicResource FontSize12}" />
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Server setup help card (shared in list mode too) -->
+                    <Border Classes="card" BorderBrush="{DynamicResource AmberAccentBrush}">
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Will the private server accept my node?" FontWeight="Bold"
+                                           FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextPrimaryBrush}"
+                                           TextWrapping="Wrap" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="{Binding HelpToggleText}" Command="{Binding ToggleHelpCommand}"
+                                        Padding="10,4" CornerRadius="6" FontSize="{DynamicResource FontSize11}" />
+                            </Grid>
+                            <StackPanel Spacing="8" IsVisible="{Binding IsHelpExpanded}">
+                                <TextBlock Classes="hint"
+                                           Text="The private server's app_rpt checks your calling node number against its own node list. Unknown node → instant hang-up ('Reported node N cannot be found'); wrong IP → 'does not match link IP'." />
+                                <TextBlock Classes="hint"
+                                           Text="If the server downloads the public AllStarLink node list and your node is registered, it works automatically once its list refreshes. If the server is offline from ASL, firewalled, or LAN-only, its admin must add this line under [nodes] in rpt.conf:" />
+                                <Border Background="{DynamicResource ConsoleBackgroundBrush}"
+                                        BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="10">
+                                    <StackPanel Spacing="8">
+                                        <TextBox Text="{Binding RptConfLine}" IsReadOnly="True" TextWrapping="Wrap"
+                                                 FontFamily="Consolas,Menlo,monospace" FontSize="{DynamicResource FontSize12}"
+                                                 Foreground="{DynamicResource CyanAccentBrush}"
+                                                 Background="Transparent" BorderThickness="0" Padding="0"
+                                                 AutomationProperties.Name="rpt.conf nodes entry" />
+                                        <TextBlock Text="{Binding RptConfHint}" Classes="hint" />
+                                        <Button Content="{Binding CopyRptButtonText}" Click="OnCopyRptConfClick"
+                                                HorizontalAlignment="Left" Padding="12,6" CornerRadius="6" FontSize="{DynamicResource FontSize12}"
+                                                AutomationProperties.Name="Copy rpt.conf line to clipboard" />
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Classes="hint"
+                                           Text="The private server must also accept UDP on its IAX port (default 4569) from you. NodeX only dials out and needs no inbound port." />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- ==================== MODE 1: ADD / EDIT / CONFIRM SHARED FORM ==================== -->
+                <StackPanel IsVisible="{Binding IsFormMode}" Spacing="12">
+
+                    <!-- Incoming nodex:// confirmation banner (never connects or saves automatically) -->
+                    <Border IsVisible="{Binding IsFromDeepLink}"
+                            Background="{DynamicResource WarningBackgroundBrush}"
+                            BorderBrush="{DynamicResource AmberAccentBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Opened from a shared nodex:// link" FontWeight="Bold" FontSize="{DynamicResource FontSize13}"
+                                       Foreground="{DynamicResource WarningTextBrush}" />
+                            <TextBlock Text="Review the node number, host, and port below before saving. NodeX never saves or connects automatically from a link."
+                                       TextWrapping="Wrap" FontSize="{DynamicResource FontSize12}"
+                                       Foreground="{DynamicResource WarningTextBrush}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Quick paste box -->
+                    <Border Classes="card" IsVisible="{Binding ShowQuickPaste}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Quick paste (optional)" FontWeight="Bold" FontSize="{DynamicResource FontSize13}"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Classes="hint"
+                                       Text="Paste 1999@host:4570 or a rpt.conf [nodes] line (e.g. 1999 = radio@host:4569/1999,NONE) to fill the fields below." />
+                            <TextBox Text="{Binding PasteInput}" FontFamily="Consolas,Menlo,monospace"
+                                     PlaceholderText="e.g. 1999 = radio@club.ddns.net:4570/1999,NONE"
+                                     AutomationProperties.Name="Paste private node address or rpt.conf line" />
+                            <TextBlock Text="{Binding PasteStatusText}" IsVisible="{Binding HasPasteStatus}"
+                                       FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource CyanAccentBrush}"
+                                       AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Structured node address fields -->
+                    <Border Classes="card">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Node address" FontWeight="Bold" FontSize="{DynamicResource FontSize14}"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Classes="label" Text="Node number" />
+                                    <TextBox Text="{Binding NodeInput}" MaxLength="7" PlaceholderText="e.g. 1999"
+                                             FontFamily="Consolas,Menlo,monospace"
+                                             AutomationProperties.Name="Private node number" />
+                                    <TextBlock Classes="hint" Text="3 to 7 digits (e.g. 1000–1999)." Margin="0,4,0,0" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Classes="label" Text="IAX port" />
+                                    <TextBox Text="{Binding PortInput}" MaxLength="5" PlaceholderText="4569"
+                                             FontFamily="Consolas,Menlo,monospace"
+                                             AutomationProperties.Name="Private node IAX port" />
+                                    <TextBlock Classes="hint" Text="Used exactly (no port probe)." Margin="0,4,0,0" />
+                                </StackPanel>
+                            </Grid>
+
+                            <StackPanel>
+                                <TextBlock Classes="label" Text="Host (DNS name or IP address)" />
+                                <TextBox Text="{Binding HostInput}" PlaceholderText="e.g. club.ddns.net or 192.168.1.50"
+                                         FontFamily="Consolas,Menlo,monospace"
+                                         AutomationProperties.Name="Private node host" />
+                                <TextBlock Classes="hint" Margin="0,4,0,0"
+                                           Text="Resolved fresh on every dial (dynamic DNS supported). Never sent to AllStarLink." />
+                            </StackPanel>
+
+                            <StackPanel>
+                                <TextBlock Classes="label" Text="Friendly name (optional)" />
+                                <TextBox Text="{Binding NameInput}" MaxLength="40" PlaceholderText="e.g. Club Repeater Hub"
+                                         AutomationProperties.Name="Private node friendly name" />
+                            </StackPanel>
+
+                            <Border Background="{DynamicResource ConsoleBackgroundBrush}"
+                                    BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="10">
+                                <TextBlock Classes="hint"
+                                           Text="IAX login: always connects as user 'radio' with no secret. Private servers that require a custom IAX username and password are not supported." />
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Non-blocking IAX POKE reachability check -->
+                    <Border Classes="card">
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Reachability check (optional)" FontWeight="Bold" FontSize="{DynamicResource FontSize13}"
+                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <TextBlock Classes="hint" Text="Sends one IAX POKE to the resolved address." />
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="Test (POKE)" Command="{Binding TestFormPokeCommand}"
+                                        IsEnabled="{Binding !IsPokeTesting}" Padding="12,6" CornerRadius="6"
+                                        AutomationProperties.Name="Test private node reachability with IAX POKE" />
+                            </Grid>
+
+                            <Border IsVisible="{Binding HasPokeResult}"
+                                    Background="{DynamicResource ConsoleBackgroundBrush}"
+                                    BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="10">
+                                <TextBlock Text="{Binding PokeResultText}" TextWrapping="Wrap"
+                                           FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           AutomationProperties.LiveSetting="Polite" />
+                            </Border>
+
+                            <TextBlock Classes="hint"
+                                       Text="Information only — also runs when saved. A silent POKE never blocks saving or dialling (some servers ignore POKE)." />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Server setup help (rpt.conf) -->
+                    <Border Classes="card" BorderBrush="{DynamicResource AmberAccentBrush}">
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Will the private server accept my node?" FontWeight="Bold"
+                                           FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextPrimaryBrush}"
+                                           TextWrapping="Wrap" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="{Binding HelpToggleText}" Command="{Binding ToggleHelpCommand}"
+                                        Padding="10,4" CornerRadius="6" FontSize="{DynamicResource FontSize11}" />
+                            </Grid>
+                            <StackPanel Spacing="8" IsVisible="{Binding IsHelpExpanded}">
+                                <TextBlock Classes="hint"
+                                           Text="The private server's app_rpt checks your calling node number against its own node list. Unknown node → instant hang-up ('Reported node N cannot be found'); wrong IP → 'does not match link IP'." />
+                                <TextBlock Classes="hint"
+                                           Text="If the server is offline from ASL, firewalled, or LAN-only, its admin must add you to [nodes] in rpt.conf:" />
+                                <Border Background="{DynamicResource ConsoleBackgroundBrush}"
+                                        BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="10">
+                                    <StackPanel Spacing="8">
+                                        <TextBox Text="{Binding RptConfLine}" IsReadOnly="True" TextWrapping="Wrap"
+                                                 FontFamily="Consolas,Menlo,monospace" FontSize="{DynamicResource FontSize12}"
+                                                 Foreground="{DynamicResource CyanAccentBrush}"
+                                                 Background="Transparent" BorderThickness="0" Padding="0"
+                                                 AutomationProperties.Name="rpt.conf nodes line" />
+                                        <TextBlock Text="{Binding RptConfHint}" Classes="hint" />
+                                        <Button Content="{Binding CopyRptButtonText}" Click="OnCopyRptConfClick"
+                                                HorizontalAlignment="Left" Padding="12,6" CornerRadius="6" FontSize="{DynamicResource FontSize12}" />
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Classes="hint"
+                                           Text="The private server must also accept UDP on its IAX port (default 4569) from you. NodeX only dials out and needs no inbound port." />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- ==================== MODE 2: SHARE PRIVATE NODE ==================== -->
+                <StackPanel IsVisible="{Binding IsShareMode}" Spacing="12">
+                    <Border Classes="card">
+                        <StackPanel Spacing="12">
+                            <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="4">
+                                <TextBlock Text="{Binding ShareTitle}" FontSize="{DynamicResource FontSize16}" FontWeight="Bold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                <Border CornerRadius="6" Padding="6,2" VerticalAlignment="Center"
+                                        Background="{DynamicResource PrivateBackgroundBrush}"
+                                        BorderBrush="{DynamicResource PrivateBorderBrush}" BorderThickness="1">
+                                    <TextBlock Text="PRIVATE" FontSize="{DynamicResource FontSize10}" FontWeight="Bold"
+                                               Foreground="{DynamicResource CyanAccentBrush}" />
+                                </Border>
+                            </WrapPanel>
+                            <TextBlock Text="{Binding ShareEndpoint}" FontFamily="Consolas,Menlo,monospace"
+                                       FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource CyanAccentBrush}" />
+
+                            <Border Background="{DynamicResource ConsoleBackgroundBrush}"
+                                    BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="10">
+                                <TextBox Text="{Binding ShareUri}" IsReadOnly="True" TextWrapping="Wrap"
+                                         FontFamily="Consolas,Menlo,monospace" FontSize="{DynamicResource FontSize12}"
+                                         Foreground="{DynamicResource TextPrimaryBrush}"
+                                         Background="Transparent" BorderThickness="0" Padding="0"
+                                         AutomationProperties.Name="Shareable nodex link" />
+                            </Border>
+
+                            <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8">
+                                <Button Content="{Binding CopyShareButtonText}" Click="OnCopyShareUriClick"
+                                        Background="{DynamicResource RxGreenBrush}" Foreground="{DynamicResource OnGreenBrush}"
+                                        FontWeight="Bold" CornerRadius="8" Padding="14,8" />
+                                <Button Content="Preview confirmation screen" Command="{Binding PreviewIncomingShareLinkCommand}"
+                                        CornerRadius="8" Padding="14,8" />
+                            </WrapPanel>
+
+                            <TextBlock Classes="hint"
+                                       Text="Opening this link on another device pre-fills the 'Add private node' form. It never connects or saves without the user confirming. Contains no passwords or secrets." />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- PINNED BOTTOM BAR -->
+        <Border Grid.Row="2" Background="{DynamicResource HeaderBackgroundBrush}"
+                BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="14,10">
+            <StackPanel Spacing="8" MaxWidth="640" HorizontalAlignment="Stretch">
+                <Border IsVisible="{Binding HasError}" Background="{DynamicResource ErrorBackgroundBrush}"
+                        BorderBrush="{DynamicResource TxRedBrush}" BorderThickness="1" CornerRadius="8" Padding="10,8">
+                    <TextBlock Text="{Binding ErrorText}" Foreground="{DynamicResource TxRedBrush}"
+                               TextWrapping="Wrap" FontSize="{DynamicResource FontSize12}"
+                               AutomationProperties.LiveSetting="Assertive" />
+                </Border>
+                <Border IsVisible="{Binding HasStatus}" Background="{DynamicResource SuccessBackgroundBrush}"
+                        BorderBrush="{DynamicResource RxGreenBrush}" BorderThickness="1" CornerRadius="8" Padding="10,8">
+                    <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource RxGreenBrush}"
+                               TextWrapping="Wrap" FontSize="{DynamicResource FontSize12}"
+                               AutomationProperties.LiveSetting="Polite" />
+                </Border>
+
+                <!-- List / Share footer -->
+                <Grid IsVisible="{Binding !IsFormMode}" ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Classes="hint" VerticalAlignment="Center"
+                               Text="Saved in settings and included in settings export (no secrets)." />
+                    <Button Grid.Column="1" Content="Done" Command="{Binding CloseCommand}"
+                            Padding="16,8" CornerRadius="8" FontWeight="SemiBold" />
+                </Grid>
+
+                <!-- Add / Edit / Confirm footer -->
+                <WrapPanel IsVisible="{Binding IsFormMode}" Orientation="Horizontal" HorizontalAlignment="Right"
+                           ItemSpacing="8" LineSpacing="8">
+                    <Button Content="{Binding CancelButtonText}" Command="{Binding BackCommand}"
+                            Padding="14,8" CornerRadius="8" />
+                    <Button Content="Save" Command="{Binding SaveCommand}"
+                            Padding="16,8" CornerRadius="8" FontWeight="SemiBold" />
+                    <Button Content="Save &amp; Connect" Command="{Binding SaveAndConnectCommand}"
+                            IsVisible="{Binding CanSaveAndConnect}"
+                            Background="{DynamicResource RxGreenBrush}" Foreground="{DynamicResource OnGreenBrush}"
+                            Padding="16,8" CornerRadius="8" FontWeight="Bold" />
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

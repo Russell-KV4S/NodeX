@@ -140,6 +140,21 @@
                         <TextBox AutomationProperties.Name="Favorite nodes" Text="{Binding FavoritesText}" PlaceholderText="e.g. 27339, 2000, 41200" AcceptsReturn="False" />
                         <TextBlock Classes="hint" Text="Separate node numbers with commas or spaces." />
                     </StackPanel>
+
+                    <Border Background="{DynamicResource ConsoleBackgroundBrush}"
+                            BorderBrush="{DynamicResource PrivateBorderBrush}" BorderThickness="1"
+                            CornerRadius="8" Padding="12">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                            <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="Private nodes" FontWeight="Bold" FontSize="{DynamicResource FontSize13}"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Classes="hint" Margin="0" Text="{Binding PrivateNodesSummaryText}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Manage…" Command="{Binding ManagePrivateNodesCommand}"
+                                    AutomationProperties.Name="Manage private nodes"
+                                    VerticalAlignment="Center" MinHeight="40" Padding="12,6" CornerRadius="6" />
+                        </Grid>
+                    </Border>
                 </StackPanel>
             </Border>
 

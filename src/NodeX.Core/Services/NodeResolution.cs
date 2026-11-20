@@ -1,8 +1,13 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 
 namespace NodeX.Core;
+
+/// <summary>Result of an informational IAX POKE reachability check on a private node.</summary>
+public sealed record PrivateProbeResult(bool Resolved, bool Reachable, int? RoundTripMs, string Message);
 
 /// <summary>
 /// Resolved AllStarLink node connection information.
@@ -252,5 +257,94 @@ public sealed class NodeResolution
         // 3. Every lookup failed (directory and DNS unreachable, or the node has dropped out of both). An
         //    address that worked earlier is a better guess than giving up, so a reconnect can still be tried.
         return _lastKnown.TryGetValue(nodeNumber, out var lastKnown) ? lastKnown : null;
+    }
+
+    /// <summary>
+    /// Resolves a manually addressed (private) node directly by its host and exact port (§4.9):
+    /// <list type="bullet">
+    /// <item>Resolves the host fresh on every dial (never cached, supporting dynamic DNS).</item>
+    /// <item>Uses <see cref="ManualNodeAddress.Port"/> exactly without port probing.</item>
+    /// <item>Never contacts AllStarLink REST or DNS services.</item>
+    /// </list>
+    /// Returns null if the host cannot be resolved to an IPv4 address.
+    /// </summary>
+    public async Task<NodeInfo?> ResolvePrivateAsync(
+        ManualNodeAddress address,
+        string? name = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        if (!address.IsPrivate || string.IsNullOrWhiteSpace(address.Host))
+            throw new ArgumentException("Address must specify a private host.", nameof(address));
+
+        var ipv4 = await ResolveHostIpv4Async(address.Host, cancellationToken);
+        if (ipv4 == null) return null;
+
+        string description = !string.IsNullOrWhiteSpace(name) ? name.Trim() : $"Private ({address.HostDisplay})";
+        return new NodeInfo(address.Node, string.Empty, new IPEndPoint(ipv4, address.Port), description, _utcNow());
+    }
+
+    /// <summary>
+    /// Sends one informational IAX POKE to a private host/port (§4.9). Never contacts AllStarLink services
+    /// and never blocks saving or dialling (some servers ignore POKE).
+    /// </summary>
+    public async Task<PrivateProbeResult> ProbePrivateAsync(
+        string host,
+        int port,
+        CancellationToken cancellationToken = default)
+    {
+        string trimmed = (host ?? "").Trim().Trim('[', ']').ToLowerInvariant();
+        if (trimmed.Length == 0)
+            return new PrivateProbeResult(false, false, null, "Enter a host name or IP address.");
+        if (ManualNodeAddress.IsIpv6Literal(trimmed))
+            return new PrivateProbeResult(false, false, null, "IPv6 dialling is not supported yet.");
+        if (port is < 1 or > 65535)
+            return new PrivateProbeResult(false, false, null, "Port must be between 1 and 65535.");
+
+        var ipv4 = await ResolveHostIpv4Async(trimmed, cancellationToken);
+        if (ipv4 == null)
+            return new PrivateProbeResult(false, false, null, $"Cannot find host {trimmed}");
+
+        var probe = PortProbe ?? IaxPokeAsync;
+        var sw = Stopwatch.StartNew();
+        bool answered;
+        try
+        {
+            answered = await probe(new IPEndPoint(ipv4, port), cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            answered = false;
+        }
+        sw.Stop();
+
+        return answered
+            ? new PrivateProbeResult(true, true, Math.Max(1, (int)sw.ElapsedMilliseconds), $"Reachable ({Math.Max(1, (int)sw.ElapsedMilliseconds)} ms)")
+            : new PrivateProbeResult(true, false, null, "No answer (information only — some servers ignore POKE)");
+    }
+
+    private async Task<IPAddress?> ResolveHostIpv4Async(string host, CancellationToken cancellationToken)
+    {
+        string trimmed = host.Trim().Trim('[', ']');
+        if (IPAddress.TryParse(trimmed, out var literal))
+            return literal.AddressFamily == AddressFamily.InterNetwork ? literal : null;
+
+        try
+        {
+            var addresses = await _dnsResolver(trimmed, cancellationToken);
+            return Array.Find(addresses, a => a.AddressFamily == AddressFamily.InterNetwork);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

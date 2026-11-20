@@ -83,6 +83,33 @@ public static class AppServices
     public static Func<bool>? TabBackHandler { get; set; }
 
     /// <summary>
+    /// Incoming <c>nodex://add?...</c> link received before the main view model subscribed; consumed once on startup.
+    /// Never connects or saves automatically — always opens the pre-filled confirmation screen (§4.9).
+    /// </summary>
+    public static string? PendingDeepLink { get; private set; }
+
+    /// <summary>Raised when the OS hands a <c>nodex://</c> link to the running app.</summary>
+    public static event Action<string>? DeepLinkReceived;
+
+    /// <summary>Delivers a <c>nodex://</c> URI from a platform head (Android intent, desktop protocol handler).</summary>
+    public static void DeliverDeepLink(string? uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri)) return;
+        string trimmed = uri.Trim();
+        var handler = DeepLinkReceived;
+        if (handler != null) handler(trimmed);
+        else PendingDeepLink = trimmed;
+    }
+
+    /// <summary>Takes and clears any deep link that arrived before the UI was ready.</summary>
+    public static string? ConsumePendingDeepLink()
+    {
+        string? link = PendingDeepLink;
+        PendingDeepLink = null;
+        return link;
+    }
+
+    /// <summary>
     /// Set by a head that can switch the audio output (Android): true = loudspeaker, false = phone earpiece (or a
     /// connected headset). Returns whether the switch worked. Null where the platform has one output.
     /// </summary>

@@ -23,6 +23,14 @@ public sealed record FavoriteItem(string Node, string Label)
     public string AutomationName => HasLabel ? $"Connect to {Label}, node {Node}" : $"Connect to node {Node}";
 }
 
+/// <summary>A saved private node chip shown alongside favourites, clearly marked as private (§4.9).</summary>
+public sealed record PrivateFavoriteItem(PrivateNodeEntry Entry)
+{
+    public string Title => !string.IsNullOrWhiteSpace(Entry.Name) ? Entry.Name!.Trim() : $"Node {Entry.Node}";
+    public string Endpoint => Entry.DisplayAddress;
+    public string AutomationName => $"Connect to private node {Title}, {Endpoint}";
+}
+
 /// <summary>
 /// Main console. All real work is delegated to <see cref="NodeRuntime"/> (registration, the active
 /// <see cref="NodeLink"/>); this class only translates runtime events into bindable state on the UI thread.
@@ -65,6 +73,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _runtime.Transmit.Changed -= OnTransmitChanged;
         _runtime.LinkActiveChanged -= OnLinkActiveChanged;
         AppServices.HardwarePtt.Pressed -= OnHardwarePtt;
+        AppServices.DeepLinkReceived -= OnDeepLinkReceived;
         lock (BleHookGate)
         {
             _unhookBle?.Invoke();
@@ -144,9 +153,112 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     public bool CloseTopOverlay()
     {
+        if (IsPrivateNodesOpen) { IsPrivateNodesOpen = false; return true; }
         if (IsSearchOpen) { IsSearchOpen = false; return true; }
         if (IsSettingsOpen) { IsSettingsOpen = false; return true; }
         return false;
+    }
+
+    // --- Private / manually addressed nodes overlay (§4.9) ---
+    public PrivateNodesViewModel PrivateNodes { get; }
+
+    [ObservableProperty]
+    public partial bool IsPrivateNodesOpen { get; set; }
+
+    [RelayCommand]
+    public void OpenPrivateNodes()
+    {
+        PrivateNodes.OpenList();
+        IsPrivateNodesOpen = true;
+    }
+
+    [RelayCommand]
+    public void OpenAddPrivateNode()
+    {
+        PrivateNodes.OpenAdd();
+        IsPrivateNodesOpen = true;
+    }
+
+    [RelayCommand]
+    public void QuickSavePrivateTarget()
+    {
+        if (ManualNodeAddress.TryParse(TargetNodeInput, out var addr, out _) && addr is { IsPrivate: true })
+        {
+            PrivateNodes.OpenAdd(addr);
+            IsPrivateNodesOpen = true;
+        }
+        else
+        {
+            OpenAddPrivateNode();
+        }
+    }
+
+    /// <summary>
+    /// Opens the pre-filled confirmation screen for a <c>nodex://add?...</c> link (§4.9).
+    /// Never connects and never saves automatically.
+    /// </summary>
+    public bool OpenDeepLink(string uri)
+    {
+        if (!ManualNodeAddress.TryParseShareUri(uri, out var entry, out string? error) || entry == null)
+        {
+            LogActivity($"[ERROR] Invalid shared link: {error}");
+            return false;
+        }
+        PrivateNodes.OpenAdd(entry.ToManualAddress(), entry.Name, fromDeepLink: true);
+        IsPrivateNodesOpen = true;
+        LogActivity($"Opened shared private node link for {entry.DisplayAddress} (review and save to keep).");
+        return true;
+    }
+
+    private void OnDeepLinkReceived(string uri) => OnUi(() => OpenDeepLink(uri));
+
+    private async Task<(bool Success, string? Error)> SavePrivateNodeEntryAsync(PrivateNodeEntry entry, PrivateNodeEntry? replacing)
+    {
+        var cfg = _runtime.Config;
+        if (!cfg.IsComplete || cfg.Password == null)
+            return (false, "Finish your Settings (node number and password) before saving private nodes.");
+
+        var list = (cfg.Settings.PrivateNodes ?? []).ToList();
+        int replaceIndex = replacing != null ? list.FindIndex(p => p.Key == replacing.Key) : -1;
+
+        bool duplicate = list.Where((_, idx) => idx != replaceIndex).Any(p => p.Key == entry.Key);
+        if (duplicate)
+            return (false, $"Private node {entry.DisplayAddress} is already saved.");
+
+        if (replaceIndex >= 0) list[replaceIndex] = entry;
+        else list.Add(entry);
+
+        try
+        {
+            var result = await _runtime.ConfigService.SaveAsync(cfg.Settings with { PrivateNodes = list }, cfg.Password);
+            if (!result.Success)
+                return (false, string.Join(" ", result.Issues.Select(i => i.Message)));
+            LogActivity($"Saved private node {entry.DisplayAddress}{(string.IsNullOrWhiteSpace(entry.Name) ? "" : $" ({entry.Name})")}.");
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Could not save private node: {ex.Message}");
+        }
+    }
+
+    private async Task<bool> RemovePrivateNodeEntryAsync(PrivateNodeEntry entry)
+    {
+        var cfg = _runtime.Config;
+        if (!cfg.IsComplete || cfg.Password == null) return false;
+
+        var list = (cfg.Settings.PrivateNodes ?? []).Where(p => p.Key != entry.Key).ToList();
+        try
+        {
+            var result = await _runtime.ConfigService.SaveAsync(cfg.Settings with { PrivateNodes = list }, cfg.Password);
+            if (result.Success) LogActivity($"Removed private node {entry.DisplayAddress}.");
+            return result.Success;
+        }
+        catch (Exception ex)
+        {
+            LogActivity($"[ERROR] Could not remove private node: {ex.Message}");
+            return false;
+        }
     }
 
     // --- Find-a-node overlay ---
@@ -354,7 +466,39 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>The log as one block of text (newest first, as listed) so it can be selected and copied in part.</summary>
     public string LogText => string.Join(Environment.NewLine, ActivityLog);
     public ObservableCollection<FavoriteItem> FavoriteNodes { get; } = [];
+    public ObservableCollection<PrivateFavoriteItem> PrivateFavoriteNodes { get; } = [];
     public bool HasFavorites => FavoriteNodes.Count > 0;
+    public bool HasPrivateFavorites => PrivateFavoriteNodes.Count > 0;
+    public bool HasAnyFavorites => HasFavorites || HasPrivateFavorites;
+    public string PrivateNodesButtonText => PrivateFavoriteNodes.Count > 0
+        ? $"🔒 Private nodes ({PrivateFavoriteNodes.Count})"
+        : "🔒 Private nodes";
+
+    // --- Live ManualNodeAddress.TryParse feedback for the Connect box (§4.9) ---
+
+    [ObservableProperty]
+    public partial bool HasTargetPrivatePreview { get; set; }
+
+    [ObservableProperty]
+    public partial string TargetPrivatePreviewTitle { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string TargetPrivatePreviewSubtitle { get; set; } = "";
+
+    [ObservableProperty]
+    public partial bool CanQuickSavePrivateTarget { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasTargetIpv6Warning { get; set; }
+
+    [ObservableProperty]
+    public partial string TargetIpv6WarningText { get; set; } = "";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasConnectError))]
+    public partial string ConnectErrorText { get; set; } = "";
+
+    public bool HasConnectError => ConnectErrorText.Length > 0;
 
     // --- Favourite the node typed in the connect box ---
 
@@ -387,8 +531,41 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     private void RefreshTargetFavorite()
     {
-        string node = TargetNodeInput?.Trim() ?? "";
-        var item = FavoriteNodes.FirstOrDefault(f => f.Node == node);
+        string raw = TargetNodeInput?.Trim() ?? "";
+        ConnectErrorText = "";
+        HasTargetPrivatePreview = false;
+        TargetPrivatePreviewTitle = "";
+        TargetPrivatePreviewSubtitle = "";
+        CanQuickSavePrivateTarget = false;
+        HasTargetIpv6Warning = false;
+        TargetIpv6WarningText = "";
+
+        if (ManualNodeAddress.TryParse(raw, out var parsed, out _) && parsed is { IsPrivate: true })
+        {
+            var saved = PrivateFavoriteNodes.FirstOrDefault(p =>
+                p.Entry.Node == parsed.Node
+                && string.Equals(p.Entry.Host, parsed.Host, StringComparison.OrdinalIgnoreCase)
+                && p.Entry.Port == parsed.Port);
+            TargetIsFavorite = saved != null;
+            FavoriteLabelInput = saved?.Entry.Name ?? "";
+            IsEditingFavoriteLabel = false;
+
+            if (parsed.IsIpv6)
+            {
+                HasTargetIpv6Warning = true;
+                TargetIpv6WarningText = $"IPv6 parsed ({parsed.DisplayAddress}) — IPv6 dialling is not supported yet.";
+            }
+            else
+            {
+                HasTargetPrivatePreview = true;
+                TargetPrivatePreviewTitle = parsed.DisplayAddress;
+                TargetPrivatePreviewSubtitle = $"Direct dial · port {parsed.Port} · skips AllStarLink directory";
+                CanQuickSavePrivateTarget = saved == null;
+            }
+            return;
+        }
+
+        var item = FavoriteNodes.FirstOrDefault(f => f.Node == raw);
         TargetIsFavorite = item != null;
         FavoriteLabelInput = item?.Label ?? "";
         IsEditingFavoriteLabel = false;   // a different node was typed: close the rename box
@@ -397,10 +574,29 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     public async Task ToggleTargetFavoriteAsync()
     {
-        string node = TargetNodeInput?.Trim() ?? "";
+        string raw = TargetNodeInput?.Trim() ?? "";
+        if (ManualNodeAddress.TryParse(raw, out var parsed, out _) && parsed is { IsPrivate: true })
+        {
+            var saved = PrivateFavoriteNodes.FirstOrDefault(p =>
+                p.Entry.Node == parsed.Node
+                && string.Equals(p.Entry.Host, parsed.Host, StringComparison.OrdinalIgnoreCase)
+                && p.Entry.Port == parsed.Port);
+            if (saved != null)
+            {
+                await RemovePrivateNodeEntryAsync(saved.Entry);
+            }
+            else
+            {
+                PrivateNodes.OpenAdd(parsed);
+                IsPrivateNodesOpen = true;
+            }
+            return;
+        }
+
+        string node = raw;
         if (!NodeSettingsValidator.IsValidNodeNumber(node))
         {
-            LogActivity("[ERROR] Enter a valid node number (3 to 7 digits) to favorite it.");
+            LogActivity("[ERROR] Enter a valid node number (3 to 7 digits) or private address to save it.");
             return;
         }
 
@@ -554,7 +750,19 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _acknowledgeId = () => OnUi(AcknowledgeId);
         AppServices.AcknowledgeIdHandler = _acknowledgeId;
         AppServices.HardwarePtt.Pressed += OnHardwarePtt;
+        AppServices.DeepLinkReceived += OnDeepLinkReceived;
         HookBle();
+
+        PrivateNodes = new PrivateNodesViewModel(
+            runtime,
+            SavePrivateNodeEntryAsync,
+            RemovePrivateNodeEntryAsync);
+        PrivateNodes.Closed += () => IsPrivateNodesOpen = false;
+        PrivateNodes.ConnectRequested += (addr, name) =>
+        {
+            IsPrivateNodesOpen = false;
+            _ = ConnectPrivateAsync(addr, name);
+        };
 
         Search = new NodeSearchViewModel(
             directory ?? AppServices.Directory,
@@ -570,6 +778,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         Settings = new SettingsViewModel(runtime.ConfigService);
         Settings.Saved += OnSettingsSaved;
         Settings.Cancelled += () => IsSettingsOpen = false;
+        Settings.ManagePrivateNodesRequested += () =>
+        {
+            IsSettingsOpen = false;
+            OpenPrivateNodes();
+        };
 
         runtime.RegistrationChanged += OnRegistrationChanged;
         runtime.LinkAdded += OnRuntimeLinkAdded;
@@ -670,6 +883,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             {
                 LogActivity($"NodeX ready. Node {LocalNodeNumber}.");
             }
+
+            if (AppServices.ConsumePendingDeepLink() is { } pendingLink)
+                OnUi(() => OpenDeepLink(pendingLink));
         }
         catch (Exception ex)
         {
@@ -701,6 +917,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     public async Task ConnectNodeAsync()
     {
+        ConnectErrorText = "";
         if (!_runtime.Config.IsComplete)
         {
             LogActivity("[ERROR] Finish your Settings (node number and password) before connecting.");
@@ -708,13 +925,27 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        string target = TargetNodeInput?.Trim() ?? "";
-        if (!NodeSettingsValidator.IsValidNodeNumber(target))
+        string raw = TargetNodeInput?.Trim() ?? "";
+        if (!ManualNodeAddress.TryParse(raw, out var parsed, out string? parseError) || parsed == null)
         {
-            LogActivity("[ERROR] Please enter a valid target node number (3 to 7 digits).");
+            string msg = parseError ?? "Please enter a valid target node number (3 to 7 digits) or private address.";
+            ConnectErrorText = msg;
+            LogActivity($"[ERROR] {msg}");
             return;
         }
 
+        if (parsed.IsPrivate)
+        {
+            string? savedName = PrivateFavoriteNodes
+                .FirstOrDefault(p => p.Entry.Node == parsed.Node
+                                     && string.Equals(p.Entry.Host, parsed.Host, StringComparison.OrdinalIgnoreCase)
+                                     && p.Entry.Port == parsed.Port)
+                ?.Entry.Name;
+            await ConnectPrivateAsync(parsed, savedName);
+            return;
+        }
+
+        string target = parsed.Node;
         try
         {
             LogActivity($"Resolving node {target}...");
@@ -734,8 +965,65 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
+            ConnectErrorText = ex.Message;
             LogActivity($"[ERROR] Connection failed: {ex.Message}");
         }
+    }
+
+    public async Task ConnectPrivateAsync(ManualNodeAddress address, string? name = null)
+    {
+        ConnectErrorText = "";
+        if (!_runtime.Config.IsComplete)
+        {
+            LogActivity("[ERROR] Finish your Settings (node number and password) before connecting.");
+            await OpenSettingsAsync();
+            return;
+        }
+
+        TargetNodeInput = address.CanonicalInput;
+        try
+        {
+            LogActivity($"Resolving private node {address.DisplayAddress}...");
+            var info = await _runtime.ConnectAsync(address, name);
+            if (info == null)
+            {
+                ConnectErrorText = $"Cannot find host {address.Host}.";
+                return;
+            }
+
+            LogActivity($"Connecting to {address.DisplayAddress} at {info.EndPoint}...");
+        }
+        catch (OperationCanceledException)
+        {
+            LogActivity($"Connect to {address.DisplayAddress} cancelled.");
+        }
+        catch (Exception ex)
+        {
+            ConnectErrorText = ex.Message;
+            LogActivity($"[ERROR] {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
+    public async Task SelectPrivateFavoriteAsync(PrivateNodeEntry? entry)
+    {
+        if (entry == null) return;
+        await ConnectPrivateAsync(entry.ToManualAddress(), entry.Name);
+    }
+
+    [RelayCommand]
+    public void EditPrivateFavorite(PrivateNodeEntry? entry)
+    {
+        if (entry == null) return;
+        PrivateNodes.OpenEdit(entry);
+        IsPrivateNodesOpen = true;
+    }
+
+    [RelayCommand]
+    public async Task RemovePrivateFavoriteAsync(PrivateNodeEntry? entry)
+    {
+        if (entry == null) return;
+        await RemovePrivateNodeEntryAsync(entry);
     }
 
     /// <summary>
@@ -819,7 +1107,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     {
         if (TxLink is not { } link) return;
         // A panel opening or a permission change between key-down and key-up must never swallow the release.
-        if (pressed && (IsSettingsOpen || IsSearchOpen || !CanKey)) return;
+        if (pressed && (IsSettingsOpen || IsSearchOpen || IsPrivateNodesOpen || !CanKey)) return;
         await link.Ptt.HandleUiPttAsync(pressed);
     }
 
@@ -906,7 +1194,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     public async Task SendDtmfMacroAsync(string macro)
     {
-        string target = TargetNodeInput?.Trim() ?? "";
+        string target = ManualNodeAddress.TryParse(TargetNodeInput, out var parsed, out _) && parsed != null
+            ? parsed.Node
+            : TargetNodeInput?.Trim() ?? "";
         string? sequence = macro switch
         {
             "link" when NodeSettingsValidator.IsValidNodeNumber(target) => "*3" + target,
@@ -971,7 +1261,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         FavoriteNodes.Clear();
         foreach (string node in s.FavoriteNodes)
             FavoriteNodes.Add(new FavoriteItem(node, s.FavoriteLabels.TryGetValue(node, out var label) ? label : ""));
+        PrivateFavoriteNodes.Clear();
+        foreach (var priv in s.PrivateNodes ?? [])
+            PrivateFavoriteNodes.Add(new PrivateFavoriteItem(priv));
         OnPropertyChanged(nameof(HasFavorites));
+        OnPropertyChanged(nameof(HasPrivateFavorites));
+        OnPropertyChanged(nameof(HasAnyFavorites));
+        OnPropertyChanged(nameof(PrivateNodesButtonText));
+        PrivateNodes.ReloadFromConfig();
         if (!IsTransmitting) TotCounterText = FormatTot(TimeSpan.Zero, TotLimit);
 
         if (string.IsNullOrWhiteSpace(TargetNodeInput) && s.DefaultTargetNode.Length > 0)
@@ -999,6 +1296,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 ? $"ASL Registered · {DurationText.Format(DateTimeOffset.UtcNow - since)}"
                 : "ASL Registered"
             : _runtime.RegistrationStatus;
+        PrivateNodes.RefreshRptConfHelp();
     }
 
     private void ApplyReconnect(ReconnectStatus status)
@@ -1033,8 +1331,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private string LabelFor(string node) =>
         _runtime.Config.Settings.FavoriteLabels.TryGetValue(node, out var label) ? label : "";
 
-    /// <summary>"[node] " when more than one node is linked, so log lines say which link they are about.</summary>
-    private string Tag(string node) => _runtime.Connections.Count > 1 ? $"[{node}] " : "";
+    /// <summary>"[node] " (or "[1999 @ host] " for private links) so log lines identify the link clearly.</summary>
+    private string Tag(string node)
+    {
+        var conn = _runtime.Connections.FirstOrDefault(c => c.Node == node);
+        if (conn is { IsPrivate: true }) return $"[{conn.DisplayNode}] ";
+        return _runtime.Connections.Count > 1 ? $"[{node}] " : "";
+    }
 
     /// <summary>
     /// Brings the link rows, the hero card and the PTT state in line with the runtime's connections.
@@ -1118,15 +1421,17 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
         var item = LinkItems.First(l => l.Node == tx.Node);
         ConnectionStateBadgeText = item.StatusText;
-        ConnectedNodeDisplay = $"Node {tx.Node}";
+        ConnectedNodeDisplay = tx.IsPrivate ? tx.DisplayNode : $"Node {tx.Node}";
 
         string details = tx.Reconnect.Active && !item.IsConnected ? ReconnectText(tx)
             : tx.Info == null ? "Resolving…"
+            : tx.IsPrivate
+                ? $"{(string.IsNullOrWhiteSpace(tx.PrivateName) ? "Private direct" : tx.PrivateName)} ({tx.Info.EndPoint})"
             : string.IsNullOrWhiteSpace(tx.Info.Callsign)
                 ? $"{tx.Info.Description} ({tx.Info.EndPoint.Address})"
                 : $"{tx.Info.Callsign} • {tx.Info.Description} ({tx.Info.EndPoint.Address})";
         if (conns.Count > 1)
-            details += $" · also listening: {string.Join(", ", conns.Where(c => c != tx).Select(c => c.Node))}";
+            details += $" · also listening: {string.Join(", ", conns.Where(c => c != tx).Select(c => c.DisplayNode))}";
         ConnectedNodeDetails = details;
     }
 

@@ -359,7 +359,21 @@ public partial class SettingsViewModel : ViewModelBase
     /// <summary>Raised when the user dismisses the screen without saving.</summary>
     public event Action? Cancelled;
 
+    /// <summary>Raised when the user taps "Manage private nodes…" inside Settings.</summary>
+    public event Action? ManagePrivateNodesRequested;
+
     private Dictionary<string, string> _favoriteLabels = [];
+    private List<PrivateNodeEntry> _privateNodes = [];
+
+    public string PrivateNodesSummaryText => _privateNodes.Count switch
+    {
+        0 => "No private nodes saved yet.",
+        1 => "1 private node saved (included in settings export; no secrets).",
+        _ => $"{_privateNodes.Count} private nodes saved (included in settings export; no secrets)."
+    };
+
+    [RelayCommand]
+    private void ManagePrivateNodes() => ManagePrivateNodesRequested?.Invoke();
 
     /// <summary>Fills the form from the saved configuration.</summary>
     public async Task LoadAsync()
@@ -389,6 +403,8 @@ public partial class SettingsViewModel : ViewModelBase
         DefaultTargetNode = s.DefaultTargetNode;
         FavoritesText = string.Join(", ", s.FavoriteNodes);
         _favoriteLabels = new Dictionary<string, string>(s.FavoriteLabels);
+        _privateNodes = (s.PrivateNodes ?? []).ToList();
+        OnPropertyChanged(nameof(PrivateNodesSummaryText));
         RegisterOnStartup = s.RegisterOnStartup;
         AutoReconnect = s.AutoReconnect;
         TogglePtt = s.TogglePtt;
@@ -581,6 +597,7 @@ public partial class SettingsViewModel : ViewModelBase
                 .Split([',', ' ', ';', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToList(),
             FavoriteLabels = _favoriteLabels,   // names are edited on the main screen; Normalize drops any for removed favourites
+            PrivateNodes = _privateNodes.ToList(),
             RegistrationUrl = RegistrationUrl,
             IaxPort = port,
             RegisterOnStartup = RegisterOnStartup,

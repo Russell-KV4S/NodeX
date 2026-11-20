@@ -190,7 +190,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
                 if (parentId == RootId)
                 {
                     int activeCount = rt.Connections.Count;
-                    int favCount = (rt.Config.Settings.FavoriteNodes ?? []).Count(f => !string.IsNullOrWhiteSpace(f));
+                    int favCount = CarBrowse.TotalFavoritesCount(rt.Config.Settings);
                     foreach (var item in CarBrowse.BuildRootItems(activeCount, favCount))
                         items.Add(ToMediaItem(item));
                 }
@@ -252,7 +252,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
 
     // ----- control (from the MediaSession callback) -----
 
-    private async Task PlayAsync(string node)
+    private async Task PlayAsync(string mediaId)
     {
         var rt = AppServices.Runtime;
         try
@@ -264,8 +264,23 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
                 return;
             }
 
+            ManualNodeAddress? privAddr = null;
+            string? privName = null;
+            string node = mediaId;
+            if (CarBrowse.TryParsePrivateMediaId(mediaId, out var parsed) && parsed != null)
+            {
+                privAddr = parsed;
+                node = parsed.Node;
+                privName = (rt.Config.Settings.PrivateNodes ?? [])
+                    .FirstOrDefault(p => p.Node == parsed.Node
+                                         && string.Equals(p.Host, parsed.Host, StringComparison.OrdinalIgnoreCase)
+                                         && p.Port == parsed.Port)
+                    ?.Name;
+            }
+
             string? previous = _nowPlaying;
-            bool alreadyUp = rt.Connections.Any(c => c.Node == node && c.Link != null);
+            bool alreadyUp = rt.Connections.Any(c => c.Node == node && c.Link != null
+                && (privAddr == null ? !c.IsPrivate : privAddr.SameTargetAs(c.PrivateAddress)));
 
             lock (_gate)
             {
@@ -273,7 +288,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
                 _nowPlaying = node;
             }
             BeginCarSession();
-            Remember(node);
+            Remember(mediaId);
 
             // Selecting an already-connected node only shows it. It does not move the transmit node: that takes a
             // deliberate tap on "Transmit here" on the now-playing screen.
@@ -286,8 +301,11 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
             {
                 try
                 {
-                    var info = await rt.ConnectAsync(node);
-                    if (info == null) FailConnect($"Could not find node {node}.", previous);
+                    var info = privAddr != null
+                        ? await rt.ConnectAsync(privAddr, privName)
+                        : await rt.ConnectAsync(node);
+                    if (info == null)
+                        FailConnect(privAddr != null ? $"Cannot find host {privAddr.Host}." : $"Could not find node {node}.", previous);
                 }
                 catch (System.OperationCanceledException)
                 {

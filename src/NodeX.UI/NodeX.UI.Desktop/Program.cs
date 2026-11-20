@@ -15,6 +15,14 @@ sealed class Program
     public static void Main(string[] args)
     {
         ConfigureServices();
+        foreach (string arg in args)
+        {
+            if (arg.StartsWith("nodex://", StringComparison.OrdinalIgnoreCase))
+            {
+                AppServices.DeliverDeepLink(arg);
+                break;
+            }
+        }
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

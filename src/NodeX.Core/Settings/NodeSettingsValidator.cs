@@ -14,6 +14,7 @@ public static partial class NodeSettingsValidator
         public const string Password = "Password";
         public const string DefaultTargetNode = nameof(NodeSettings.DefaultTargetNode);
         public const string FavoriteNodes = nameof(NodeSettings.FavoriteNodes);
+        public const string PrivateNodes = nameof(NodeSettings.PrivateNodes);
         public const string RegistrationUrl = nameof(NodeSettings.RegistrationUrl);
         public const string IaxPort = nameof(NodeSettings.IaxPort);
         public const string MicGain = nameof(NodeSettings.MicGain);
@@ -40,10 +41,34 @@ public static partial class NodeSettingsValidator
             .Where(n => n.Length > 0)
             .Distinct()
             .ToList(),
-        FavoriteLabels = CleanLabels(s)
+        FavoriteLabels = CleanLabels(s),
+        PrivateNodes = CleanPrivateNodes(s)
     };
 
     public const int MaxFavoriteLabelLength = 40;
+
+    /// <summary>Trims, lower-cases hosts, caps names and removes duplicate (Node, Host, Port) entries.</summary>
+    private static List<PrivateNodeEntry> CleanPrivateNodes(NodeSettings s)
+    {
+        var result = new List<PrivateNodeEntry>();
+        var seen = new HashSet<(string Node, string Host, int Port)>();
+        foreach (var raw in s.PrivateNodes ?? [])
+        {
+            if (raw == null) continue;
+            string node = (raw.Node ?? "").Trim();
+            string host = (raw.Host ?? "").Trim().Trim('[', ']').ToLowerInvariant();
+            int port = raw.Port;
+            string? name = (raw.Name ?? "").Trim();
+            if (name.Length > MaxFavoriteLabelLength) name = name[..MaxFavoriteLabelLength].TrimEnd();
+            if (name.Length == 0) name = null;
+
+            if (node.Length == 0 && host.Length == 0) continue;
+            var key = (node, host, port);
+            if (seen.Add(key))
+                result.Add(new PrivateNodeEntry(node, host, port, name));
+        }
+        return result;
+    }
 
     /// <summary>Keeps only non-empty labels for nodes that are still favourites, trimmed and length-capped.</summary>
     private static Dictionary<string, string> CleanLabels(NodeSettings s)
@@ -86,6 +111,16 @@ public static partial class NodeSettingsValidator
 
         foreach (string fav in s.FavoriteNodes.Where(f => !NodeNumberPattern().IsMatch(f)))
             issues.Add(new(Fields.FavoriteNodes, $"Favourite '{fav}' is not a 3 to 7 digit node number."));
+
+        foreach (var priv in s.PrivateNodes)
+        {
+            if (!NodeNumberPattern().IsMatch(priv.Node))
+                issues.Add(new(Fields.PrivateNodes, $"Private node '{priv.Node}' must be a 3 to 7 digit node number."));
+            if (!ManualNodeAddress.IsValidHost(priv.Host, out _, out _))
+                issues.Add(new(Fields.PrivateNodes, $"Private node '{priv.Node}' has an invalid host '{priv.Host}'."));
+            if (priv.Port is < 1 or > 65535)
+                issues.Add(new(Fields.PrivateNodes, $"Private node '{priv.Node}' port must be between 1 and 65535."));
+        }
 
         if (!Uri.TryCreate(s.RegistrationUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
             issues.Add(new(Fields.RegistrationUrl, "Registration URL must be an https:// address."));
