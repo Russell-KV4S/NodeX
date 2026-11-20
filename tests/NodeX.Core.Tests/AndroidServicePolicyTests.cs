@@ -65,9 +65,9 @@ public class AndroidServicePolicyTests
         Assert.Equal(CarMediaAction.Unkey, CarMediaButtons.Decide(button, true, true, true));
 
     [Theory]
-    [InlineData(CarMediaButton.Play, false, false, CarMediaAction.Unmute)]
-    [InlineData(CarMediaButton.Stop, false, false, CarMediaAction.Mute)]
-    [InlineData(CarMediaButton.Pause, false, false, CarMediaAction.Mute)]
+    [InlineData(CarMediaButton.Play, false, false, CarMediaAction.Resume)]
+    [InlineData(CarMediaButton.Stop, false, false, CarMediaAction.Ignore)]
+    [InlineData(CarMediaButton.Pause, false, false, CarMediaAction.Ignore)]
     [InlineData(CarMediaButton.Next, false, false, CarMediaAction.Next)]
     [InlineData(CarMediaButton.Previous, false, false, CarMediaAction.Previous)]
     [InlineData(CarMediaButton.Next, true, false, CarMediaAction.Talk)]

@@ -25,9 +25,14 @@ public sealed record AndroidServicePlan(BackgroundServiceKinds Kinds, bool HoldL
 }
 
 public enum CarMediaButton { Play, Pause, Stop, Next, Previous }
-public enum CarMediaAction { Ignore, Unkey, Mute, Unmute, Talk, Next, Previous }
+public enum CarMediaAction { Ignore, Unkey, Resume, Talk, Next, Previous }
 
-/// <summary>Used directly by MediaSession callbacks. Pause/Stop mute and Play unmutes (owner decision 2026-11-12: a media command must never hang a node up); no media command can auto-dial a favorite.</summary>
+/// <summary>
+/// Used directly by MediaSession callbacks. No media command mutes, unmutes or hangs up a node, and none can auto-dial
+/// a favorite. Owner decision 2026-11-20: nothing is muted unless the user presses Mute. Android Auto and Bluetooth
+/// stereos send Pause/Stop on their own (leaving the car, disconnecting), which used to leave every node muted, so
+/// Pause/Stop are ignored and Play only takes the car's audio back.
+/// </summary>
 public static class CarMediaButtons
 {
     public static CarMediaAction Decide(CarMediaButton button, bool anythingKeyed, bool nextTalks, bool previousTalks)
@@ -35,8 +40,8 @@ public static class CarMediaButtons
         if (anythingKeyed) return CarMediaAction.Unkey;
         return button switch
         {
-            CarMediaButton.Play => CarMediaAction.Unmute,
-            CarMediaButton.Pause or CarMediaButton.Stop => CarMediaAction.Mute,
+            CarMediaButton.Play => CarMediaAction.Resume,
+            CarMediaButton.Pause or CarMediaButton.Stop => CarMediaAction.Ignore,
             CarMediaButton.Next => nextTalks ? CarMediaAction.Talk : CarMediaAction.Next,
             CarMediaButton.Previous => previousTalks ? CarMediaAction.Talk : CarMediaAction.Previous,
             _ => CarMediaAction.Ignore

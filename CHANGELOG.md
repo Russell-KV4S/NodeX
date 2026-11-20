@@ -1,6 +1,8 @@
 # Change log
 
-## Unreleased: private card title, false-RX hardening
+## Unreleased: private card title, false-RX hardening, no automatic mute
+
+- **Nothing mutes automatically (owner: "unless I press I really don't want anything muted"):** the Android car/media service used to mute every node on a media Pause/Stop, on a navigation prompt or call, and when another app took the audio. Android Auto and Bluetooth stereos send Pause/Stop on their own, so nodes ended up muted with no press. Now Pause/Stop are ignored, Play only takes the car audio back (no unmute), and audio-focus changes don't touch mute. Car transmissions are still released on any media button or focus loss. Only the Mute buttons mute. Node audio now keeps playing through a phone call in the car; not tested in a car.
 
 - **Private link cards drop the host:** the linked-node card and top-bar chip now show `1993 · 310108` (or `Node 1993`) with the PRIVATE pill instead of `1993 @ ysf.alert-alabama.org · 310108` (owner request with a phone screenshot). The host is still in the log and the Private Nodes screen.
 - **False RX (owner report: occasional green on a node with nothing heard):** the log the owner sent has no KEY lines in that window, so any green there came from the "voice frames without KEY" rule. That rule lit a node on any voice frame, silent ones included, and every reconnect forgot that a hub sends KEY. Now only frames with sound count (`RxActivity.HasSound`, peak above about -50 dBFS), known KEY senders are remembered across reconnects, and Detailed logging writes `[rx] node N: receiving by voice frames without KEY` when a node lights without KEY. The exact node behind the report is not confirmed.

@@ -45,7 +45,6 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
     private AudioFocusRequestClass? _focus;
     private string? _nowPlaying;          // the node this car session is playing; null = nothing
     private string? _error;
-    private readonly HashSet<string> _mutedForFocus = [];
     private Action? _changed;
     private readonly object _gate = new();
 
@@ -346,35 +345,13 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
     }
 
     /// <summary>
-    /// Silences every linked node without hanging any up (owner decision 2026-11-12: Pause/Stop and losing the audio
-    /// to another app must not drop links). It is the driver's choice, so a later navigation prompt does not undo it;
-    /// Play (or the mute button) brings the sound back.
+    /// Play: take the car's audio back if another app had it. Mute state is untouched (owner decision 2026-11-20:
+    /// nothing is muted or unmuted except by the Mute button).
     /// </summary>
-    private void MuteAll(string why)
+    private void Resume(string why)
     {
-        var rt = AppServices.Runtime;
-        var nodes = rt.Connections.Where(c => !c.Muted).Select(c => c.Node).ToArray();
-        NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", $"muting {nodes.Length} node(s), none hung up: {why}");
-        foreach (string node in nodes)
-        {
-            _mutedForFocus.Remove(node);
-            rt.SetMuted(node, true);
-        }
-        PublishState();
-        NotifyChanges();
-    }
-
-    private void UnmuteAll(string why)
-    {
-        var rt = AppServices.Runtime;
-        var nodes = rt.Connections.Where(c => c.Muted).Select(c => c.Node).ToArray();
-        NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", $"unmuting {nodes.Length} node(s): {why}");
-        foreach (string node in nodes)
-        {
-            _mutedForFocus.Remove(node);
-            rt.SetMuted(node, false);
-        }
-        if (nodes.Length > 0 && _nowPlaying != null && _focus == null) BeginCarSession();   // take the audio back
+        NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", $"resume: {why}");
+        if (_nowPlaying != null && _focus == null) BeginCarSession();
         PublishState();
         NotifyChanges();
     }
@@ -493,16 +470,15 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         switch (action)
         {
             case CarMediaAction.Unkey: StopTalkingIfKeyed(button.ToString()); break;
-            case CarMediaAction.Mute:
-                MuteAll($"media {button} command (car screen, steering wheel, headset or Bluetooth stereo)");
-                break;
-            case CarMediaAction.Unmute:
-                UnmuteAll($"media {button} command");
+            case CarMediaAction.Resume:
+                Resume($"media {button} command");
                 break;
             case CarMediaAction.Talk: _ = TalkAsync(fromWheel: true); break;
             case CarMediaAction.Next: Step(+1); break;
             case CarMediaAction.Previous: Step(-1); break;
             case CarMediaAction.Ignore:
+                // Pause/Stop: Android Auto and Bluetooth stereos send these on their own, so they must not mute.
+                NodeX.Core.Diagnostics.DiagnosticLog.Default.Detail("car", $"media {button} command ignored (nothing muted)");
                 break;
         }
     }
@@ -534,7 +510,6 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         var conn = node == null ? null : rt.Connections.FirstOrDefault(c => c.Node == node);
         if (conn == null) return;
 
-        _mutedForFocus.Remove(conn.Node);   // the driver's choice outlasts a navigation prompt
         rt.SetMuted(conn.Node, !conn.Muted);
         PublishState();
     }
@@ -820,7 +795,6 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
     private void EndCarSession()
     {
         _ = CarTransmit.UnkeyCarAsync(AppServices.Runtime);
-        RestoreMutes();
         if (_focus != null && GetSystemService(AudioService) is AudioManager am)
             am.AbandonAudioFocusRequest(_focus);
         _focus = null;
@@ -828,46 +802,17 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
     }
 
     /// <summary>
-    /// Navigation prompt or phone call: silence the links (they stay up, so playback resumes without redialling).
-    /// Permanent loss (another media app took over): hang up the car's node.
+    /// Navigation prompt, phone call or another app taking the audio. Owner decision 2026-11-20: this never mutes a
+    /// node (nothing is muted except by the Mute button). Android ducks NodeX under prompts itself
+    /// (<c>SetWillPauseWhenDucked(false)</c>). A car transmission is still released, since the driver cannot hear it.
     /// </summary>
     public void OnAudioFocusChange(AudioFocus focusChange)
     {
         var rt = AppServices.Runtime;
-        NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", $"audio focus changed: {focusChange}");
+        NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", $"audio focus changed: {focusChange} (nodes not muted)");
 
-        // A navigation prompt, a call or another app taking the audio always ends a car transmission first.
         if (focusChange != AudioFocus.Gain) _ = CarTransmit.UnkeyCarAsync(rt);
-
-        switch (focusChange)
-        {
-            case AudioFocus.LossTransient:
-            case AudioFocus.LossTransientCanDuck:
-                foreach (var c in rt.Connections.Where(c => !c.Muted))
-                {
-                    _mutedForFocus.Add(c.Node);
-                    rt.SetMuted(c.Node, true);
-                }
-                break;
-
-            case AudioFocus.Gain:
-                RestoreMutes();
-                break;
-
-            case AudioFocus.Loss:
-                // Another app took the audio for good. Silence the links but keep them up; Play takes the audio back.
-                _focus = null;     // Android has revoked it; Play asks again
-                MuteAll("another app took the audio (audio focus lost)");
-                break;
-        }
-    }
-
-    private void RestoreMutes()
-    {
-        var rt = AppServices.Runtime;
-        foreach (string node in _mutedForFocus.ToArray())
-            rt.SetMuted(node, false);
-        _mutedForFocus.Clear();
+        if (focusChange == AudioFocus.Loss) _focus = null;     // Android has revoked it; Play asks again
     }
 
     // ----- last played favourite (for "play NodeX" with no name) -----

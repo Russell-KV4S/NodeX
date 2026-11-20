@@ -44,7 +44,7 @@ Take your AllStarLink node on the road as a native Android Auto media app:
 
 - **Browse & dial safely:** switch between **Active Links** and **Favourites** tabs on your car display, tap a favourite to dial, or select any active link to focus it on Now Playing.
 - **Clear car controls:** Now Playing shows who is talking, your link count, and whether you are listening or armed to transmit, with per-node **Transmit here**, **Mute / Unmute**, and **Disconnect** buttons.
-- **Car-safe media buttons:** **Next / Back** step through connected nodes without dialling new ones, **Pause / Stop** mute audio instead of dropping your links, and **Play** unmutes. Any active car transmission is immediately released if focus is lost, the car disconnects, or any media button is pressed.
+- **Car-safe media buttons:** **Next / Back** step through connected nodes without dialling new ones, **Pause / Stop** never drop or mute your links, and **Play** takes the car audio back. Nothing is muted unless you press Mute. Any active car transmission is immediately released if focus is lost, the car disconnects, or any media button is pressed.
 - **Play vs full GitHub edition:** the Google Play edition is **listen-only** in the car (you can still browse, switch nodes, mute, and disconnect). The full GitHub APK edition (`NodeX-android.apk`, [install guide](docs/INSTALL_ANDROID.md)) adds an optional **Talk** screen button and optional steering-wheel **Next** or **Back** PTT trigger in **Settings** (disabled by default, with audible key/unkey confirmation tones and a car transmission time limit).
 
 ## Platforms and status
