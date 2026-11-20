@@ -1,29 +1,44 @@
 namespace NodeX.Core;
 
 /// <summary>
-/// Which linked nodes are being heard right now. A node counts as receiving when its KEY control frame is active OR
-/// a voice frame arrived in the last <see cref="VoiceHold"/>: some nodes send audio without (or before) a KEY frame, so
-/// following the control frames alone left them looking silent. Same rule as the Radio screen's per-node highlight, in
-/// Core so the Android Auto service can use it without the UI. Thread-safe; frames arrive on network threads.
+/// Which linked nodes are being heard right now. A node that announces its transmissions with KEY/UNKEY control frames
+/// is heard only while keyed. A node that never sends KEY (East Coast Reflector) is heard while it sends voice frames
+/// that actually contain sound: silent frames (a hub streaming idle audio) do not count. Same rule as the Radio screen's
+/// per-node highlight, in Core so the Android Auto service can use it without the UI. Thread-safe; frames arrive on
+/// network threads.
 /// </summary>
 public sealed class RxActivity : IDisposable
 {
-    /// <summary>How long after the last voice frame a node still counts as talking.</summary>
+    /// <summary>How long after the last voice frame with sound a node with no KEY still counts as talking.</summary>
     public static readonly TimeSpan VoiceHold = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>
+    /// Peak sample level (16-bit linear, about -50 dBFS) a voice frame must exceed to count as sound. µ-law idle/silence
+    /// decodes to a handful of counts; speech, tones and courtesy beeps are far above this.
+    /// </summary>
+    public const int SoundPeakThreshold = 100;
 
     private sealed class Watch
     {
         public volatile bool Keyed;
         public long LastVoiceTicks;
+        public long LastSoundTicks;
         public long KeyedAtTicks;
         public Action Detach = static () => { };
     }
 
     private readonly Dictionary<string, Watch> _watches = [];
+    private readonly HashSet<string> _keySenders = [];
     private readonly object _gate = new();
     private readonly Func<long> _clock;
 
     public RxActivity(Func<long>? clock = null) => _clock = clock ?? (() => Environment.TickCount64);
+
+    /// <summary>
+    /// Marks a node that has been seen sending KEY. Kept across reconnects, so a hub that streams frames while idle is
+    /// not lit by them just because a fresh call has not seen its first KEY yet.
+    /// </summary>
+    public const long KnownKeySender = 1;
 
     /// <summary>Starts following <paramref name="link"/>. Following it again replaces the earlier watch.</summary>
     public void Attach(NodeLink link)
@@ -33,10 +48,19 @@ public sealed class RxActivity : IDisposable
 
         void OnKeyed(bool keyed)
         {
-            if (keyed) Interlocked.Exchange(ref watch.KeyedAtTicks, _clock());
+            if (keyed)
+            {
+                Interlocked.Exchange(ref watch.KeyedAtTicks, _clock());
+                lock (_gate) _keySenders.Add(node);
+            }
             watch.Keyed = keyed;
         }
-        void OnVoice(ushort _, ReadOnlyMemory<byte> __) => Interlocked.Exchange(ref watch.LastVoiceTicks, _clock());
+        void OnVoice(ushort _, ReadOnlyMemory<byte> payload)
+        {
+            long now = _clock();
+            Interlocked.Exchange(ref watch.LastVoiceTicks, now);
+            if (HasSound(payload.Span)) Interlocked.Exchange(ref watch.LastSoundTicks, now);
+        }
 
         link.Session.RemoteKeyedChanged += OnKeyed;
         link.Session.VoiceFrameReceived += OnVoice;
@@ -49,6 +73,7 @@ public sealed class RxActivity : IDisposable
         Watch? old;
         lock (_gate)
         {
+            if (_keySenders.Contains(node)) watch.KeyedAtTicks = KnownKeySender;
             _watches.TryGetValue(node, out old);
             _watches[node] = watch;
         }
@@ -82,24 +107,40 @@ public sealed class RxActivity : IDisposable
     }
 
     private static bool IsActive(Watch w, long now) =>
-        IsHeard(w.Keyed, Interlocked.Read(ref w.KeyedAtTicks), Interlocked.Read(ref w.LastVoiceTicks), now);
+        IsHeard(w.Keyed, Interlocked.Read(ref w.KeyedAtTicks), Interlocked.Read(ref w.LastVoiceTicks),
+            Interlocked.Read(ref w.LastSoundTicks), now);
 
     /// <summary>How long a KEY with no voice frames at all is believed. A node that keys carries voice continuously, so
     /// silence this long means the UNKEY was lost or never sent and the node must not stay lit forever.</summary>
     public static readonly TimeSpan KeyStale = TimeSpan.FromSeconds(3);
 
-    /// <summary>The single "is this node being heard" rule, shared with the Radio screen.</summary>
-    public static bool IsHeard(bool keyed, long keyedAtTicks, long lastVoiceTicks, long now)
+    /// <summary>True when a µ-law voice payload contains more than near-silence (peak above <see cref="SoundPeakThreshold"/>).</summary>
+    public static bool HasSound(ReadOnlySpan<byte> ulaw)
+    {
+        foreach (byte b in ulaw)
+        {
+            int s = G711Ulaw.DecodeSample(b);
+            if (s > SoundPeakThreshold || s < -SoundPeakThreshold) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// The single "is this node being heard" rule, shared with the Radio screen. <paramref name="lastVoiceTicks"/> is
+    /// the last voice frame of any kind (keeps a KEY alive through pauses); <paramref name="lastSoundTicks"/> the last
+    /// frame with sound (the only thing that lights a node that never sends KEY). <paramref name="keyedAtTicks"/> is
+    /// non-zero once the node is known to send KEY (<see cref="KnownKeySender"/> after a reconnect).
+    /// </summary>
+    public static bool IsHeard(bool keyed, long keyedAtTicks, long lastVoiceTicks, long lastSoundTicks, long now)
     {
         if (keyedAtTicks != 0)
         {
             // This node has sent a KEY frame, so it announces its transmissions and its UNKEY is believed. Voice frames
-            // after UNKEY (a hub relaying silence or noise) must not keep it lit. The voice rule below is only for nodes
-            // such as East Coast Reflector that send audio with no KEY at all.
+            // after UNKEY (a hub relaying silence or noise) must not keep it lit.
             if (!keyed) return false;
             return now - Math.Max(keyedAtTicks, lastVoiceTicks) < KeyStale.TotalMilliseconds;
         }
-        return lastVoiceTicks != 0 && now - lastVoiceTicks < VoiceHold.TotalMilliseconds;
+        return lastSoundTicks != 0 && now - lastSoundTicks < VoiceHold.TotalMilliseconds;
     }
 
     public void Dispose()

@@ -99,12 +99,17 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Per-link event hookups and receive meter; touched on the UI thread only.</summary>
     private readonly Dictionary<NodeLink, LinkWatch> _watches = [];
 
+    /// <summary>Nodes seen sending KEY, kept across reconnects (a fresh call has not seen its first KEY yet).</summary>
+    private readonly HashSet<string> _keySenders = [];
+
     private sealed class LinkWatch
     {
         public volatile float RxLevel;   // written on that link's playout thread
         public bool Keyed;               // from KEY/UNKEY control frames (UI thread)
         public long LastVoiceTicks;      // Environment.TickCount64 of the last voice frame (network thread)
-        public long KeyedAtTicks;        // when the last KEY arrived
+        public long LastSoundTicks;      // ...of the last voice frame with sound in it (RxActivity.HasSound)
+        public long KeyedAtTicks;        // when the last KEY arrived (RxActivity.KnownKeySender after a reconnect)
+        public bool LoggedVoiceOnly;     // diagnostic: "lit by voice without KEY" logged for this transmission
         public string Node = "";
         public string? LastLinkSummary;  // deduplicates periodic app_rpt "L " link-list frames
         public Action Detach = static () => { };
@@ -1446,9 +1451,16 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         string node = link.Target.NodeNumber;
         bool first = _watches.Count == 0;
         var watch = new LinkWatch { Node = node };
+        if (_keySenders.Contains(node)) watch.KeyedAtTicks = RxActivity.KnownKeySender;
 
-        // Some nodes send audio without (or before) a KEY control frame, so also treat voice frames as "receiving".
-        void OnVoice(ushort _, ReadOnlyMemory<byte> __) => System.Threading.Interlocked.Exchange(ref watch.LastVoiceTicks, Environment.TickCount64);
+        // Some nodes send audio without a KEY control frame, so voice frames with sound in them also count as
+        // "receiving" for those nodes. Silent frames (a hub streaming idle audio) only keep a KEY alive.
+        void OnVoice(ushort _, ReadOnlyMemory<byte> payload)
+        {
+            long now = Environment.TickCount64;
+            System.Threading.Interlocked.Exchange(ref watch.LastVoiceTicks, now);
+            if (RxActivity.HasSound(payload.Span)) System.Threading.Interlocked.Exchange(ref watch.LastSoundTicks, now);
+        }
 
         void OnState(Iax2SessionState s) => OnUi(() =>
         {
@@ -1460,7 +1472,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         {
             var item = LinkItems.FirstOrDefault(l => l.Node == node);
             watch.Keyed = keyed;
-            if (keyed) watch.KeyedAtTicks = Environment.TickCount64;
+            if (keyed) { watch.KeyedAtTicks = Environment.TickCount64; _keySenders.Add(node); }
             if (item != null) { item.IsReceiving = IsHeard(watch); item.NoteHeard(); }
             IsRemoteKeyed = LinkItems.Any(l => l.IsReceiving);
             LogActivity(_runtime.Connections.Count > 1
@@ -1588,7 +1600,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private int _tick;
 
     private static bool IsHeard(LinkWatch w) =>
-        RxActivity.IsHeard(w.Keyed, w.KeyedAtTicks, System.Threading.Interlocked.Read(ref w.LastVoiceTicks), Environment.TickCount64);
+        RxActivity.IsHeard(w.Keyed, w.KeyedAtTicks, System.Threading.Interlocked.Read(ref w.LastVoiceTicks),
+            System.Threading.Interlocked.Read(ref w.LastSoundTicks), Environment.TickCount64);
 
     private void OnUiTimerTick()
     {
@@ -1611,7 +1624,19 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             var li = LinkItems.FirstOrDefault(l => l.Node == w.Node);
             if (li == null || !li.IsConnected) continue;
             bool on = IsHeard(w);
-            if (li.IsReceiving != on) { li.IsReceiving = on; li.NoteHeard(); }
+            if (li.IsReceiving != on)
+            {
+                li.IsReceiving = on;
+                li.NoteHeard();
+                // Diagnostic for "false RX" reports: a node lit by voice frames alone (no KEY) is logged once per
+                // transmission, so a log shows which node it was and when.
+                if (on && !w.Keyed && w.KeyedAtTicks == 0 && !w.LoggedVoiceOnly)
+                {
+                    w.LoggedVoiceOnly = true;
+                    NodeX.Core.Diagnostics.DiagnosticLog.Default.Detail("rx", $"node {w.Node}: receiving by voice frames without KEY");
+                }
+                if (!on) w.LoggedVoiceOnly = false;
+            }
             anyRx |= on;
         }
         if (IsRemoteKeyed != anyRx) IsRemoteKeyed = anyRx;

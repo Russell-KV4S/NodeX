@@ -1,5 +1,11 @@
 # Change log
 
+## Unreleased: private card title, false-RX hardening
+
+- **Private link cards drop the host:** the linked-node card and top-bar chip now show `1993 · 310108` (or `Node 1993`) with the PRIVATE pill instead of `1993 @ ysf.alert-alabama.org · 310108` (owner request with a phone screenshot). The host is still in the log and the Private Nodes screen.
+- **False RX (owner report: occasional green on a node with nothing heard):** the log the owner sent has no KEY lines in that window, so any green there came from the "voice frames without KEY" rule. That rule lit a node on any voice frame, silent ones included, and every reconnect forgot that a hub sends KEY. Now only frames with sound count (`RxActivity.HasSound`, peak above about -50 dBFS), known KEY senders are remembered across reconnects, and Detailed logging writes `[rx] node N: receiving by voice frames without KEY` when a node lights without KEY. The exact node behind the report is not confirmed.
+- 780 Core tests (4 new in `RxActivityTests`) and 24 UI tests pass; solution builds. **Not verified on a phone.**
+
 ## 2026-11-20: 1.24 / code 26: bubble chart link on each AllStarLink node
 
 - New **"Bubble chart ↗"** link on every public node: linked-node cards (phone and desktop), Find-a-node results, and the favourite chip's right-click / long-press menu. It opens `https://stats.allstarlink.org/stats/<node>/networkMap` in the browser. That is the same "Bubble" network map the stats site's node list links to; checked live, it returns the chart image. Private links get no link, because they are not on the stats site.

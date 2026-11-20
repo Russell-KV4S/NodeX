@@ -103,7 +103,8 @@ public class PrivateNodesUiTests
 
         Assert.True(f.Vm.LinkItems[0].IsPrivate);
         Assert.False(f.Vm.LinkItems[0].HasBubbleChart);   // private nodes are not on the stats site
-        Assert.Contains("1999 @ 127.0.0.1", f.Vm.LinkItems[0].Title);
+        Assert.Equal("Node 1999", f.Vm.LinkItems[0].Title);   // host not shown on the card (owner, 2026-11-20)
+        Assert.DoesNotContain("127.0.0.1", f.Vm.LinkItems[0].ChipTitle);
         Assert.Contains("1999 @ 127.0.0.1", f.Vm.ConnectedNodeDisplay);
 
         // Trying to link public 1999 simultaneously is refused with a clear inline error.

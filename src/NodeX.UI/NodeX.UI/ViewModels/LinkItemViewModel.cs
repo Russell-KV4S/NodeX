@@ -170,9 +170,11 @@ public sealed partial class LinkItemViewModel : ObservableObject
         IsPrivate = c.IsPrivate;
         if (c.IsPrivate)
         {
+            // The card shows the node number and name with the PRIVATE pill; the host stays in the log and the Private
+            // Nodes screen (owner: not needed on the card).
             string label = c.PrivateName ?? "";
-            Title = label.Length > 0 ? $"{c.DisplayNode} · {label}" : c.DisplayNode;
-            ChipTitle = label.Length > 0 ? $"{c.DisplayNode} · {label}" : c.DisplayNode;
+            Title = label.Length > 0 ? $"{c.Node} · {label}" : $"Node {c.Node}";
+            ChipTitle = label.Length > 0 ? $"{c.Node} · {label}" : c.Node;
             IsFavorite = false;
             Details = $"Direct · port {c.PrivateAddress!.Port} · IAX user radio";
         }
