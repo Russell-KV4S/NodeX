@@ -1,6 +1,12 @@
-NodeX 1.24 adds a bubble chart link to every AllStarLink node.
+NodeX 1.25 lets you hear nodes over the car radio and stops muting nodes on its own.
 
-**What changed in 1.24**
+**What changed in 1.25**
+- **Hear nodes over the car radio (new option, off by default):** Settings → "Android Auto: hear nodes over the car radio". When the car is playing its own radio, satellite or another app, a node is played the way navigation prompts are: the car turns the radio down while someone talks and back up about 1.5 s after they stop. Muted nodes stay silent. When NodeX itself is playing in the car, nothing changes.
+- **Nothing is muted unless you press Mute:** car or Bluetooth Pause/Stop, navigation prompts, calls and other apps no longer mute your nodes, and Play no longer unmutes them. (Android Auto and some stereos send Pause on their own, which used to leave everything muted.) Node audio now keeps playing during a phone call in the car.
+- **Fewer false "receiving" lights:** silent audio from an idle hub no longer lights it green, and NodeX remembers which hubs announce their transmissions across reconnects.
+- **Private link cards** show the node number and name without the host name.
+
+**From 1.24**
 - **Bubble chart:** each public node now has a "Bubble chart ↗" link on its linked-node card, in Find a node results, and in a favourite's right-click / long-press menu. It opens the node's network map on stats.allstarlink.org in your browser. Private nodes don't have one, because they aren't on the stats site.
 
 **From 1.23: private nodes**
@@ -21,4 +27,4 @@ Downloads:
 
 **Switching from Google Play:** Play and sideload signatures differ. Export your settings before uninstalling the Play build; you may need to re-enter the node password.
 
-**Not yet verified:** the bubble chart link is build- and unit-tested only and hasn't been tapped on a phone yet. Private nodes are build- and unit-tested only. They haven't yet been dialled against a live private server, and share links, the phone screens and Android Auto haven't been tried on a device or in a car. IPv6 addresses are accepted but can't be dialled yet. macOS/Linux share-link registration is not built.
+**Not yet verified:** the car radio option and the mute change haven't been tried in a car; the radio option assumes the car tells the phone it has switched to the radio, and how it sounds depends on the car. The false-RX change hasn't been checked on a phone. The bubble chart link is build- and unit-tested only and hasn't been tapped on a phone yet. Private nodes are build- and unit-tested only. They haven't yet been dialled against a live private server, and share links, the phone screens and Android Auto haven't been tried on a device or in a car. IPv6 addresses are accepted but can't be dialled yet. macOS/Linux share-link registration is not built.
