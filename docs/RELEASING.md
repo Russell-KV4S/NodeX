@@ -24,7 +24,7 @@ dotnet publish src/NodeX.UI/NodeX.UI.Android -c Release -p:AndroidPackageFormat=
 dotnet publish src/NodeX.UI/NodeX.UI.Android -c Release -p:PlayStore=true
 ```
 
-Bump `NodeXVersion` and `NodeXVersionCode` in `Directory.Build.props` before either. Android and desktop consume these values; Play needs the versionCode to rise on every upload. Update `docs/RELEASE_NOTES.md` for each release. iOS versioning remains separate while its release is on hold.
+Bump `NodeXVersion` and `NodeXVersionCode` in `Directory.Build.props` before either. Android and desktop consume these values; Play needs the versionCode to rise on every upload. Update `docs/RELEASE_NOTES.md` for each release. While Play is held back, also add each GitHub release's changes to [`docs/PLAY_RELEASE_NOTES_PENDING.md`](PLAY_RELEASE_NOTES_PENDING.md) (Play wording, 500-character limit) so the next Play upload's notes are ready. iOS versioning remains separate while its release is on hold.
 
 Windows, Linux and macOS builds are always the full edition.
 
