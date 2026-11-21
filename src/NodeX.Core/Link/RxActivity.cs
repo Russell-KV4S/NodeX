@@ -13,10 +13,11 @@ public sealed class RxActivity : IDisposable
     public static readonly TimeSpan VoiceHold = TimeSpan.FromMilliseconds(500);
 
     /// <summary>
-    /// Peak sample level (16-bit linear, about -50 dBFS) a voice frame must exceed to count as sound. µ-law idle/silence
-    /// decodes to a handful of counts; speech, tones and courtesy beeps are far above this.
+    /// RMS level (dBFS) a voice frame must exceed to count as sound. Busy hubs stream low hiss/noise between overs
+    /// that a -50 dBFS peak test let through (2026-11-21: three hubs lit with nothing audible); ordinary ASL speech
+    /// sits around -30 to -15 dBFS RMS and courtesy tones higher, so -40 dBFS separates them with margin.
     /// </summary>
-    public const int SoundPeakThreshold = 100;
+    public const double SoundRmsDbfs = -40.0;
 
     private sealed class Watch
     {
@@ -114,15 +115,21 @@ public sealed class RxActivity : IDisposable
     /// silence this long means the UNKEY was lost or never sent and the node must not stay lit forever.</summary>
     public static readonly TimeSpan KeyStale = TimeSpan.FromSeconds(3);
 
-    /// <summary>True when a µ-law voice payload contains more than near-silence (peak above <see cref="SoundPeakThreshold"/>).</summary>
-    public static bool HasSound(ReadOnlySpan<byte> ulaw)
+    /// <summary>True when a µ-law voice payload is louder than background noise (RMS above <see cref="SoundRmsDbfs"/>).</summary>
+    public static bool HasSound(ReadOnlySpan<byte> ulaw) => RmsDbfs(ulaw) > SoundRmsDbfs;
+
+    /// <summary>RMS level of a µ-law payload in dBFS (16-bit full scale); negative infinity for silence or no samples.</summary>
+    public static double RmsDbfs(ReadOnlySpan<byte> ulaw)
     {
+        if (ulaw.IsEmpty) return double.NegativeInfinity;
+        double sum = 0;
         foreach (byte b in ulaw)
         {
             int s = G711Ulaw.DecodeSample(b);
-            if (s > SoundPeakThreshold || s < -SoundPeakThreshold) return true;
+            sum += (double)s * s;
         }
-        return false;
+        double rms = Math.Sqrt(sum / ulaw.Length);
+        return rms <= 0 ? double.NegativeInfinity : 20 * Math.Log10(rms / 32768.0);
     }
 
     /// <summary>

@@ -110,6 +110,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         public long LastSoundTicks;      // ...of the last voice frame with sound in it (RxActivity.HasSound)
         public long KeyedAtTicks;        // when the last KEY arrived (RxActivity.KnownKeySender after a reconnect)
         public bool LoggedVoiceOnly;     // diagnostic: "lit by voice without KEY" logged for this transmission
+        public double LastSoundDbfs;     // RMS level of the last frame with sound (diagnostic only)
         public string Node = "";
         public string? LastLinkSummary;  // deduplicates periodic app_rpt "L " link-list frames
         public Action Detach = static () => { };
@@ -1459,7 +1460,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         {
             long now = Environment.TickCount64;
             System.Threading.Interlocked.Exchange(ref watch.LastVoiceTicks, now);
-            if (RxActivity.HasSound(payload.Span)) System.Threading.Interlocked.Exchange(ref watch.LastSoundTicks, now);
+            double level = RxActivity.RmsDbfs(payload.Span);
+            if (level > RxActivity.SoundRmsDbfs)
+            {
+                watch.LastSoundDbfs = level;
+                System.Threading.Interlocked.Exchange(ref watch.LastSoundTicks, now);
+            }
         }
 
         void OnState(Iax2SessionState s) => OnUi(() =>
@@ -1629,11 +1635,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 li.IsReceiving = on;
                 li.NoteHeard();
                 // Diagnostic for "false RX" reports: a node lit by voice frames alone (no KEY) is logged once per
-                // transmission, so a log shows which node it was and when.
+                // transmission with the frame level, so a log shows which node it was, when, and how loud. Info level:
+                // false-RX logs arrive from users who never turned on Detailed logging.
                 if (on && !w.Keyed && w.KeyedAtTicks == 0 && !w.LoggedVoiceOnly)
                 {
                     w.LoggedVoiceOnly = true;
-                    NodeX.Core.Diagnostics.DiagnosticLog.Default.Detail("rx", $"node {w.Node}: receiving by voice frames without KEY");
+                    NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("rx",
+                        $"node {w.Node}: receiving by voice frames without KEY (level {w.LastSoundDbfs:F0} dBFS)");
                 }
                 if (!on) w.LoggedVoiceOnly = false;
             }

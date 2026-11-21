@@ -66,6 +66,28 @@ public class RxActivityTests
     }
 
     [Fact]
+    public void HasSound_ignores_hub_background_noise_that_a_peak_test_let_through()
+    {
+        // 2026-11-21: hubs streaming low noise between overs lit "RX" with nothing audible. Noise peaking at 400 counts
+        // (-38 dBFS peak, far above the old 100-count peak threshold) is about -46 dBFS RMS: not sound.
+        var noise = new byte[160];
+        var rng = new Random(7);
+        for (int i = 0; i < noise.Length; i++)
+            noise[i] = G711Ulaw.EncodeSample((short)(rng.Next(-400, 401) * (i % 3 == 0 ? 1 : 0.5)));
+        Assert.True(RxActivity.RmsDbfs(noise) < RxActivity.SoundRmsDbfs);
+        Assert.False(RxActivity.HasSound(noise));
+
+        // Quiet speech around -30 dBFS RMS still counts.
+        var speech = new byte[160];
+        for (int i = 0; i < speech.Length; i++)
+            speech[i] = G711Ulaw.EncodeSample((short)(Math.Sin(i * 2 * Math.PI / 20) * 1460));
+        Assert.InRange(RxActivity.RmsDbfs(speech), -31.5, -28.5);
+        Assert.True(RxActivity.HasSound(speech));
+
+        Assert.Equal(double.NegativeInfinity, RxActivity.RmsDbfs([0xFF, 0x7F]));
+    }
+
+    [Fact]
     public async Task Silent_voice_frames_do_not_light_a_node_but_sound_does()
     {
         long clock = 1000;
