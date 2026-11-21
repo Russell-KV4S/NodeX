@@ -18,8 +18,9 @@ It is built for a **portable node**: register once, link out to other nodes, and
 
 ## Features
 
-- **Multi-node linking:** register once with AllStarLink and hold up to **8 simultaneous outbound links** with live mixed audio, per-node mute, and a single explicit transmit target
-- **Android Auto integration:** browse linked nodes and favourites, switch listen/transmit focus, mute, and optionally transmit from the car screen or steering wheel (full GitHub edition)
+- **Always on, in the background:** on Android a foreground service keeps your links alive with the screen off or the app in the background, and NodeX keeps retrying until *you* disconnect, through Wi-Fi/cellular switches, dropped calls and dead spots, so the node is there when you want it
+- **Multiple nodes at once:** register once with AllStarLink and hold up to **8 simultaneous outbound links** with live mixed audio, per-node mute, and a single explicit transmit target
+- **Android Auto:** a native car media app to browse linked nodes and favourites, switch listen/transmit focus, mute, and (full GitHub edition) transmit from the car screen or steering wheel
 - Find-a-node search, favourites with custom labels, and a DTMF keypad for node function codes (sent to the transmit node; Link/Unlink use the Connect box's node)
 - Push-to-talk: on-screen (momentary or toggle), Bluetooth LE button with a "Learn" wizard, and headset media key
 - Auto-reconnect and seamless Wi-Fi ↔ cellular network handoff
