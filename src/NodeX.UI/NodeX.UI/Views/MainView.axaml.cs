@@ -214,13 +214,44 @@ public partial class MainView : UserControl
     }
 
     private bool _spacePttDown;
+    private WindowBase? _window;
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        _window = TopLevel.GetTopLevel(this) as WindowBase;
+        if (_window != null) _window.Deactivated += OnWindowDeactivated;
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        if (_window != null) _window.Deactivated -= OnWindowDeactivated;
+        _window = null;
+        ReleaseSpacePtt();
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    /// <summary>
+    /// Alt+Tab (or any switch away) while Space is held: the key-up goes to the other window, so release here.
+    /// Otherwise the transmitter stayed keyed until the time-out timer (2026-11-21 review).
+    /// </summary>
+    private void OnWindowDeactivated(object? sender, EventArgs e) => ReleaseSpacePtt();
+
+    private void ReleaseSpacePtt()
+    {
+        if (!_spacePttDown) return;
+        _spacePttDown = false;
+        if (DataContext is MainViewModel vm) _ = vm.HandleSpacebarPttAsync(false);
+    }
 
     private void OnViewKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Space || e.Source is TextBox or Button) return;
+        // Space belongs to the focused control when it has a use for it (typing, pressing, opening a list).
+        if (e.Key != Key.Space || e.Source is TextBox or Button or ComboBox or ComboBoxItem or ListBoxItem or Slider) return;
         if (_spacePttDown) { e.Handled = true; return; }
         if (DataContext is MainViewModel vm)
         {
+            if (vm.IsSettingsOpen || vm.IsSearchOpen || vm.IsPrivateNodesOpen) return;   // a panel is in front
             _spacePttDown = true;
             e.Handled = true;
             _ = vm.HandleSpacebarPttAsync(true);

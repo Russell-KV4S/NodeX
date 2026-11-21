@@ -24,11 +24,32 @@ public static class CarSession
         get { lock (Gate) return _connected || _selected; }
     }
 
-    /// <summary>Android Auto is connected to a car screen.</summary>
+    /// <summary>Raised (on any thread) when Android Auto goes from connected to disconnected.</summary>
+    public static event Action? Disconnected;
+
+    /// <summary>
+    /// Android Auto is connected to a car screen. Going from connected to disconnected also ends the car selection:
+    /// otherwise <see cref="Active"/> stayed true (Selected kept it up), <see cref="Changed"/> never fired and car mode,
+    /// car push-to-talk and car-radio mixing outlived the car (2026-11-21 review).
+    /// </summary>
     public static bool Connected
     {
         get { lock (Gate) return _connected; }
-        set => Set(ref _connected, value);
+        set
+        {
+            bool unplugged;
+            bool changed;
+            lock (Gate)
+            {
+                bool before = _connected || _selected;
+                unplugged = _connected && !value;
+                _connected = value;
+                if (unplugged) _selected = false;
+                changed = before != (_connected || _selected);
+            }
+            if (unplugged) Raise(Disconnected, "disconnect");
+            if (changed) Raise(Changed, "change");
+        }
     }
 
     /// <summary>The car's media session is playing a node.</summary>
@@ -47,9 +68,13 @@ public static class CarSession
             field = value;
             changed = before != (_connected || _selected);
         }
-        if (!changed) return;
-        try { Changed?.Invoke(); }
-        catch (Exception ex) { global::Android.Util.Log.Warn("NodeX", $"Car session change failed: {ex.Message}"); }
+        if (changed) Raise(Changed, "change");
+    }
+
+    private static void Raise(Action? handler, string what)
+    {
+        try { handler?.Invoke(); }
+        catch (Exception ex) { global::Android.Util.Log.Warn("NodeX", $"Car session {what} failed: {ex.Message}"); }
     }
 
     private static volatile bool _hasCarAudio;

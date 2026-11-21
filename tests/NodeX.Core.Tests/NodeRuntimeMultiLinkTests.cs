@@ -335,7 +335,9 @@ public class NodeRuntimeMultiLinkTests : IDisposable
     {
         var config = new NodeConfigService(new JsonFileSettingsStore(_settingsPath), _secrets);
         await config.SaveAsync(new NodeSettings { NodeNumber = "55553" }, "pw");
-        var resolver = new NodeResolution(new HttpClient(new SlowDirectoryHandler(_remotes, waitAsync)))
+        // DNS fallback is faked as "no such host": a failed directory lookup must never reach a real ASL node.
+        var resolver = new NodeResolution(new HttpClient(new SlowDirectoryHandler(_remotes, waitAsync)),
+            dnsResolver: (_, _) => Task.FromResult(Array.Empty<IPAddress>()))
         {
             PortProbe = null,
             DnsPort = null
@@ -455,6 +457,41 @@ public class NodeRuntimeMultiLinkTests : IDisposable
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => second.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Empty(rt.Connections);
         Assert.Empty(rt.Links);
+    }
+
+    [Fact]
+    public async Task AFailedDial_DoesNotMoveTransmitToTheSurvivingNode()
+    {
+        // 2000 is requested first (so it owns transmit) but its lookup is held, then fails; 3000 connects listen-only
+        // meanwhile. The failure is not a user hang-up, so 3000 must not silently become the transmit node.
+        var lookupGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var rt = await CreateWithSlowResolveAsync(async (node, ct) =>
+        {
+            if (node != "2000") return;
+            await lookupGate.Task.WaitAsync(ct);
+            throw new HttpRequestException("directory unreachable");
+        });
+        var notices = new List<string>();
+        rt.Notice += n => { lock (notices) notices.Add(n); };
+
+        var first = rt.ConnectAsync("2000");
+        await Wait.UntilAsync(() => rt.Connections.Count == 1);
+        Assert.Equal("2000", rt.TransmitNode);
+
+        await rt.ConnectAsync("3000");
+        await _remotes["3000"].AcceptCallAsync();
+        await Wait.UntilAsync(() => rt.Connections.FirstOrDefault(c => c.Node == "3000")?.Link?.Session.State
+                                    == Iax2SessionState.Connected);
+        var b = Conn(rt, "3000").Link!;
+        Assert.False(b.Ptt.TransmitEnabled);
+
+        lookupGate.SetResult();
+        try { await first.WaitAsync(TimeSpan.FromSeconds(5)); } catch (Exception) { /* the failure itself is reported */ }
+        await Wait.UntilAsync(() => rt.Connections.Count == 1 && rt.Connections[0].Node == "3000");
+
+        Assert.Null(rt.TransmitNode);
+        Assert.False(b.Ptt.TransmitEnabled);
+        lock (notices) Assert.Contains(notices, n => n.Contains("Choose a node to transmit to"));
     }
 
     [Fact]

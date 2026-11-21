@@ -61,6 +61,28 @@ public class NodePttControllerTests
     }
 
     [Fact]
+    public async Task AKeyThatFailsToSend_IsRolledBack_AndNeverShownOnAir()
+    {
+        // The session's KEY send throws (here: a disposed session that still reports Connected). The controller must
+        // not stay "on air" with the time-out timer running while nothing goes out.
+        var s = NewSession();
+        s.Dispose();
+        s.SetStateForTests(Iax2SessionState.Connected);
+        using var c = new NodePttController(s);
+        var states = new List<bool>();
+        var warnings = new List<string>();
+        c.PttStateChanged += (on, _) => states.Add(on);
+        c.WarningLogged += warnings.Add;
+
+        await c.SetPttStateAsync(true, PttSource.UiButton);
+
+        Assert.False(s.IsTransmitting);
+        Assert.False(c.IsPttActive);
+        Assert.Empty(states);
+        Assert.Contains(warnings, w => w.Contains("did not reach the link"));
+    }
+
+    [Fact]
     public async Task Unkey_IsNeverRefused_EvenAfterTheCallHasEnded()
     {
         using var s = NewSession();

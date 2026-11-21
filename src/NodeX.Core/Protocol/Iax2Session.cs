@@ -88,7 +88,7 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
     /// </summary>
     public bool SendNewKeyOnAccept { get; set; } = true;
     private bool _newKeySent;
-    private bool _voiceFormatAnnounced;
+    private volatile bool _voiceFormatAnnounced;
     private uint _lastVoiceTimestamp;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private readonly Iax2RetransmitQueue _retransmit = new();
@@ -135,7 +135,8 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
     internal static bool IsDisconnectText(string text) =>
         text.AsSpan().Trim("\0 \r\n\t").SequenceEqual(DisconnectText);
 
-    public bool IsTransmitting { get; private set; }
+    public bool IsTransmitting { get => _isTransmitting; private set => _isTransmitting = value; }
+    private volatile bool _isTransmitting;
 
     /// <inheritdoc/>
     public event Action<bool>? TransmittingChanged;
@@ -441,23 +442,25 @@ public sealed class Iax2Session : IAsyncDisposable, IDisposable, NodeX.Core.Audi
     {
         if (State != Iax2SessionState.Connected || IsTransmitting == transmit) return;
 
-        IsTransmitting = transmit;
-        try { TransmittingChanged?.Invoke(transmit); } catch (Exception) { /* a listener must not break keying */ }
         if (transmit)
         {
-            // Each new over begins with a full voice frame so the remote learns the format/timestamp.
+            // Order matters (spec §5.5, 2026-11-21 review): the KEY goes out before any voice of this over, and the
+            // over's first voice frame is a full frame. IsTransmitting gates SendAudioFrameAsync, so it is set only
+            // after the KEY has been queued; if sending the KEY fails, the session never claims to be transmitting.
             _voiceFormatAnnounced = false;
+            await SendFullFrameAsync(Iax2Protocol.FrameType.Control, (byte)Iax2Protocol.ControlSubclass.AstControlKey,
+                ReadOnlyMemory<byte>.Empty, _cts.Token);
+            IsTransmitting = true;
+            try { TransmittingChanged?.Invoke(true); } catch (Exception) { /* a listener must not break keying */ }
         }
-
-        byte subclass = transmit
-            ? (byte)Iax2Protocol.ControlSubclass.AstControlKey
-            : (byte)Iax2Protocol.ControlSubclass.AstControlUnkey;
-
-        await SendFullFrameAsync(
-            Iax2Protocol.FrameType.Control,
-            subclass,
-            ReadOnlyMemory<byte>.Empty,
-            _cts.Token);
+        else
+        {
+            // Stop the voice first so nothing of this over follows the UNKEY.
+            IsTransmitting = false;
+            try { TransmittingChanged?.Invoke(false); } catch (Exception) { /* a listener must not break keying */ }
+            await SendFullFrameAsync(Iax2Protocol.FrameType.Control, (byte)Iax2Protocol.ControlSubclass.AstControlUnkey,
+                ReadOnlyMemory<byte>.Empty, _cts.Token);
+        }
     }
 
     /// <summary>

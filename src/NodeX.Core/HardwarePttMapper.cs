@@ -53,7 +53,7 @@ public sealed class HardwarePttMapper
     /// <summary>The next ordinary key press is captured instead of being delivered.</summary>
     public void BeginLearn()
     {
-        lock (_gate) _learning = true;
+        lock (_gate) { _learning = true; _swallowUpFor = 0; }
         LearningChanged?.Invoke();
     }
 
@@ -85,14 +85,17 @@ public sealed class HardwarePttMapper
                 learned = true;
                 consume = true;
             }
-            else if (!down && keyCode == _swallowUpFor && _swallowUpFor != 0)
+            else if (!down && keyCode == _swallowUpFor && _swallowUpFor != 0 && !(_isDown && keyCode == _mapped))
             {
+                // The release of the key we just learned. Never this branch while that key is keying PTT: a stale
+                // swallow (its release was missed during Learn) must not eat a PTT release and leave TX on air.
                 _swallowUpFor = 0;
-                consume = true;               // the release of the key we just learned
+                consume = true;
             }
             else if (_mapped != 0 && keyCode == _mapped)
             {
                 consume = true;
+                if (down && keyCode == _swallowUpFor) _swallowUpFor = 0;   // the learned release was missed
                 if (!isRepeat)
                 {
                     if (down && !_isDown) { _isDown = true; press = true; }

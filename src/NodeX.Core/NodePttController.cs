@@ -250,6 +250,21 @@ public sealed class NodePttController : IAsyncDisposable, IDisposable
                 WarningLogged?.Invoke($"Failed to send IAX2 PTT control frame: {ex.Message}");
             }
 
+            // A key that did not take (the KEY failed to send, or the call ended in between) must not leave the app
+            // showing "on air" with the time-out timer running while nothing goes out (2026-11-21 review).
+            if (key && !_session.IsTransmitting)
+            {
+                lock (_stateLock)
+                {
+                    IsPttActive = false;
+                    CurrentSource = PttSource.None;
+                    _txDurationStopwatch.Stop();
+                    StopTotMonitor();
+                }
+                WarningLogged?.Invoke("Not transmitting. The key did not reach the link.");
+                return;
+            }
+
             // Raised inside the gate so listeners always see key and unkey in the order they happened.
             PttStateChanged?.Invoke(key, source);
         }

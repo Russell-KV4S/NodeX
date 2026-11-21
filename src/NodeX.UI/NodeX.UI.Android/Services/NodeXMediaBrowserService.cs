@@ -60,6 +60,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
     private const int ContentStyleList = 1;
 
     private Action? _carChanged;
+    private Action? _carDisconnected;
     private System.Threading.CancellationTokenSource? _carKeyLimit;  // ends a car transmission that runs too long
     private readonly RxActivity _rx = new();
     private System.Threading.Timer? _rxTimer;
@@ -111,6 +112,18 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         };
         CarSession.Changed += _carChanged;
 
+        // Unplugging the car must release car push-to-talk at once and end the car session, even though Android may
+        // keep this service bound (OnDestroy does not run). Nothing is muted or disconnected.
+        _carDisconnected = () =>
+        {
+            NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("car", "car disconnected: car transmission released, car session ended");
+            _carKeyLimit?.Cancel();
+            _carKeyLimit = null;
+            EndCarSession();
+            PublishState();
+        };
+        CarSession.Disconnected += _carDisconnected;
+
         // A link that was already up on the phone is shown straight away, so Talk and the wheel buttons have a node
         // to act on without waiting for the next change.
         OnRuntimeChanged();
@@ -129,6 +142,8 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         _rx.Dispose();
         if (_carChanged != null) CarSession.Changed -= _carChanged;
         _carChanged = null;
+        if (_carDisconnected != null) CarSession.Disconnected -= _carDisconnected;
+        _carDisconnected = null;
         _carKeyLimit?.Cancel();
         _carKeyLimit = null;
 

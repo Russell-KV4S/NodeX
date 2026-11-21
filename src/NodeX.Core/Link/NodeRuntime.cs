@@ -744,16 +744,16 @@ public sealed class NodeRuntime : IAsyncDisposable
                         StartReconnect(c, immediate: false);
                         return null;
                     }
-                    RemoveConnection(c, byUser: true, $"cannot find host {priv.Host}");
+                    RemoveConnection(c, byUser: false, $"cannot find host {priv.Host}");
                     return null;
                 }
-                RemoveConnection(c, byUser: true, "its address could not be looked up");
+                RemoveConnection(c, byUser: false, "its address could not be looked up");
             }
             return info;
         }
         catch (Exception ex)
         {
-            RemoveConnection(c, byUser: true, $"the connect did not start: {ex.GetType().Name}: {ex.Message}");
+            RemoveConnection(c, byUser: false, $"the connect did not start: {ex.GetType().Name}: {ex.Message}");
             throw;
         }
     }

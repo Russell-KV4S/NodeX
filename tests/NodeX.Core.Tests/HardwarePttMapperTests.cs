@@ -97,6 +97,21 @@ public class HardwarePttMapperTests
     }
 
     [Fact]
+    public void AMissedLearnRelease_NeverSwallowsAPttRelease()
+    {
+        // 2026-11-21 review: the learned key's release was missed (app paused mid-Learn), so a stale "swallow the
+        // next release of K" survived. Mapping K and keying with it must still unkey on release.
+        var (m, presses) = Create(mapped: 0);
+        m.BeginLearn();
+        Assert.True(m.OnKey(VolumeDown, true, false));    // learned; its release never arrives
+        m.MappedKey = VolumeDown;
+
+        Assert.True(m.OnKey(VolumeDown, true, false));    // PTT down
+        Assert.True(m.OnKey(VolumeDown, false, false));   // PTT up: must be reported, not swallowed
+        Assert.Equal([true, false], presses);
+    }
+
+    [Fact]
     public void CancelLearn_StopsCapturing()
     {
         var m = new HardwarePttMapper();
