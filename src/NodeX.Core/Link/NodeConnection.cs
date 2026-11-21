@@ -76,6 +76,13 @@ public sealed class NodeConnection
     internal CancellationTokenSource? ReconnectCts;
     internal Task ReconnectTask = Task.CompletedTask;
 
+    /// <summary>
+    /// The connect in progress for this node (first dial or user redial), or null. A second request for the same
+    /// node while one is running (double tap, phone and car together) joins it instead of starting a second call
+    /// that Disconnect all could not see (2026-11-21 review). Guarded by the runtime's connection lock.
+    /// </summary>
+    internal Task<NodeInfo?>? PendingConnect;
+
     /// <summary>Clears <see cref="Link"/> only if it is still <paramref name="link"/>.</summary>
     internal bool TryClearLink(NodeLink link) =>
         ReferenceEquals(Interlocked.CompareExchange(ref _link, null, link), link);

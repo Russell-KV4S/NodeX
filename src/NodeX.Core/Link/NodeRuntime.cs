@@ -343,6 +343,8 @@ public sealed class NodeRuntime : IAsyncDisposable
             var previous = Config;
             Config = cfg;
             Log.Detailed = cfg.Settings.DetailedLogging;
+            if (previous.Settings.AutoReconnect && !cfg.Settings.AutoReconnect)
+                _ = Task.Run(StopRetriesAfterAutoReconnectOffAsync);   // outside the gate: a dial may need it
 
             // Changing something unrelated to registration (a favourite, the PTT mode...) must not drop and
             // redo the registration.
@@ -365,6 +367,23 @@ public sealed class NodeRuntime : IAsyncDisposable
         {
             _gate.Release();
             PublishBackground();   // completeness / "register on startup" may have changed
+        }
+    }
+
+    /// <summary>
+    /// Auto-reconnect was just turned off: every node that is only waiting to be redialled is stopped and dropped at
+    /// once (2026-11-21 review: a running loop used to dial again). Live calls are untouched.
+    /// </summary>
+    private async Task StopRetriesAfterAutoReconnectOffAsync()
+    {
+        foreach (var c in SnapshotConnections().Where(IsReconnectRunning))
+        {
+            await StopReconnectAsync(c);
+            if (c.Link == null && !Config.Settings.AutoReconnect)
+            {
+                Notice?.Invoke($"Auto-reconnect is off, so NodeX stopped reconnecting to node {c.DisplayNode}.");
+                RemoveConnection(c, byUser: false, "auto-reconnect was turned off while reconnecting");
+            }
         }
     }
 
@@ -683,6 +702,8 @@ public sealed class NodeRuntime : IAsyncDisposable
         string targetNode = address.Node;
         NodeConnection? existing;
         NodeConnection c;
+        Task<NodeInfo?>? joinPending = null;
+        var mine = new TaskCompletionSource<NodeInfo?>(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_connLock)
         {
             existing = _connections.FirstOrDefault(x => x.Node == targetNode);
@@ -704,16 +725,61 @@ public sealed class NodeRuntime : IAsyncDisposable
             }
 
             c = existing ?? new NodeConnection(targetNode, address.IsPrivate ? address : null, privateName);
-            if (existing != null && !string.IsNullOrWhiteSpace(privateName))
-                c.PrivateName = privateName.Trim();
-            if (existing == null)
+            if (existing?.PendingConnect is { IsCompleted: false } running)
             {
-                _connections.Add(c);
-                if (_connections.Count == 1) _transmitNode = targetNode;   // the only link is where you transmit
+                joinPending = running;                    // already being connected: join that attempt
+            }
+            else
+            {
+                c.PendingConnect = mine.Task;
+                if (existing != null && !string.IsNullOrWhiteSpace(privateName))
+                    c.PrivateName = privateName.Trim();
+                if (existing == null)
+                {
+                    _connections.Add(c);
+                    if (_connections.Count == 1) _transmitNode = targetNode;   // the only link is where you transmit
+                }
             }
         }
 
-        if (existing != null)
+        if (joinPending != null)
+        {
+            Log.Detail("dial", $"node {c.DisplayNode}: connect already in progress; joining it");
+            return await joinPending.WaitAsync(cancellationToken);
+        }
+
+        // Nobody may be waiting on this attempt; observe a failure so it is not reported as unobserved.
+        _ = mine.Task.ContinueWith(static t => _ = t.Exception, CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        try
+        {
+            var result = await ConnectOwnedAsync(c, existing != null, cancellationToken);
+            mine.TrySetResult(result);
+            return result;
+        }
+        catch (OperationCanceledException ex)
+        {
+            mine.TrySetCanceled(ex.CancellationToken);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            mine.TrySetException(ex);
+            throw;
+        }
+        finally
+        {
+            lock (_connLock)
+            {
+                if (ReferenceEquals(c.PendingConnect, mine.Task)) c.PendingConnect = null;
+            }
+        }
+    }
+
+    /// <summary>The connect that owns <paramref name="c"/>'s dial (see <see cref="NodeConnection.PendingConnect"/>).</summary>
+    private async Task<NodeInfo?> ConnectOwnedAsync(NodeConnection c, bool redial, CancellationToken cancellationToken)
+    {
+        if (redial)
         {
             // Redial just this node: stop its recovery and end its call, keeping its transmit/mute choices.
             await StopReconnectAsync(c);
@@ -736,18 +802,20 @@ public sealed class NodeRuntime : IAsyncDisposable
             var info = await DialAsync(c, linked.Token);
             if (info == null)
             {
-                if (c.PrivateAddress is { } priv)
+                // Public or private: with auto-reconnect on, a node that cannot be found yet is kept and retried until
+                // the user disconnects it (spec 4.6 "retry until you disconnect"; the public case used to drop it).
+                string what = c.PrivateAddress is { } priv ? $"Cannot find host {priv.Host}." : $"Cannot find node {c.Node}.";
+                if (c.Wanted && Config.Settings.AutoReconnect)
                 {
-                    ErrorOccurred?.Invoke($"Cannot find host {priv.Host}.");
-                    if (c.Wanted && Config.Settings.AutoReconnect)
-                    {
-                        StartReconnect(c, immediate: false);
-                        return null;
-                    }
-                    RemoveConnection(c, byUser: false, $"cannot find host {priv.Host}");
+                    ErrorOccurred?.Invoke($"{what} NodeX will keep trying until you disconnect it.");
+                    StartReconnect(c, immediate: false);
                     return null;
                 }
-                RemoveConnection(c, byUser: false, "its address could not be looked up");
+                ErrorOccurred?.Invoke(what);
+                RemoveConnection(c, byUser: false, c.PrivateAddress is { } p
+                    ? $"cannot find host {p.Host}"
+                    : "its address could not be looked up");
+                return null;
             }
             return info;
         }
@@ -874,7 +942,9 @@ public sealed class NodeRuntime : IAsyncDisposable
         var link = c.Link;
         const string reason = "hung up from this device (Disconnect, the car screen or the notification)";
         if (link != null) await EndLinkAsync(c, link, transient: false, byUser: true, reason);
-        else RemoveConnection(c, byUser: true, reason);
+        // Always: if a transient teardown (network change, link loss) cleared the link first, EndLinkAsync above did
+        // nothing and the node stayed listed with no call, holding a slot (2026-11-21 review). Idempotent.
+        RemoveConnection(c, byUser: true, reason);
     }
 
     // ----- transmit target, mute -----
@@ -1271,13 +1341,30 @@ public sealed class NodeRuntime : IAsyncDisposable
                     await WaitAsync(TimeSpan.FromSeconds(5), ct);
                 }
 
+                if (!Config.Settings.AutoReconnect)
+                {
+                    // Turned off while this loop was waiting: never dial again on our own.
+                    Notice?.Invoke($"Auto-reconnect is off, so NodeX stopped reconnecting to node {target}.");
+                    RemoveConnection(c, byUser: false, "auto-reconnect was turned off while reconnecting");
+                    return;
+                }
+
                 attempt++;
                 PublishReconnect(c, new(true, attempt, null, $"Reconnecting to node {target} (attempt {attempt})…"));
 
                 var attemptClock = Stopwatch.StartNew();
                 Log.Detail("reconnect", $"node {target}: attempt {attempt} starting (delay was {delay.TotalSeconds:0.0} s)");
-                bool succeeded = await TryReconnectOnceAsync(c, ct);
-                Log.Info("reconnect", $"node {target}: attempt {attempt} {(succeeded ? "succeeded" : "failed")} after {attemptClock.ElapsedMilliseconds} ms");
+                var outcome = await TryReconnectOnceAsync(c, ct);
+                bool succeeded = outcome == AttemptOutcome.Connected;
+                Log.Info("reconnect", $"node {target}: attempt {attempt} {outcome.ToString().ToLowerInvariant()} after {attemptClock.ElapsedMilliseconds} ms");
+
+                if (outcome == AttemptOutcome.Rejected)
+                {
+                    // An explicit REJECT is final (spec 4.6), also during recovery: retrying it forever helps nobody.
+                    ErrorOccurred?.Invoke($"Node {target} rejected the connection, so NodeX has stopped reconnecting.");
+                    RemoveConnection(c, byUser: false, "the node rejected the reconnect");
+                    return;
+                }
 
                 if (succeeded)
                 {
@@ -1337,8 +1424,10 @@ public sealed class NodeRuntime : IAsyncDisposable
             : $"Reconnected to node {c.DisplayNode} after {attempt} attempts.");
     }
 
-    /// <summary>One dial attempt. True only when the call reaches Connected within the policy's timeout.</summary>
-    private async Task<bool> TryReconnectOnceAsync(NodeConnection c, CancellationToken ct)
+    private enum AttemptOutcome { Connected, Failed, Rejected }
+
+    /// <summary>One dial attempt. Connected only when the call reaches Connected within the policy's timeout.</summary>
+    private async Task<AttemptOutcome> TryReconnectOnceAsync(NodeConnection c, CancellationToken ct)
     {
         NodeInfo? info;
         try
@@ -1353,7 +1442,7 @@ public sealed class NodeRuntime : IAsyncDisposable
         catch (Exception ex)
         {
             ErrorOccurred?.Invoke($"Reconnect attempt failed: {ex.Message}");
-            return false;
+            return AttemptOutcome.Failed;
         }
 
         if (info == null)
@@ -1361,11 +1450,11 @@ public sealed class NodeRuntime : IAsyncDisposable
             ErrorOccurred?.Invoke(c.PrivateAddress is { } priv
                 ? $"Cannot find host {priv.Host}; will retry."
                 : $"Could not resolve node {c.Node}; will retry.");
-            return false;
+            return AttemptOutcome.Failed;
         }
 
         var link = c.Link;
-        if (link == null) return false;
+        if (link == null) return AttemptOutcome.Failed;
 
         bool connected;
         try
@@ -1380,13 +1469,16 @@ public sealed class NodeRuntime : IAsyncDisposable
 
         if (!connected)
         {
+            var reason = link.DisconnectReason;
             // Nothing answered at that address. The node may have moved since it was looked up (its public IP
             // changed), so the next attempt must not reuse the cached address for the rest of the cache lifetime.
-            if (!c.IsPrivate) _resolver.Invalidate(c.Node);
+            // A node that answered with REJECT or BUSY was found, so its address is kept.
+            if (!c.IsPrivate && reason is not (Iax2DisconnectReason.RemoteRejected or Iax2DisconnectReason.RemoteBusy))
+                _resolver.Invalidate(c.Node);
             await EndLinkAsync(c, link, transient: true);
-            return false;
+            return reason == Iax2DisconnectReason.RemoteRejected ? AttemptOutcome.Rejected : AttemptOutcome.Failed;
         }
-        return true;
+        return AttemptOutcome.Connected;
     }
 
     private static async Task<bool> WaitForConnectedAsync(NodeLink link, TimeSpan timeout, CancellationToken ct)
@@ -1395,7 +1487,8 @@ public sealed class NodeRuntime : IAsyncDisposable
         void OnState(Iax2SessionState s)
         {
             if (s == Iax2SessionState.Connected) tcs.TrySetResult(true);
-            else if (s == Iax2SessionState.Disconnected) tcs.TrySetResult(false);
+            // Connected and dropped again before we subscribed still counts as reached: the end handler takes it.
+            else if (s == Iax2SessionState.Disconnected) tcs.TrySetResult(link.WasConnected);
         }
 
         link.Session.StateChanged += OnState;
@@ -1486,8 +1579,11 @@ public sealed class NodeRuntime : IAsyncDisposable
         //    Every established link is affected, so each node recovers on its own.
         if (!Config.Settings.AutoReconnect) return;
 
+        // Pair each node with the call that was on the old network NOW: after the registration wait below, a newer
+        // call (another network event, a redial) may be the node's link, and that one must not be torn down.
         var affected = SnapshotConnections()
             .Where(c => c.Wanted && !IsReconnectRunning(c) && c.Link is { WasConnected: true })
+            .Select(c => (Conn: c, Old: c.Link!))
             .ToArray();
         if (affected.Length == 0) return;
 
@@ -1504,10 +1600,10 @@ public sealed class NodeRuntime : IAsyncDisposable
             : "Network connection lost; will reconnect when it returns.");
 
         // Hang up every old call at once (each hang-up waits on a dead or changing path), then re-dial each node.
-        await Task.WhenAll(affected.Select(async c =>
+        await Task.WhenAll(affected.Select(async pair =>
         {
-            var link = c.Link;
-            if (link == null) return;
+            var (c, link) = pair;
+            if (!ReferenceEquals(c.Link, link) || IsReconnectRunning(c) || !c.Wanted) return;
             // The old source address is gone, so the HANGUP cannot be acknowledged: do not wait for it.
             link.Session.HangupAckWait = TimeSpan.Zero;
             await EndLinkAsync(c, link, transient: true);

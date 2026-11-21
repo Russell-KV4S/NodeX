@@ -331,10 +331,11 @@ public class NodeRuntimeMultiLinkTests : IDisposable
     }
 
     /// <summary>A runtime whose directory lookup pauses until <paramref name="waitAsync"/> completes or is cancelled.</summary>
-    private async Task<NodeRuntime> CreateWithSlowResolveAsync(Func<string, CancellationToken, Task> waitAsync)
+    private async Task<NodeRuntime> CreateWithSlowResolveAsync(
+        Func<string, CancellationToken, Task> waitAsync, bool autoReconnect = true)
     {
         var config = new NodeConfigService(new JsonFileSettingsStore(_settingsPath), _secrets);
-        await config.SaveAsync(new NodeSettings { NodeNumber = "55553" }, "pw");
+        await config.SaveAsync(new NodeSettings { NodeNumber = "55553", AutoReconnect = autoReconnect }, "pw");
         // DNS fallback is faked as "no such host": a failed directory lookup must never reach a real ASL node.
         var resolver = new NodeResolution(new HttpClient(new SlowDirectoryHandler(_remotes, waitAsync)),
             dnsResolver: (_, _) => Task.FromResult(Array.Empty<IPAddress>()))
@@ -464,13 +465,14 @@ public class NodeRuntimeMultiLinkTests : IDisposable
     {
         // 2000 is requested first (so it owns transmit) but its lookup is held, then fails; 3000 connects listen-only
         // meanwhile. The failure is not a user hang-up, so 3000 must not silently become the transmit node.
+        // Auto-reconnect off, so the failed node is dropped (with it on, it is kept and retried: see below).
         var lookupGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var rt = await CreateWithSlowResolveAsync(async (node, ct) =>
         {
             if (node != "2000") return;
             await lookupGate.Task.WaitAsync(ct);
             throw new HttpRequestException("directory unreachable");
-        });
+        }, autoReconnect: false);
         var notices = new List<string>();
         rt.Notice += n => { lock (notices) notices.Add(n); };
 
@@ -492,6 +494,89 @@ public class NodeRuntimeMultiLinkTests : IDisposable
         Assert.Null(rt.TransmitNode);
         Assert.False(b.Ptt.TransmitEnabled);
         lock (notices) Assert.Contains(notices, n => n.Contains("Choose a node to transmit to"));
+    }
+
+    [Fact]
+    public async Task APublicNodeThatCannotBeFound_IsKeptAndRetried_UntilTheUserDisconnects()
+    {
+        // 2026-11-21 review: with auto-reconnect on, a public node with no directory/DNS result used to vanish at
+        // once. "Retry until you disconnect" applies to it as it already did to private hosts.
+        await using var rt = await CreateWithSlowResolveAsync((_, _) => throw new HttpRequestException("no such node"));
+        var errors = new List<string>();
+        rt.ErrorOccurred += e => { lock (errors) errors.Add(e); };
+
+        Assert.Null(await rt.ConnectAsync("2000"));
+        Assert.Single(rt.Connections);
+        await Wait.UntilAsync(() => Conn(rt, "2000").Reconnect.Active);
+        lock (errors) Assert.Contains(errors, e => e.Contains("Cannot find node 2000") && e.Contains("keep trying"));
+
+        await rt.DisconnectAsync("2000");
+        Assert.Empty(rt.Connections);
+    }
+
+    [Fact]
+    public async Task TwoConnectsForTheSameNodeAtOnce_MakeOneCall_AndDisconnectAllLeavesNothingRunning()
+    {
+        // Phone and car (or a double tap) asking for the same node while its lookup is pending used to publish two
+        // calls; one escaped Disconnect all (2026-11-21 review).
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var rt = await CreateWithSlowResolveAsync((_, ct) => gate.Task.WaitAsync(ct));
+        var added = new List<NodeLink>();
+        rt.LinkAdded += l => { lock (added) added.Add(l); };
+
+        var first = rt.ConnectAsync("2000");
+        var second = rt.ConnectAsync("2000");
+        await Wait.UntilAsync(() => rt.Connections.Count == 1);
+        gate.SetResult();
+
+        await _remotes["2000"].AcceptCallAsync();
+        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
+        await Assert.ThrowsAnyAsync<Exception>(() => _remotes["2000"].WaitForFrameAsync(
+            f => f.FrameType == FrameType.IaxControl && f.Subclass == (byte)IaxControlSubclass.New, 400));
+
+        lock (added) Assert.Single(added);
+        await rt.DisconnectAsync();
+        Assert.Empty(rt.Connections);
+        lock (added) Assert.All(added, l => Assert.Equal(Iax2SessionState.Disconnected, l.Session.State));
+    }
+
+    [Fact]
+    public async Task ARejectDuringReconnect_StopsReconnecting()
+    {
+        // Spec 4.6: an explicit REJECT is final, also when it answers a reconnect (it used to be retried forever).
+        await using var rt = await CreateAsync(quickKeepAlive: true);
+        await LinkAsync(rt, "2000");
+        ushort firstCall = _remotes["2000"].SessionCall;
+        var errors = new List<string>();
+        rt.ErrorOccurred += e => { lock (errors) errors.Add(e); };
+
+        var redial = await _remotes["2000"].WaitForFrameAsync(f => f.FrameType == FrameType.IaxControl
+            && f.Subclass == (byte)IaxControlSubclass.New && f.SourceCallNumber != firstCall, 5000);
+        await _remotes["2000"].SendIaxAsync(IaxControlSubclass.Reject);
+
+        await Wait.UntilAsync(() => rt.Connections.Count == 0);
+        lock (errors) Assert.Contains(errors, e => e.Contains("rejected the connection"));
+        await Assert.ThrowsAnyAsync<Exception>(() => _remotes["2000"].WaitForFrameAsync(
+            f => f.FrameType == FrameType.IaxControl && f.Subclass == (byte)IaxControlSubclass.New
+                 && f.SourceCallNumber != redial.SourceCallNumber, 800));
+    }
+
+    [Fact]
+    public async Task TurningAutoReconnectOff_StopsARetryThatIsAlreadyRunning()
+    {
+        await using var rt = await CreateAsync(quickKeepAlive: true);
+        await LinkAsync(rt, "2000");
+        ushort firstCall = _remotes["2000"].SessionCall;
+
+        // The link is lost and the first retry goes unanswered; then the user turns auto-reconnect off.
+        var retry = await _remotes["2000"].WaitForFrameAsync(f => f.FrameType == FrameType.IaxControl
+            && f.Subclass == (byte)IaxControlSubclass.New && f.SourceCallNumber != firstCall, 5000);
+        await rt.ApplyConfigAsync(rt.Config with { Settings = rt.Config.Settings with { AutoReconnect = false } });
+
+        await Wait.UntilAsync(() => rt.Connections.Count == 0);
+        await Assert.ThrowsAnyAsync<Exception>(() => _remotes["2000"].WaitForFrameAsync(
+            f => f.FrameType == FrameType.IaxControl && f.Subclass == (byte)IaxControlSubclass.New
+                 && f.SourceCallNumber != retry.SourceCallNumber, 1000));
     }
 
     [Fact]

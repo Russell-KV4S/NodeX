@@ -3,6 +3,7 @@
 ## Unreleased (after 1.25)
 
 - **False RX on busy hubs:** hubs that send UNKEY but never KEY were lit by inaudible background noise. A voice frame now needs RMS above -40 dBFS to count as sound; the `[rx]` voice-only log line is always written and includes the level. Not verified on a phone.
+- **Connect and reconnect (from the 2026-11-21 code reviews):** two connects to the same node at once make one call (no hidden call left after Disconnect all); Disconnect always removes the node; a network change no longer tears down a call that was set up during its wait; a node that rejects a reconnect is not retried; turning auto-reconnect off stops retries already running; a public node that cannot be found is kept and retried until you disconnect it (it used to vanish).
 - **Transmit safety (from the 2026-11-21 code reviews):** a failed dial no longer makes the remaining node the transmit node; unplugging Android Auto releases car push-to-talk and ends car mode (not tried in a car); the KEY always goes out before voice; a learned phone button can no longer have its PTT release swallowed; Windows Spacebar PTT releases on Alt+Tab; a key that fails to send is rolled back instead of showing "on air".
 
 ## 2026-11-20: 1.25 / code 27: hear nodes over the car radio, no automatic mute, false-RX hardening, private card title
