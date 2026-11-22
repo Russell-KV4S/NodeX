@@ -1,4 +1,14 @@
-NodeX 1.27 moves the MIC and SPK level meters into the PTT and Speaker frame. This release also includes a signed Google Play App Bundle.
+NodeX 1.28 adds local Audio Replay, startup auto-connect for up to eight nodes, and more appearance options.
+
+- **Audio Replay** saves received and transmitted clips on your device by default. Open the new replay button to hear the last received clip, browse, delete, or share clips. Replay plays through your local speaker and stops when you key PTT. You can turn clip saving off or change the clip limit in Settings.
+- **Startup auto-connect** links to up to eight public or private nodes after the first successful registration each launch. Use the lightning bolt beside the favourite star to choose startup nodes. Your previous default node carries over.
+- **Appearance** follows your system's light or dark mode by default. New choices include AMOLED black, Nord, Terminal green, and Sepia. Existing explicit theme selections are preserved.
+- **Header controls** now use compact icon buttons for Exit and Audio Replay. The replay button indicates unheard clips.
+
+The 1.28 changes passed automated tests. Physical phone and car checks remain pending.
+
+**From 1.27**
+- The MIC and SPK level meters now sit in the PTT and Speaker frame. GitHub Releases include the signed Play App Bundle and sideload APK.
 
 **From 1.26**
 - **Fewer false RX lights:** hubs that never announce their transmissions (53431, 60108, 43136 on a busy day) were lit by inaudible background noise. A node now has to be clearly louder than that noise to count as talking.

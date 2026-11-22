@@ -38,7 +38,7 @@ NodeX has no developer server, no accounts, no ads, no analytics and no tracking
 • Node lookups: node numbers you search for or link are sent to stats.allstarlink.org and DNS. If your own DNS cannot answer, Cloudflare (1.1.1.1) and Google (8.8.8.8) see the node number being looked up.
 • Network address check: every 25 seconds while registered, NodeX sends a tiny request to Google's STUN server (and once to Cloudflare's) to keep your mobile carrier's address mapping alive. They see only your public IP address and port.
 
-NodeX never records audio, never uploads your contacts, location, photos or files, and never sends your callsign (it does not ask for one). Your node password stays in the Android Keystore. The diagnostic log stays on your phone unless you choose Send logs. Nothing is sold or used for advertising.
+Audio Replay saves received and transmitted clips on your phone by default. You can disable saving in Settings, delete clips, or share individual WAV files. The diagnostic log stays on your phone unless you choose Send logs. NodeX does not collect your contacts, location, photos or callsign. Your node password stays in the Android Keystore. Nothing is sold or used for advertising.
 
 Full policy: https://github.com/Russell-KV4S/NodeX/blob/main/docs/PRIVACY.md
 ```
@@ -72,7 +72,7 @@ A short screen recording (link a node, lock the screen, audio keeps playing, not
 | Collects or shares required data types? | Yes (see rows) |
 | Data encrypted in transit? | Registration: by default over IAX2/UDP (password proven by MD5 challenge, not sent), HTTPS as fallback; a STUN address check goes to Google/Cloudflare (sees only the public IP/port). Voice/IAX2 to nodes: **no** (the AllStarLink protocol is unencrypted UDP). Say so honestly; answer "No" to "all data encrypted in transit" |
 | Users can request deletion? | No data is held by the developer. State that in the policy (done) |
-| Audio: voice or sound recordings | Collected: yes, not stored; sent to the linked node at the user's request; purpose App functionality; optional (you can listen without it) |
+| Audio: voice or sound recordings | Live transmit audio goes to the linked node when the user keys PTT (App functionality; optional). Audio Replay saves received and transmitted clips locally by default. Saving can be disabled, users can delete clips, and sharing a WAV requires a user action. |
 | Personal info: name/user IDs | Node number: shared with AllStarLink and the linked node; App functionality. NodeX does not collect a callsign |
 | Device or other IDs / IP address | Public IP sent to AllStarLink and linked nodes as part of the protocol; App functionality |
 | App info and performance (logs) | Stays on device unless the user shares it; not collected |

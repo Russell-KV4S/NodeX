@@ -10,6 +10,7 @@ NodeX is a free, open-source AllStarLink node app. It has no accounts, no advert
 - Your settings (node number, favourites, audio options) are saved in the app's private storage.
 - Your AllStarLink node password is stored only in the platform's secret store (the Android Keystore on Android). It is never written to the settings file or to the log.
 - Android Auto Backup may copy the settings file (not the password) to your own Google account backup, as for any app. You can switch that off in Android settings.
+- Starting in NodeX 1.28, Audio Replay saves received and transmitted audio clips in the app's private storage by default. You can turn saving off or change the number of retained clips in Settings. In Audio Replay you can delete a clip, clear the history, or explicitly share a WAV file. NodeX keeps clips on your device, and Android's app backup excludes them.
 
 **Sent over the network, only because you asked NodeX to connect**
 - **AllStarLink registration** (`register.allstarlink.org`): your node number and the public IP address and port your connection comes from. By default NodeX registers over IAX2 (UDP), which proves the password with a one-time MD5 challenge instead of sending it; if that does not work on your network it registers over HTTPS, which sends the node password inside the encrypted connection. This is how an AllStarLink node tells the network where it is. It is governed by AllStarLink's own policies.
@@ -17,7 +18,7 @@ NodeX is a free, open-source AllStarLink node app. It has no accounts, no advert
 - **Looking up and linking nodes** (`stats.allstarlink.org`, DNS, and IAX2 over UDP to the node you link): the node numbers you search for or connect to, your node number (the IAX caller identity is `NodeX-<node number>`) and your public IP address. NodeX does not ask for your callsign. Other nodes on the network can see these, as with any AllStarLink node. To find which port a node listens on, NodeX asks your device's DNS servers and, when it cannot use them, the public resolvers 1.1.1.1 (Cloudflare) and 8.8.8.8 (Google), which then see the number of the node being looked up.
 - **Find a node**: the text you type in the search box is sent to `stats.allstarlink.org`.
 - **Bubble chart links**: tapping "Bubble chart" opens that node's page on `stats.allstarlink.org` in your web browser. Nothing is sent unless you tap it.
-- **Your voice**: while you key the transmitter, microphone audio is sent to the node you chose, and through it possibly onto the air and to anyone linked to that node. NodeX never records audio. Received audio is played and discarded.
+- **Your voice**: while you key the transmitter, microphone audio is sent to the node you chose, and through it possibly onto the air and to anyone linked to that node. Audio Replay plays saved clips through your device's speaker.
 
 **Not collected:** your location, contacts, photos, files, advertising ID, or anything about other apps. Bluetooth permissions are used only to find and read a push-to-talk button you choose, and the "neverForLocation" flag is set.
 

@@ -14,16 +14,15 @@ Rules:
 
 ## Pending
 
-1.26 and 1.27 (code 30), pending Google Play upload (2026-11-21).
+1.26 through 1.28 (code 31), pending Google Play upload (2026-11-21).
 
 ```
 <en-US>
-MIC and SPK meters now fit inside the PTT and Speaker frame.
-Fewer false "receiving" lights on busy hubs.
-Safety: a failed dial never becomes your transmit node; car push-to-talk state ends when Android Auto unplugs.
-Reconnect fixes: one call per node, rejected nodes aren't retried, auto-reconnect off stops retries.
-Works on IPv6-only mobile data; background service survives Android restarts.
-Settings Save keeps your registration choice; privacy notice updated.
+Replay received and transmitted audio saved on your device. Turn clip saving off in Settings.
+Auto-connect to up to eight public or private nodes at startup.
+Follow your system theme or try AMOLED black, Nord, Terminal green, or Sepia.
+New Exit and Replay icons, plus MIC and SPK meters in the PTT frame.
+Fewer false receiving lights on busy hubs. Reconnect, IPv6 mobile data, background service, and registration settings fixes.
 </en-US>
 ```
 

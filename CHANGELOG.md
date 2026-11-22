@@ -1,6 +1,6 @@
 # Change log
 
-## Unreleased (2026-11-21)
+## 2026-11-21: 1.28 / code 31
 
 - **Follow-system default theme + 4 new themes:** **Follow system** (`System`) is now the default appearance, automatically matching your device's dark or light mode and updating live when the OS switches (`PlatformSettings.ColorValuesChanged`). Added **AMOLED black**, **Nord**, **Terminal green**, and **Sepia (warm light)** alongside **Dark**, **Light**, and **High contrast** (all 7 palettes verified ≥ 4.5:1 WCAG AA contrast in `AppearanceTests`). Existing saved configs with an explicit theme keep their selection.
 - **Auto-connect on startup (up to 8 public or private nodes):** replaced the single `"Default node to connect to"` box with **"Auto-connect on startup (optional, up to 8)"** (migrating legacy `DefaultTargetNode` automatically). Connects once per app launch after the first successful registration and never re-dials nodes you manually disconnect later in the same session. Added a theme-aware vector lightning-bolt toggle right beside the favorite star on the Connect box and linked-node cards (public and private), plus an indicator bolt and context-menu toggle on public and private favorite chips.
