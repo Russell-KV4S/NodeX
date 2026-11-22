@@ -29,6 +29,18 @@ NodeX is a standalone AllStarLink node for your phone. Register your own node nu
 You need an AllStarLink account with a node number and node password. Transmitting needs a valid amateur radio licence, and you are responsible for identifying and for following the rules of the nodes you link. NodeX does not ask for or verify your callsign. Linked nodes may be connected to real radio transmitters.
 
 NodeX is an independent project and is not affiliated with AllStarLink.
+
+DATA AND PRIVACY: WHAT LEAVES YOUR PHONE
+NodeX has no developer server, no accounts, no ads, no analytics and no tracking. The only data that leaves your phone goes to the AllStarLink network and a few public services, because that is how an AllStarLink node works:
+
+• AllStarLink registration (register.allstarlink.org): your node number and your public IP address and port, so other nodes know where to reach you. By default this uses IAX2 over UDP, which proves your node password with a one-time challenge instead of sending it. If that fails on your network, NodeX registers over HTTPS and sends the password inside the encrypted connection.
+• Nodes you link: your node number, your public IP address and, only while you hold push-to-talk, your voice. This traffic is not encrypted (the AllStarLink protocol is plain UDP). Everyone on that node and on the nodes linked to it can receive it, and it can go out over real radio.
+• Node lookups: node numbers you search for or link are sent to stats.allstarlink.org and DNS. If your own DNS cannot answer, Cloudflare (1.1.1.1) and Google (8.8.8.8) see the node number being looked up.
+• Network address check: every 25 seconds while registered, NodeX sends a tiny request to Google's STUN server (and once to Cloudflare's) to keep your mobile carrier's address mapping alive. They see only your public IP address and port.
+
+NodeX never records audio, never uploads your contacts, location, photos or files, and never sends your callsign (it does not ask for one). Your node password stays in the Android Keystore. The diagnostic log stays on your phone unless you choose Send logs. Nothing is sold or used for advertising.
+
+Full policy: https://github.com/Russell-KV4S/NodeX/blob/main/docs/PRIVACY.md
 ```
 
 **Category:** Communication. **Tags:** Communication, Tools.
