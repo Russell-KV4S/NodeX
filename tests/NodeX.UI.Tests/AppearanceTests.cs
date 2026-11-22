@@ -127,8 +127,8 @@ public class AppearanceTests
             Assert.True(view.Bounds.Width > 0);
             if (!settings)
             {
-                // The docked key and navigation must fit without text-size changes pushing them off screen.
-                foreach (var name in new[] { "NavBar", "PttButton" })
+                // The docked key, meters and navigation must fit without text-size changes pushing them off screen.
+                foreach (var name in new[] { "NavBar", "PttButton", "MetersGrid" })
                 {
                     var control = view.FindControl<Control>(name)!;
                     if (!control.IsEffectivelyVisible) continue;
@@ -145,5 +145,99 @@ public class AppearanceTests
             }
         }
         finally { window.Close(); }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(420, 860, true, false)]
+    [InlineData(860, 420, true, true)]
+    [InlineData(1050, 760, false, false)]
+    public void AudioMeters_LiveInsidePttFrame_AndStayPinnedWhenDocked(int width, int height, bool expectDocked, bool expectSingleRowMeters)
+    {
+        Appearance.Apply(Application.Current!, new() { Theme = "Dark", TextScale = 1.0 });
+        var previousSpeakerSetter = AppServices.SpeakerphoneSetter;
+        AppServices.SpeakerphoneSetter = _ => true;
+        using var vm = new MainViewModel
+        {
+            IsSpeakerOn = true,
+            MicAudioLevel = 0.25,
+            RxAudioLevel = 0.68,
+        };
+        var view = new MainView { DataContext = vm };
+        var window = new Window { Content = view, Width = width, Height = height };
+        window.Show();
+        try
+        {
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick(3);
+
+            var pttCard = view.FindControl<Border>("PttCard")!;
+            var pttDock = view.FindControl<Border>("PttDock")!;
+            var bodyScroll = view.FindControl<ScrollViewer>("BodyScroll")!;
+            var metersGrid = view.FindControl<Grid>("MetersGrid")!;
+            var micBar = view.FindControl<ProgressBar>("MicMeterBar")!;
+            var spkBar = view.FindControl<ProgressBar>("SpkMeterBar")!;
+            var pttButton = view.FindControl<Button>("PttButton")!;
+            var speakerButton = view.FindControl<Button>("SpeakerButton")!;
+
+            Assert.True(metersGrid.IsEffectivelyVisible);
+            Assert.True(micBar.IsEffectivelyVisible);
+            Assert.True(spkBar.IsEffectivelyVisible);
+            Assert.True(speakerButton.IsEffectivelyVisible);
+
+            // MIC/SPK meters share the same PttCard frame as PTT and Speaker.
+            Assert.Contains(pttCard, metersGrid.GetVisualAncestors());
+            Assert.Contains(pttCard, pttButton.GetVisualAncestors());
+            Assert.Contains(pttCard, speakerButton.GetVisualAncestors());
+
+            // Meters sit above the PTT button so a thumb pressing PTT does not cover them.
+            var metersOrigin = metersGrid.TranslatePoint(default, window)!.Value;
+            var pttOrigin = pttButton.TranslatePoint(default, window)!.Value;
+            var speakerOrigin = speakerButton.TranslatePoint(default, window)!.Value;
+            Assert.True(metersOrigin.Y + metersGrid.Bounds.Height <= pttOrigin.Y + 1);
+            Assert.True(pttOrigin.X + pttButton.Bounds.Width <= speakerOrigin.X + 1,
+                $"PTT ({pttOrigin.X:F1}..{pttOrigin.X + pttButton.Bounds.Width:F1}) overlaps Speaker ({speakerOrigin.X:F1}..{speakerOrigin.X + speakerButton.Bounds.Width:F1})");
+
+            if (expectSingleRowMeters)
+            {
+                Assert.Single(metersGrid.RowDefinitions);
+            }
+            else
+            {
+                Assert.Equal(2, metersGrid.RowDefinitions.Count);
+            }
+
+            if (expectDocked)
+            {
+                Assert.True(pttDock.IsVisible);
+                Assert.Same(pttCard, pttDock.Child);
+                Assert.DoesNotContain(bodyScroll, metersGrid.GetVisualAncestors());
+
+                // Scrolling the body must not move the docked meters.
+                var beforeY = metersOrigin.Y;
+                bodyScroll.Offset = new Vector(0, 200);
+                Dispatcher.UIThread.RunJobs();
+                var afterY = metersGrid.TranslatePoint(default, window)!.Value.Y;
+                Assert.Equal(beforeY, afterY, precision: 1);
+            }
+            else
+            {
+                Assert.False(pttDock.IsVisible);
+                Assert.Contains(bodyScroll, metersGrid.GetVisualAncestors());
+            }
+
+            var output = Environment.GetEnvironmentVariable("NODEX_SCREENSHOT_DIR");
+            if (!string.IsNullOrWhiteSpace(output))
+            {
+                Directory.CreateDirectory(output);
+                using var bitmap = window.CaptureRenderedFrame();
+                using var file = File.Create(Path.Combine(output, $"MetersInPtt-{width}x{height}.png"));
+                bitmap!.Save(file, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+            }
+        }
+        finally
+        {
+            AppServices.SpeakerphoneSetter = previousSpeakerSetter;
+            window.Close();
+        }
     }
 }

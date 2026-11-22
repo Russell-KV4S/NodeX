@@ -463,7 +463,7 @@ public partial class MainView : UserControl
     private void ApplyBodyLayout(bool narrow, bool dock)
     {
         // Take every card out of whatever currently holds it, then place it for the new layout.
-        foreach (var card in new Control[] { HeroCard, LinksCard, MetersCard, PttCard, ConnectCard, DtmfCard, LogCard, IdReminderCard, CompactLinksCard })
+        foreach (var card in new Control[] { HeroCard, LinksCard, PttCard, ConnectCard, DtmfCard, LogCard, IdReminderCard, CompactLinksCard })
         {
             Detach(card);
         }
@@ -477,14 +477,14 @@ public partial class MainView : UserControl
             RightColumn.IsVisible = false;
             Grid.SetColumn(RightColumn, 0);     // the grid has a single column now; a stale index crashes measure
 
-            // One tab at a time. Radio: slim links + RX/TX + meters (PTT is docked below). Nodes: connect, favourites,
-            // full link rows. Keypad and Log are one card each.
+            // One tab at a time. Radio: slim links (MIC/SPK meters, PTT and Speaker stay docked below).
+            // Nodes: connect, favourites, full link rows. Keypad and Log are one card each.
             Control[] cards = _tab switch
             {
                 Tab.Nodes => [ConnectCard, LinksCard],
                 Tab.Keypad => [DtmfCard],
                 Tab.Log => [LogCard],
-                _ => [IdReminderCard, CompactLinksCard, MetersCard],
+                _ => [IdReminderCard, CompactLinksCard],
             };
             foreach (var card in cards)
             {
@@ -503,10 +503,10 @@ public partial class MainView : UserControl
             RightColumn.IsVisible = true;
             Grid.SetColumn(RightColumn, 1);
 
-            // Two columns. PTT stays in the left column on tall screens; on short ones it is docked below.
+            // Two columns. PTT + MIC/SPK meters stay in the left column on tall screens; on short ones they dock below.
             foreach (var card in dock
-                         ? new Control[] { HeroCard, MetersCard }
-                         : new Control[] { HeroCard, MetersCard, PttCard })
+                         ? new Control[] { HeroCard }
+                         : new Control[] { HeroCard, PttCard })
             {
                 LeftColumn.Children.Add(card);
             }
@@ -519,7 +519,7 @@ public partial class MainView : UserControl
             ScrollViewer.SetVerticalScrollBarVisibility(LogTextBox, ScrollBarVisibility.Auto);
         }
 
-        // On phones only the Radio tab carries the PTT key.
+        // On phones only the Radio tab carries the docked PTT + meters frame.
         bool showDock = dock && (!narrow || _tab == Tab.Radio);
         PttDock.Child = showDock ? PttCard : null;
         PttDock.IsVisible = showDock;
@@ -528,35 +528,67 @@ public partial class MainView : UserControl
     private void ApplyPttSizing(bool narrow, bool isShort)
     {
         bool phone = _narrow == true;   // phone layout: the key shares a row with the speaker chip, extras are hidden
+        double scale = Math.Max(1, FontSize / 14);
+        MicMeterLabel.MinWidth = SpkMeterLabel.MinWidth = 32 * scale;
+        MicMeterValue.MinWidth = SpkMeterValue.MinWidth = 36 * scale;
+
+        if (isShort && !phone)
+        {
+            // Short landscape screen: put MIC and SPK meters on one compact row to preserve scroll space.
+            MetersGrid.ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto,*,Auto");
+            MetersGrid.RowDefinitions = RowDefinitions.Parse("Auto");
+            MetersGrid.RowSpacing = 0;
+            Place(MicMeterLabel, 0, 0, 1);
+            Place(MicMeterBar, 0, 1, 1);
+            Place(MicMeterValue, 0, 2, 1);
+            Place(SpkMeterLabel, 0, 3, 1);
+            Place(SpkMeterBar, 0, 4, 1);
+            Place(SpkMeterValue, 0, 5, 1);
+            SpkMeterLabel.Margin = new Thickness(14, 0, 0, 0);
+        }
+        else
+        {
+            MetersGrid.ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto");
+            MetersGrid.RowDefinitions = RowDefinitions.Parse("Auto,Auto");
+            MetersGrid.RowSpacing = narrow ? 6 : 10;
+            Place(MicMeterLabel, 0, 0, 1);
+            Place(MicMeterBar, 0, 1, 1);
+            Place(MicMeterValue, 0, 2, 1);
+            Place(SpkMeterLabel, 1, 0, 1);
+            Place(SpkMeterBar, 1, 1, 1);
+            Place(SpkMeterValue, 1, 2, 1);
+            SpkMeterLabel.Margin = default;
+        }
+
+        PttInner.HorizontalAlignment = HorizontalAlignment.Stretch;
         if (narrow)
         {
             PttRow.ColumnDefinitions = ColumnDefinitions.Parse("*,Auto");
             PttRow.HorizontalAlignment = HorizontalAlignment.Stretch;
             // A full-width bar the thumb can find without looking. On short screens the bar is slimmer and the
             // time-out/mode strip is hidden (the key face already shows the running transmit time).
+            PttDock.Padding = new Thickness(12, isShort ? 6 : 8);
             PttCard.Padding = new Thickness(isShort ? 8 : 12);
             PttCard.CornerRadius = new CornerRadius(12);
-            PttInner.Spacing = 8;
-            PttInner.HorizontalAlignment = HorizontalAlignment.Stretch;
+            PttInner.Spacing = isShort ? 6 : 10;
             PttButton.Width = double.NaN;
             PttButton.HorizontalAlignment = HorizontalAlignment.Stretch;
-            PttButton.Height = Math.Max(isShort ? 64 : phone ? 112 : 96, 72 * Math.Max(1, FontSize / 14));
+            PttButton.Height = Math.Max(isShort ? 64 : phone ? 112 : 96, 72 * scale);
             PttInfo.Width = double.NaN;
             PttInfo.HorizontalAlignment = HorizontalAlignment.Stretch;
-            PttInfo.IsVisible = !isShort && !phone;   // phones: nothing but the key and the chip (mode lives in Settings)
+            PttInfo.IsVisible = !isShort && !phone;   // phones: nothing but the meters, key and chip (mode lives in Settings)
             PttCaption.IsVisible = false;
             PttModeHint.IsVisible = true;
         }
         else
         {
-            PttRow.ColumnDefinitions = ColumnDefinitions.Parse("Auto,Auto");
+            PttRow.ColumnDefinitions = ColumnDefinitions.Parse("260,Auto");
             PttRow.HorizontalAlignment = HorizontalAlignment.Center;
             PttCard.Padding = new Thickness(24);
             PttCard.CornerRadius = new CornerRadius(16);
             PttInner.Spacing = 18;
-            PttInner.HorizontalAlignment = HorizontalAlignment.Center;
             PttButton.Width = 260;
-            PttButton.HorizontalAlignment = HorizontalAlignment.Center;
+            PttButton.HorizontalAlignment = HorizontalAlignment.Stretch;
             PttButton.Height = 140;
             PttInfo.Width = 300;
             PttInfo.HorizontalAlignment = HorizontalAlignment.Center;

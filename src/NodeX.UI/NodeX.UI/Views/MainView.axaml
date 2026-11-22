@@ -333,32 +333,36 @@
                         </Grid>
                     </Border>
 
-                    <!-- AUDIO VU METERS -->
-                    <Border x:Name="MetersCard" Classes="card" CornerRadius="10">
-                        <StackPanel Spacing="10">
-                            <Grid ColumnDefinitions="50,*,40">
-                                <TextBlock Grid.Column="0" Text="MIC" FontWeight="Bold" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                                <ProgressBar Grid.Column="1" AutomationProperties.Name="Microphone level" Minimum="0" Maximum="1" Value="{Binding MicAudioLevel}"
-                                             Height="8" CornerRadius="4" Margin="8,0"
-                                             Foreground="{DynamicResource TxRedBrush}" Background="{DynamicResource SelectedBackgroundBrush}" />
-                                <TextBlock Grid.Column="2" Text="{Binding MicAudioLevel, StringFormat='{}{0:P0}'}" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                            </Grid>
-                            <Grid ColumnDefinitions="50,*,40">
-                                <TextBlock Grid.Column="0" Text="SPK" FontWeight="Bold" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                                <ProgressBar Grid.Column="1" AutomationProperties.Name="Speaker level" Minimum="0" Maximum="1" Value="{Binding RxAudioLevel}"
-                                             Height="8" CornerRadius="4" Margin="8,0"
-                                             Foreground="{DynamicResource RxGreenBrush}" Background="{DynamicResource SelectedBackgroundBrush}" />
-                                <TextBlock Grid.Column="2" Text="{Binding RxAudioLevel, StringFormat='{}{0:P0}'}" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- PUSH-TO-TALK: sits in the left column on wide screens, docks to the bottom on phones -->
+                    <!-- PUSH-TO-TALK & AUDIO METERS: sits in the left column on wide screens, docks to the bottom on phones
+                         so the MIC/SPK bars stay on screen alongside PTT and Speaker while scrolling -->
                     <Border x:Name="PttCard" Classes="card" CornerRadius="16" Padding="24">
-                        <StackPanel x:Name="PttInner" Spacing="18" HorizontalAlignment="Center">
+                        <StackPanel x:Name="PttInner" Spacing="18" HorizontalAlignment="Stretch">
+
+                            <!-- AUDIO VU METERS: stacked on portrait/desktop; one compact row on short landscape screens -->
+                            <Grid x:Name="MetersGrid" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" RowSpacing="10">
+                                <TextBlock x:Name="MicMeterLabel" Grid.Row="0" Grid.Column="0" Text="MIC" FontWeight="Bold" FontSize="{DynamicResource FontSize11}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" MinWidth="32" />
+                                <ProgressBar x:Name="MicMeterBar" Grid.Row="0" Grid.Column="1" AutomationProperties.Name="Microphone level"
+                                             Minimum="0" Maximum="1" Value="{Binding MicAudioLevel}"
+                                             MinWidth="0" Height="8" CornerRadius="4" Margin="8,0"
+                                             Foreground="{DynamicResource TxRedBrush}" Background="{DynamicResource SelectedBackgroundBrush}" />
+                                <TextBlock x:Name="MicMeterValue" Grid.Row="0" Grid.Column="2"
+                                           Text="{Binding MicAudioLevel, StringFormat='{}{0:P0}'}" FontSize="{DynamicResource FontSize11}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" MinWidth="36" />
+
+                                <TextBlock x:Name="SpkMeterLabel" Grid.Row="1" Grid.Column="0" Text="SPK" FontWeight="Bold" FontSize="{DynamicResource FontSize11}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" MinWidth="32" />
+                                <ProgressBar x:Name="SpkMeterBar" Grid.Row="1" Grid.Column="1" AutomationProperties.Name="Speaker level"
+                                             Minimum="0" Maximum="1" Value="{Binding RxAudioLevel}"
+                                             MinWidth="0" Height="8" CornerRadius="4" Margin="8,0"
+                                             Foreground="{DynamicResource RxGreenBrush}" Background="{DynamicResource SelectedBackgroundBrush}" />
+                                <TextBlock x:Name="SpkMeterValue" Grid.Row="1" Grid.Column="2"
+                                           Text="{Binding RxAudioLevel, StringFormat='{}{0:P0}'}" FontSize="{DynamicResource FontSize11}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" MinWidth="36" />
+                            </Grid>
 
                             <!-- The key, with the Android phone/speaker chip beside it (thumb reach) -->
-                            <Grid x:Name="PttRow" ColumnDefinitions="Auto,Auto" ColumnSpacing="8" HorizontalAlignment="Center">
+                            <Grid x:Name="PttRow" ColumnDefinitions="260,Auto" HorizontalAlignment="Center">
                             <Button x:Name="PttButton" Grid.Column="0" AutomationProperties.Name="Push to talk"
                                     Width="260" Height="140" Padding="0"
                                     CornerRadius="20" BorderThickness="0" Background="Transparent"
@@ -391,7 +395,7 @@
                                 <Button x:Name="SpeakerButton" Grid.Column="1" IsVisible="{Binding CanSwitchSpeaker}" Command="{Binding ToggleSpeakerCommand}"
                                         AutomationProperties.Name="Switch between phone and speaker audio"
                                         Content="{Binding SpeakerChipText}"
-                                        Width="76" Padding="4" VerticalAlignment="Stretch"
+                                        Width="76" Margin="8,0,0,0" Padding="4" VerticalAlignment="Stretch"
                                         HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                         Background="{DynamicResource SelectedBackgroundBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1"
                                         CornerRadius="12" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" />
