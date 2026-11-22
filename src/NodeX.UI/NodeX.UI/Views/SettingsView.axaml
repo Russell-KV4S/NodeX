@@ -321,7 +321,7 @@
                             <TextBlock Classes="label" Text="Microphone gain" />
                             <TextBlock Grid.Column="1" Classes="label" Text="{Binding MicGain, StringFormat='{}{0:0.0}×'}" />
                         </Grid>
-                        <Slider AutomationProperties.Name="Microphone gain" Minimum="0.5" Maximum="4" Value="{Binding MicGain}" />
+                        <Slider AutomationProperties.Name="Microphone gain" Minimum="0.5" Maximum="4" TickFrequency="0.1" Value="{Binding MicGain}" />
                     </StackPanel>
 
                     <StackPanel>

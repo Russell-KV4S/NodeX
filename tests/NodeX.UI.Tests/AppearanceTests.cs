@@ -163,8 +163,8 @@ public class AppearanceTests
             Assert.True(view.Bounds.Width > 0);
             if (!settings)
             {
-                // The docked key, meters and navigation must fit without text-size changes pushing them off screen.
-                foreach (var name in new[] { "NavBar", "PttButton", "MetersGrid" })
+                // The docked key, meters, gains and navigation must fit without text-size changes pushing them off screen.
+                foreach (var name in new[] { "NavBar", "PttButton", "MetersGrid", "GainsGrid" })
                 {
                     var control = view.FindControl<Control>(name)!;
                     if (!control.IsEffectivelyVisible) continue;
@@ -210,36 +210,52 @@ public class AppearanceTests
             var pttDock = view.FindControl<Border>("PttDock")!;
             var bodyScroll = view.FindControl<ScrollViewer>("BodyScroll")!;
             var metersGrid = view.FindControl<Grid>("MetersGrid")!;
+            var gainsGrid = view.FindControl<Grid>("GainsGrid")!;
             var micBar = view.FindControl<ProgressBar>("MicMeterBar")!;
             var spkBar = view.FindControl<ProgressBar>("SpkMeterBar")!;
+            var rxSlider = view.FindControl<Slider>("RxGainSlider")!;
+            var txSlider = view.FindControl<Slider>("TxGainSlider")!;
+            var autoBtn = view.FindControl<Button>("RxAutoLevelButton")!;
             var pttButton = view.FindControl<Button>("PttButton")!;
             var speakerButton = view.FindControl<Button>("SpeakerButton")!;
 
             Assert.True(metersGrid.IsEffectivelyVisible);
+            Assert.True(gainsGrid.IsEffectivelyVisible);
             Assert.True(micBar.IsEffectivelyVisible);
             Assert.True(spkBar.IsEffectivelyVisible);
+            Assert.True(rxSlider.IsEffectivelyVisible);
+            Assert.True(txSlider.IsEffectivelyVisible);
+            Assert.True(autoBtn.IsEffectivelyVisible);
             Assert.True(speakerButton.IsEffectivelyVisible);
 
-            // MIC/SPK meters share the same PttCard frame as PTT and Speaker.
+            // MIC/SPK meters and RX/TX gains share the same PttCard frame as PTT and Speaker.
             Assert.Contains(pttCard, metersGrid.GetVisualAncestors());
+            Assert.Contains(pttCard, gainsGrid.GetVisualAncestors());
+            Assert.Contains(pttCard, rxSlider.GetVisualAncestors());
+            Assert.Contains(pttCard, txSlider.GetVisualAncestors());
+            Assert.Contains(pttCard, autoBtn.GetVisualAncestors());
             Assert.Contains(pttCard, pttButton.GetVisualAncestors());
             Assert.Contains(pttCard, speakerButton.GetVisualAncestors());
 
-            // Meters sit above the PTT button so a thumb pressing PTT does not cover them.
+            // Meters sit above RX/TX gains, which sit above the PTT button so a thumb pressing PTT does not cover them.
             var metersOrigin = metersGrid.TranslatePoint(default, window)!.Value;
+            var gainsOrigin = gainsGrid.TranslatePoint(default, window)!.Value;
             var pttOrigin = pttButton.TranslatePoint(default, window)!.Value;
             var speakerOrigin = speakerButton.TranslatePoint(default, window)!.Value;
-            Assert.True(metersOrigin.Y + metersGrid.Bounds.Height <= pttOrigin.Y + 1);
+            Assert.True(metersOrigin.Y + metersGrid.Bounds.Height <= gainsOrigin.Y + 1);
+            Assert.True(gainsOrigin.Y + gainsGrid.Bounds.Height <= pttOrigin.Y + 1);
             Assert.True(pttOrigin.X + pttButton.Bounds.Width <= speakerOrigin.X + 1,
                 $"PTT ({pttOrigin.X:F1}..{pttOrigin.X + pttButton.Bounds.Width:F1}) overlaps Speaker ({speakerOrigin.X:F1}..{speakerOrigin.X + speakerButton.Bounds.Width:F1})");
 
             if (expectSingleRowMeters)
             {
                 Assert.Single(metersGrid.RowDefinitions);
+                Assert.Single(gainsGrid.RowDefinitions);
             }
             else
             {
                 Assert.Equal(2, metersGrid.RowDefinitions.Count);
+                Assert.Equal(2, gainsGrid.RowDefinitions.Count);
             }
 
             if (expectDocked)
@@ -247,18 +263,23 @@ public class AppearanceTests
                 Assert.True(pttDock.IsVisible);
                 Assert.Same(pttCard, pttDock.Child);
                 Assert.DoesNotContain(bodyScroll, metersGrid.GetVisualAncestors());
+                Assert.DoesNotContain(bodyScroll, gainsGrid.GetVisualAncestors());
 
-                // Scrolling the body must not move the docked meters.
+                // Scrolling the body must not move the docked meters or gain sliders.
                 var beforeY = metersOrigin.Y;
+                var beforeGainsY = gainsOrigin.Y;
                 bodyScroll.Offset = new Vector(0, 200);
                 Dispatcher.UIThread.RunJobs();
                 var afterY = metersGrid.TranslatePoint(default, window)!.Value.Y;
+                var afterGainsY = gainsGrid.TranslatePoint(default, window)!.Value.Y;
                 Assert.Equal(beforeY, afterY, precision: 1);
+                Assert.Equal(beforeGainsY, afterGainsY, precision: 1);
             }
             else
             {
                 Assert.False(pttDock.IsVisible);
                 Assert.Contains(bodyScroll, metersGrid.GetVisualAncestors());
+                Assert.Contains(bodyScroll, gainsGrid.GetVisualAncestors());
             }
 
             var output = Environment.GetEnvironmentVariable("NODEX_SCREENSHOT_DIR");
@@ -279,11 +300,12 @@ public class AppearanceTests
 
     [AvaloniaTheory]
     [InlineData(420, 860)]
+    [InlineData(860, 420)]
     [InlineData(1050, 760)]
-    public void RxGainCard_RendersInPhoneAndDesktopLayouts(int width, int height)
+    public void GainsInPttPanel_RenderBetweenMetersAndPtt_InPhoneAndDesktopLayouts(int width, int height)
     {
         Appearance.Apply(Application.Current!, new() { Theme = "Dark", TextScale = 1.0 });
-        using var vm = new MainViewModel { RxGain = 2.0, RxAutoLevel = true };
+        using var vm = new MainViewModel { RxGain = 2.0, RxAutoLevel = true, MicGain = 1.5 };
         var view = new MainView { DataContext = vm };
         var window = new Window { Content = view, Width = width, Height = height };
         window.Show();
@@ -292,18 +314,32 @@ public class AppearanceTests
             Dispatcher.UIThread.RunJobs();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick(3);
 
-            var card = view.FindControl<Border>("RxGainCard")!;
-            var slider = view.FindControl<Slider>("RxGainSlider")!;
+            var pttCard = view.FindControl<Border>("PttCard")!;
+            var metersGrid = view.FindControl<Grid>("MetersGrid")!;
+            var gainsGrid = view.FindControl<Grid>("GainsGrid")!;
+            var rxSlider = view.FindControl<Slider>("RxGainSlider")!;
+            var txSlider = view.FindControl<Slider>("TxGainSlider")!;
             var autoBtn = view.FindControl<Button>("RxAutoLevelButton")!;
+            var pttButton = view.FindControl<Button>("PttButton")!;
 
-            Assert.True(card.IsEffectivelyVisible);
-            Assert.True(slider.IsEffectivelyVisible);
+            Assert.True(gainsGrid.IsEffectivelyVisible);
+            Assert.True(rxSlider.IsEffectivelyVisible);
+            Assert.True(txSlider.IsEffectivelyVisible);
             Assert.True(autoBtn.IsEffectivelyVisible);
             Assert.Contains("active", autoBtn.Classes);
+            Assert.Contains(pttCard, gainsGrid.GetVisualAncestors());
 
-            var cardOrigin = card.TranslatePoint(default, window)!.Value;
-            Assert.True(cardOrigin.X >= 0 && cardOrigin.X + card.Bounds.Width <= width + 1);
-            Assert.True(cardOrigin.Y >= 0 && cardOrigin.Y + card.Bounds.Height <= height + 1);
+            var metersOrigin = metersGrid.TranslatePoint(default, window)!.Value;
+            var gainsOrigin = gainsGrid.TranslatePoint(default, window)!.Value;
+            var pttOrigin = pttButton.TranslatePoint(default, window)!.Value;
+            Assert.True(metersOrigin.Y + metersGrid.Bounds.Height <= gainsOrigin.Y + 1);
+            Assert.True(gainsOrigin.Y + gainsGrid.Bounds.Height <= pttOrigin.Y + 1);
+
+            if (width == 420 && height == 860)
+                Assert.True(pttButton.Bounds.Height <= 72, $"Expected shortened PTT button <= 72 px, got {pttButton.Bounds.Height:F1}");
+
+            Assert.True(gainsOrigin.X >= 0 && gainsOrigin.X + gainsGrid.Bounds.Width <= width + 1);
+            Assert.True(gainsOrigin.Y >= 0 && gainsOrigin.Y + gainsGrid.Bounds.Height <= height + 1);
         }
         finally { window.Close(); }
     }

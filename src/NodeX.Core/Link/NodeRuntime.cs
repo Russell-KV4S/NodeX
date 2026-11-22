@@ -98,6 +98,9 @@ public sealed class NodeRuntime : IAsyncDisposable
     /// <summary>Active manual receive gain multiplier (updated immediately for live sliders).</summary>
     public float LiveRxGain { get; private set; } = 1.0f;
 
+    /// <summary>Active manual microphone gain multiplier (updated immediately for live sliders).</summary>
+    public float LiveMicGain { get; private set; } = 1.0f;
+
     /// <summary>Active receive auto-level toggle (updated immediately for live switches).</summary>
     public bool LiveRxAutoLevel { get; private set; }
 
@@ -124,6 +127,17 @@ public sealed class NodeRuntime : IAsyncDisposable
             link.Audio.RxAutoLevel = rxAutoLevel;
         }
         RxAudioChanged?.Invoke(gain, rxAutoLevel, boost);
+    }
+
+    /// <summary>
+    /// Applies microphone transmit gain immediately to every active link without interrupting calls.
+    /// </summary>
+    public void SetLiveMicGain(float micGain)
+    {
+        float gain = NodeAudioEngine.SanitizeMicGain(micGain);
+        LiveMicGain = gain;
+        foreach (var link in Links)
+            link.Audio.MicGain = gain;
     }
 
     // ----- registration state -----
@@ -383,6 +397,7 @@ public sealed class NodeRuntime : IAsyncDisposable
             Config = cfg;
             Log.Detailed = cfg.Settings.DetailedLogging;
             SetLiveRxAudio(cfg.Settings.RxGain, cfg.Settings.RxAutoLevel, cfg.Settings.RxLoudnessBoost);
+            SetLiveMicGain(cfg.Settings.MicGain);
             if (previous.Settings.AutoReconnect && !cfg.Settings.AutoReconnect)
                 _ = Task.Run(StopRetriesAfterAutoReconnectOffAsync);   // outside the gate: a dial may need it
 
@@ -941,7 +956,7 @@ public sealed class NodeRuntime : IAsyncDisposable
 
         // On the shared call socket, so the far node sees the address the registry recorded.
         var link = new NodeLink(
-            Config.Settings with { RxGain = LiveRxGain, RxAutoLevel = LiveRxAutoLevel },
+            Config.Settings with { MicGain = LiveMicGain, RxGain = LiveRxGain, RxAutoLevel = LiveRxAutoLevel },
             info, _audioFactory(), _audioOptions, _configureSession, Transmit, EnsureEndpoint());
         link.Ptt.ListenOnlyReason = $"Node {c.Node} is listen-only. Choose it as the transmit node to talk on it.";
         link.Audio.Muted = c.Muted;

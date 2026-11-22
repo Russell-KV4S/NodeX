@@ -674,6 +674,40 @@ public class NodeAudioEngineTests
         Assert.NotEmpty(meterPeaks);
         Assert.True(meterPeaks[^1] > (double)quietSample / 32768.0 * 2.0);
     }
+
+    [Fact]
+    public async Task MicGain_SanitizesAndUpdatesTransmittedPcmLiveWithoutRestart()
+    {
+        Assert.Equal(1.0f, NodeAudioEngine.SanitizeMicGain(float.NaN));
+        Assert.Equal(1.0f, NodeAudioEngine.SanitizeMicGain(float.PositiveInfinity));
+        Assert.Equal(0.1f, NodeAudioEngine.SanitizeMicGain(0.01f));
+        Assert.Equal(8.0f, NodeAudioEngine.SanitizeMicGain(12.0f));
+
+        var ch = new FakeChannel { IsTransmitting = true };
+        var dev = new FakeDevice();
+        await using var engine = new NodeAudioEngine(ch, dev, new NodeAudioEngineOptions { MicGain = 1.0f });
+        engine.Start();
+
+        short sample = 1000;
+        dev.Capture!(Enumerable.Repeat(sample, AudioFormat.SamplesPerFrame).ToArray());
+        await WaitUntil(() => { lock (ch.Sent) return ch.Sent.Count >= 1; });
+        short[] unityDecoded = new short[AudioFormat.SamplesPerFrame];
+        lock (ch.Sent) G711Ulaw.Decode(ch.Sent[^1], unityDecoded);
+
+        // Live mid-call MicGain bump to 3.0x takes effect on the next captured frame without restarting the engine.
+        engine.MicGain = 3.0f;
+        Assert.Equal(3.0f, engine.MicGain);
+
+        int sentBefore;
+        lock (ch.Sent) sentBefore = ch.Sent.Count;
+        dev.Capture!(Enumerable.Repeat(sample, AudioFormat.SamplesPerFrame).ToArray());
+        await WaitUntil(() => { lock (ch.Sent) return ch.Sent.Count > sentBefore; });
+        short[] boostedDecoded = new short[AudioFormat.SamplesPerFrame];
+        lock (ch.Sent) G711Ulaw.Decode(ch.Sent[^1], boostedDecoded);
+
+        Assert.InRange(unityDecoded[0], (short)950, (short)1050);
+        Assert.InRange(boostedDecoded[0], (short)2850, (short)3150);
+    }
 }
 
 public class PlaybackRingBufferTests

@@ -65,6 +65,7 @@ public sealed class NodeAudioEngine : IAsyncDisposable
     private readonly Channel<byte[]> _sendQueue;
     private readonly short[] _decodeScratch = new short[AudioFormat.SamplesPerFrame];
     private readonly Lock _decodeLock = new();
+    private float _micGain;
 
     // Start and Stop exclude each other. A call that is hung up straight after it is accepted starts its audio
     // (on a worker thread) and is disposed at almost the same moment; without this the two interleaved, which
@@ -84,6 +85,7 @@ public sealed class NodeAudioEngine : IAsyncDisposable
         _channel = channel ?? throw new ArgumentNullException(nameof(channel));
         _device = device ?? throw new ArgumentNullException(nameof(device));
         _options = options ?? new NodeAudioEngineOptions();
+        _micGain = SanitizeMicGain(_options.MicGain);
         if (_options.MicProcessing) _micProcessor = new MicProcessor();
         _rxProcessor = new RxAudioProcessor
         {
@@ -104,6 +106,17 @@ public sealed class NodeAudioEngine : IAsyncDisposable
 
     public JitterBuffer JitterBuffer { get; }
     public bool IsRunning => _cts != null;
+
+    /// <summary>Clamps or sanitizes a manual microphone gain multiplier to the validated range [0.1, 8.0].</summary>
+    public static float SanitizeMicGain(float gain) =>
+        float.IsFinite(gain) ? Math.Clamp(gain, 0.1f, 8.0f) : 1.0f;
+
+    /// <summary>Manual microphone gain multiplier (can be updated live while capturing).</summary>
+    public float MicGain
+    {
+        get => Volatile.Read(ref _micGain);
+        set => Volatile.Write(ref _micGain, SanitizeMicGain(value));
+    }
 
     /// <summary>Manual receive gain multiplier (can be updated live while playing).</summary>
     public float RxGain
@@ -301,7 +314,7 @@ public sealed class NodeAudioEngine : IAsyncDisposable
     private void OnCapturedFrame(ReadOnlySpan<short> frame)
     {
         Span<short> scaled = stackalloc short[frame.Length];
-        float gain = _options.MicGain;
+        float gain = Volatile.Read(ref _micGain);
         if (gain == 1.0f)
         {
             frame.CopyTo(scaled);

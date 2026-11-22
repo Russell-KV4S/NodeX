@@ -189,6 +189,14 @@ public class MainViewModelTests
         Assert.True(f.Runtime.LiveRxAutoLevel);
         Assert.True(f.Runtime.Link.Audio.RxAutoLevel);
 
-        await Until(() => Math.Abs(f.Runtime.Config.Settings.RxGain - 2.5f) < 0.01f && f.Runtime.Config.Settings.RxAutoLevel);
+        f.Vm.MicGain = 1.8;
+        Assert.Equal("1.8×", f.Vm.MicGainDisplay);
+        Assert.Equal(1.8f, f.Runtime.LiveMicGain);
+        Assert.Equal(1.8f, f.Runtime.Link.Audio.MicGain);
+
+        await Until(() =>
+            Math.Abs(f.Runtime.Config.Settings.RxGain - 2.5f) < 0.01f
+            && f.Runtime.Config.Settings.RxAutoLevel
+            && Math.Abs(f.Runtime.Config.Settings.MicGain - 1.8f) < 0.01f);
     }
 }

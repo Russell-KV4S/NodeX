@@ -1,5 +1,12 @@
 # Change log
 
+## 2026-11-22: 1.32 / code 35
+
+- **Compact PTT/Speaker + RX & TX gain sliders inside `PttCard`:**
+  - Shortened `PUSH TO TALK` and `Speaker` (`68 px` height on portrait phone @ `1.0×`, `58 px` on short landscape, `96 px` on desktop) and moved the live **RX** (`0.5×–4.0×` + **Auto** toggle) and new **TX** (`MicGain`, `0.5×–4.0×`) gain sliders into `GainsGrid` inside `PttCard` directly between the `MIC`/`SPK` level indicators and PTT/Speaker (removing the standalone `RxGainCard`; collapses to one compact row alongside the meters on short landscape screens).
+  - Added live `NodeAudioEngine.MicGain` (`SanitizeMicGain`) and `NodeRuntime.SetLiveMicGain` (`LiveMicGain`) so TX slider adjustments apply mid-call without restarting capture and debounce-save atomically alongside `RxGain` and `RxAutoLevel` (`MainViewModel`). Added `TickFrequency="0.1"` to Settings → Microphone gain.
+  - Added `MicGain_SanitizesAndUpdatesTransmittedPcmLiveWithoutRestart` (`NodeX.Core.Tests`, **867 Core** tests pass) and updated `MainViewModelTests` + `AppearanceTests` (`GainsInPttPanel_RenderBetweenMetersAndPtt_InPhoneAndDesktopLayouts`, Skia screenshots verified across `420×860`, `860×420`, `1050×760`, and `1.5×` HighContrast; **49 headless UI** tests pass; `dotnet build NodeX.sln` 0 warnings/errors). Physical Android phone check remains pending.
+
 ## 2026-11-22: 1.31 / code 34
 
 - **Receive gain (RX), RX Auto-Level & Android Extra Speaker Boost:**

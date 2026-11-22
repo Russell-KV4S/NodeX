@@ -475,7 +475,7 @@ public partial class MainView : UserControl
     private void ApplyBodyLayout(bool narrow, bool dock)
     {
         // Take every card out of whatever currently holds it, then place it for the new layout.
-        foreach (var card in new Control[] { HeroCard, LinksCard, PttCard, ConnectCard, DtmfCard, LogCard, IdReminderCard, CompactLinksCard, RxGainCard })
+        foreach (var card in new Control[] { HeroCard, LinksCard, PttCard, ConnectCard, DtmfCard, LogCard, IdReminderCard, CompactLinksCard })
         {
             Detach(card);
         }
@@ -489,14 +489,14 @@ public partial class MainView : UserControl
             RightColumn.IsVisible = false;
             Grid.SetColumn(RightColumn, 0);     // the grid has a single column now; a stale index crashes measure
 
-            // One tab at a time. Radio: slim links (MIC/SPK meters, PTT and Speaker stay docked below).
+            // One tab at a time. Radio: slim links (MIC/SPK meters, RX/TX gains, PTT and Speaker stay docked below).
             // Nodes: connect, favourites, full link rows. Keypad and Log are one card each.
             Control[] cards = _tab switch
             {
                 Tab.Nodes => [ConnectCard, LinksCard],
                 Tab.Keypad => [DtmfCard],
                 Tab.Log => [LogCard],
-                _ => [IdReminderCard, CompactLinksCard, RxGainCard],
+                _ => [IdReminderCard, CompactLinksCard],
             };
             foreach (var card in cards)
             {
@@ -515,10 +515,10 @@ public partial class MainView : UserControl
             RightColumn.IsVisible = true;
             Grid.SetColumn(RightColumn, 1);
 
-            // Two columns. PTT + MIC/SPK meters stay in the left column on tall screens; on short ones they dock below.
+            // Two columns. PTT + MIC/SPK meters + RX/TX gains stay in the left column on tall screens; on short ones they dock below.
             foreach (var card in dock
-                         ? new Control[] { HeroCard, RxGainCard }
-                         : new Control[] { HeroCard, RxGainCard, PttCard })
+                         ? new Control[] { HeroCard }
+                         : new Control[] { HeroCard, PttCard })
             {
                 LeftColumn.Children.Add(card);
             }
@@ -541,12 +541,12 @@ public partial class MainView : UserControl
     {
         bool phone = _narrow == true;   // phone layout: the key shares a row with the speaker chip, extras are hidden
         double scale = Math.Max(1, FontSize / 14);
-        MicMeterLabel.MinWidth = SpkMeterLabel.MinWidth = 32 * scale;
-        MicMeterValue.MinWidth = SpkMeterValue.MinWidth = 36 * scale;
+        MicMeterLabel.MinWidth = SpkMeterLabel.MinWidth = RxGainLabel.MinWidth = TxGainLabel.MinWidth = 32 * scale;
+        MicMeterValue.MinWidth = SpkMeterValue.MinWidth = RxGainValue.MinWidth = TxGainValue.MinWidth = 36 * scale;
 
         if (isShort && !phone)
         {
-            // Short landscape screen: put MIC and SPK meters on one compact row to preserve scroll space.
+            // Short landscape screen: put MIC/SPK meters on one compact row and RX/TX gains on one compact row.
             MetersGrid.ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto,*,Auto");
             MetersGrid.RowDefinitions = RowDefinitions.Parse("Auto");
             MetersGrid.RowSpacing = 0;
@@ -557,12 +557,24 @@ public partial class MainView : UserControl
             Place(SpkMeterBar, 0, 4, 1);
             Place(SpkMeterValue, 0, 5, 1);
             SpkMeterLabel.Margin = new Thickness(14, 0, 0, 0);
+
+            GainsGrid.ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto,Auto,*,Auto");
+            GainsGrid.RowDefinitions = RowDefinitions.Parse("Auto");
+            GainsGrid.RowSpacing = 0;
+            Place(RxGainLabel, 0, 0, 1);
+            Place(RxGainSlider, 0, 1, 1);
+            Place(RxGainValue, 0, 2, 1);
+            Place(RxAutoLevelButton, 0, 3, 1);
+            Place(TxGainLabel, 0, 4, 1);
+            Place(TxGainSlider, 0, 5, 1);
+            Place(TxGainValue, 0, 6, 1);
+            TxGainLabel.Margin = new Thickness(14, 0, 0, 0);
         }
         else
         {
             MetersGrid.ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto");
             MetersGrid.RowDefinitions = RowDefinitions.Parse("Auto,Auto");
-            MetersGrid.RowSpacing = narrow ? 6 : 10;
+            MetersGrid.RowSpacing = narrow ? 4 : 10;
             Place(MicMeterLabel, 0, 0, 1);
             Place(MicMeterBar, 0, 1, 1);
             Place(MicMeterValue, 0, 2, 1);
@@ -570,6 +582,18 @@ public partial class MainView : UserControl
             Place(SpkMeterBar, 1, 1, 1);
             Place(SpkMeterValue, 1, 2, 1);
             SpkMeterLabel.Margin = default;
+
+            GainsGrid.ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto");
+            GainsGrid.RowDefinitions = RowDefinitions.Parse("Auto,Auto");
+            GainsGrid.RowSpacing = narrow ? 0 : 4;
+            Place(RxGainLabel, 0, 0, 1);
+            Place(RxGainSlider, 0, 1, 1);
+            Place(RxGainValue, 0, 2, 1);
+            Place(RxAutoLevelButton, 0, 3, 1);
+            Place(TxGainLabel, 1, 0, 1);
+            Place(TxGainSlider, 1, 1, 1);
+            Place(TxGainValue, 1, 2, 1);
+            TxGainLabel.Margin = default;
         }
 
         PttInner.HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -577,18 +601,18 @@ public partial class MainView : UserControl
         {
             PttRow.ColumnDefinitions = ColumnDefinitions.Parse("*,Auto");
             PttRow.HorizontalAlignment = HorizontalAlignment.Stretch;
-            // A full-width bar the thumb can find without looking. On short screens the bar is slimmer and the
-            // time-out/mode strip is hidden (the key face already shows the running transmit time).
-            PttDock.Padding = new Thickness(12, isShort ? 6 : 8);
-            PttCard.Padding = new Thickness(isShort ? 8 : 12);
+            // A full-width bar the thumb can find without looking, slimmed vertically so RX/TX gains fit above it.
+            PttDock.Padding = new Thickness(12, isShort ? 4 : 6);
+            PttCard.Padding = isShort ? new Thickness(8, 6) : new Thickness(12, 8);
             PttCard.CornerRadius = new CornerRadius(12);
-            PttInner.Spacing = isShort ? 6 : 10;
+            PttInner.Spacing = isShort ? 4 : 6;
             PttButton.Width = double.NaN;
             PttButton.HorizontalAlignment = HorizontalAlignment.Stretch;
-            PttButton.Height = Math.Max(isShort ? 64 : phone ? 112 : 96, 72 * scale);
+            PttButton.CornerRadius = PttFace.CornerRadius = new CornerRadius(14);
+            PttButton.Height = Math.Max(isShort ? 56 : 68, (isShort ? 58 : 60) * scale);
             PttInfo.Width = double.NaN;
             PttInfo.HorizontalAlignment = HorizontalAlignment.Stretch;
-            PttInfo.IsVisible = !isShort && !phone;   // phones: nothing but the meters, key and chip (mode lives in Settings)
+            PttInfo.IsVisible = !isShort && !phone;   // phones: nothing but the meters, gains, key and chip (mode lives in Settings)
             PttCaption.IsVisible = false;
             PttModeHint.IsVisible = true;
         }
@@ -596,12 +620,13 @@ public partial class MainView : UserControl
         {
             PttRow.ColumnDefinitions = ColumnDefinitions.Parse("260,Auto");
             PttRow.HorizontalAlignment = HorizontalAlignment.Center;
-            PttCard.Padding = new Thickness(24);
+            PttCard.Padding = new Thickness(20, 16);
             PttCard.CornerRadius = new CornerRadius(16);
-            PttInner.Spacing = 18;
+            PttInner.Spacing = 12;
             PttButton.Width = 260;
             PttButton.HorizontalAlignment = HorizontalAlignment.Stretch;
-            PttButton.Height = 140;
+            PttButton.CornerRadius = PttFace.CornerRadius = new CornerRadius(20);
+            PttButton.Height = Math.Max(96, 86 * scale);
             PttInfo.Width = 300;
             PttInfo.HorizontalAlignment = HorizontalAlignment.Center;
             PttInfo.IsVisible = true;

@@ -75,9 +75,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _disposed = true;
         _timer?.Stop();
         _ageTimer?.Stop();
-        _rxGainSaveCts?.Cancel();
-        _rxGainSaveCts?.Dispose();
-        _rxGainSaveCts = null;
+        _gainSaveCts?.Cancel();
+        _gainSaveCts?.Dispose();
+        _gainSaveCts = null;
         _idReminder.Dispose();
         History.Dispose();
         _runtime.RegistrationChanged -= OnRegistrationChanged;
@@ -1339,8 +1339,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     }
 
     private bool _applyingConfig;
-    private System.Threading.CancellationTokenSource? _rxGainSaveCts;
-    private int _pendingRxSaveCount;
+    private System.Threading.CancellationTokenSource? _gainSaveCts;
+    private int _pendingGainSaveCount;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RxGainDisplay))]
@@ -1353,12 +1353,28 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial bool RxAutoLevel { get; set; }
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MicGainDisplay))]
+    public partial double MicGain { get; set; } = 1.0;
+
+    public string MicGainDisplay => string.Create(
+        System.Globalization.CultureInfo.InvariantCulture,
+        $"{NodeAudioEngine.SanitizeMicGain((float)MicGain):0.0}×");
+
     partial void OnRxGainChanged(double value)
     {
         if (_applyingConfig || _disposed) return;
         float gain = RxAudioProcessor.SanitizeGain((float)value);
         _runtime.SetLiveRxAudio(gain, RxAutoLevel);
-        ScheduleSaveRxAudio(debounceMs: 350);
+        ScheduleSaveAudioGains(debounceMs: 350);
+    }
+
+    partial void OnMicGainChanged(double value)
+    {
+        if (_applyingConfig || _disposed) return;
+        float gain = NodeAudioEngine.SanitizeMicGain((float)value);
+        _runtime.SetLiveMicGain(gain);
+        ScheduleSaveAudioGains(debounceMs: 350);
     }
 
     [RelayCommand]
@@ -1367,23 +1383,23 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         RxAutoLevel = !RxAutoLevel;
         float gain = RxAudioProcessor.SanitizeGain((float)RxGain);
         _runtime.SetLiveRxAudio(gain, RxAutoLevel);
-        ScheduleSaveRxAudio(debounceMs: 0);
+        ScheduleSaveAudioGains(debounceMs: 0);
     }
 
-    private void ScheduleSaveRxAudio(int debounceMs)
+    private void ScheduleSaveAudioGains(int debounceMs)
     {
-        _rxGainSaveCts?.Cancel();
-        _rxGainSaveCts?.Dispose();
-        var cts = _rxGainSaveCts = new System.Threading.CancellationTokenSource();
+        _gainSaveCts?.Cancel();
+        _gainSaveCts?.Dispose();
+        var cts = _gainSaveCts = new System.Threading.CancellationTokenSource();
 
         var cfg = _runtime.Config;
         if (!cfg.IsComplete || cfg.Password == null) return;
 
-        int ticket = System.Threading.Interlocked.Increment(ref _pendingRxSaveCount);
-        _ = SaveRxAudioAsync(debounceMs, ticket, cts.Token);
+        int ticket = System.Threading.Interlocked.Increment(ref _pendingGainSaveCount);
+        _ = SaveAudioGainsAsync(debounceMs, ticket, cts.Token);
     }
 
-    private async Task SaveRxAudioAsync(int debounceMs, int ticket, System.Threading.CancellationToken ct)
+    private async Task SaveAudioGainsAsync(int debounceMs, int ticket, System.Threading.CancellationToken ct)
     {
         try
         {
@@ -1393,25 +1409,28 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             var cfg = _runtime.Config;
             if (!cfg.IsComplete || cfg.Password == null) return;
 
-            float gain = _runtime.LiveRxGain;
-            bool auto = _runtime.LiveRxAutoLevel;
-            if (Math.Abs(cfg.Settings.RxGain - gain) < 0.001f && cfg.Settings.RxAutoLevel == auto)
+            float rxGain = _runtime.LiveRxGain;
+            bool rxAuto = _runtime.LiveRxAutoLevel;
+            float micGain = _runtime.LiveMicGain;
+            if (Math.Abs(cfg.Settings.RxGain - rxGain) < 0.001f
+                && cfg.Settings.RxAutoLevel == rxAuto
+                && Math.Abs(cfg.Settings.MicGain - micGain) < 0.001f)
                 return;
 
             await _runtime.ConfigService.SaveAsync(
-                cfg.Settings with { RxGain = gain, RxAutoLevel = auto },
+                cfg.Settings with { RxGain = rxGain, RxAutoLevel = rxAuto, MicGain = micGain },
                 cfg.Password,
                 ct);
         }
         catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException) { }
         catch (Exception ex)
         {
-            LogActivity($"[ERROR] Could not save RX gain: {ex.Message}");
+            LogActivity($"[ERROR] Could not save audio gain: {ex.Message}");
         }
         finally
         {
-            if (System.Threading.Volatile.Read(ref _pendingRxSaveCount) == ticket)
-                System.Threading.Volatile.Write(ref _pendingRxSaveCount, 0);
+            if (System.Threading.Volatile.Read(ref _pendingGainSaveCount) == ticket)
+                System.Threading.Volatile.Write(ref _pendingGainSaveCount, 0);
         }
     }
 
@@ -1536,13 +1555,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             PttModeLabel = IsToggleMode ? "Toggle (Click)" : "Momentary (Hold)";
         }
 
-        if (System.Threading.Volatile.Read(ref _pendingRxSaveCount) == 0)
+        if (System.Threading.Volatile.Read(ref _pendingGainSaveCount) == 0)
         {
             _applyingConfig = true;
             try
             {
                 RxGain = RxAudioProcessor.SanitizeGain(s.RxGain);
                 RxAutoLevel = s.RxAutoLevel;
+                MicGain = NodeAudioEngine.SanitizeMicGain(s.MicGain);
             }
             finally
             {

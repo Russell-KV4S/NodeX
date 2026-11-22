@@ -14,11 +14,11 @@ Rules:
 
 ## Pending
 
-1.26 through 1.31 (code 34), pending Google Play upload (2026-11-22).
+1.26 through 1.32 (code 35), pending Google Play upload (2026-11-22).
 
 ```
 <en-US>
-Added live RX gain, auto-level, and Android speaker boost in Settings and on the main screen.
+Added live RX/TX gain, auto-level, and Android speaker boost in the PTT panel and Settings.
 Fixed IAX2 registration on cellular carrier NAT so calls and registration share one IP.
 Replay local audio and combine clips into one shareable WAV.
 Auto-connect to up to eight nodes; fixed Android startup auto-connect and audio stalls.

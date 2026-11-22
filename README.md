@@ -22,7 +22,7 @@ It is built for a **portable node**: register once, link out to other nodes, and
 - **Multiple nodes at once:** register once with AllStarLink and hold up to **8 simultaneous outbound links** with live mixed audio, per-node mute, and a single explicit transmit target
 - **Android Auto:** a native car media app to browse linked nodes and favourites, switch listen/transmit focus, mute, and (full GitHub edition) transmit from the car screen or steering wheel
 - **[Audio Replay and WAV sharing](#audio-replay-and-sharing):** replay received or transmitted audio, jump straight to the last received clip, and share a WAV from either Android edition
-- **Receive gain & Auto-Level:** adjust receive volume live (`0.5×–4.0×` with soft limiting) from the Radio screen or Settings, enable optional gated RX Auto-Level, and use extra speaker boost (`LoudnessEnhancer`) on Android
+- **Receive & transmit gain + Auto-Level:** adjust live **RX** (`0.5×–4.0×` with soft limiting + **Auto** toggle) and **TX** mic gain right inside the PTT panel or Settings, and use extra speaker boost (`LoudnessEnhancer`) on Android
 - Find-a-node search, favourites with custom labels, and a DTMF keypad for node function codes (sent to the transmit node; Link/Unlink use the Connect box's node)
 - Push-to-talk: on-screen (momentary or toggle), Bluetooth LE button with a "Learn" wizard, and headset media key
 - Auto-reconnect and seamless Wi-Fi ↔ cellular network handoff
