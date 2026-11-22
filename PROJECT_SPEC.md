@@ -28,6 +28,7 @@ Primary use case: a **portable node on a phone or laptop** that registers with A
 1. **Always on, in the background.** On Android a foreground service keeps links alive with the screen off or the app backgrounded, and the node retries until the *user* disconnects (§4.6), surviving Wi-Fi/cellular handoff, dropped calls and dead spots. Nothing but the user's own Mute or Disconnect ends audio. (Owner-field-reported for 1 h+ screen-off and handoff; see §2.)
 2. **Multiple nodes at once.** Up to 8 simultaneous outbound links, live mixed audio, per-node mute/disconnect, one explicit transmit node, no cross-linking between nodes (§4.5 / §2).
 3. **Android Auto.** Native car media app: browse links and favourites, focus/mute/disconnect, optional car-radio audio mix; the full GitHub edition adds optional Talk-button / steering-wheel PTT, Play edition is listen-only.
+4. **Audio Replay and WAV sharing.** Replay the last received clip or browse and filter received and transmitted clips. Both Android editions share individual WAV files through the Android share sheet. Desktop reveals the WAV in the file manager. Saving is on by default, with a configurable limit and clip deletion. Clips stay on the device until explicitly shared, and replay stops when PTT keys (§4.8).
 
 Design stance: **outbound-linking only.** Carrier-grade NAT blocks unsolicited inbound IAX2 on cellular, so NodeX dials out and ignores inbound link attempts (an inbound listener would only be possible over a VPN overlay such as WireGuard/Tailscale; not implemented).
 

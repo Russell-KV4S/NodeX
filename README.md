@@ -21,6 +21,7 @@ It is built for a **portable node**: register once, link out to other nodes, and
 - **Always on, in the background:** on Android a foreground service keeps your links alive with the screen off or the app in the background, and NodeX keeps retrying until *you* disconnect, through Wi-Fi/cellular switches, dropped calls and dead spots, so the node is there when you want it
 - **Multiple nodes at once:** register once with AllStarLink and hold up to **8 simultaneous outbound links** with live mixed audio, per-node mute, and a single explicit transmit target
 - **Android Auto:** a native car media app to browse linked nodes and favourites, switch listen/transmit focus, mute, and (full GitHub edition) transmit from the car screen or steering wheel
+- **[Audio Replay and WAV sharing](#audio-replay-and-sharing):** replay received or transmitted audio, jump straight to the last received clip, and share a WAV from either Android edition
 - Find-a-node search, favourites with custom labels, and a DTMF keypad for node function codes (sent to the transmit node; Link/Unlink use the Connect box's node)
 - Push-to-talk: on-screen (momentary or toggle), Bluetooth LE button with a "Learn" wizard, and headset media key
 - Auto-reconnect and seamless Wi-Fi ↔ cellular network handoff
@@ -47,6 +48,12 @@ Take your AllStarLink node on the road as a native Android Auto media app:
 - **Clear car controls:** Now Playing shows who is talking, your link count, and whether you are listening or armed to transmit, with per-node **Transmit here**, **Mute / Unmute**, and **Disconnect** buttons.
 - **Car-safe media buttons:** **Next / Back** step through connected nodes without dialling new ones, **Pause / Stop** never drop or mute your links, and **Play** takes the car audio back. Nothing is muted unless you press Mute. Any active car transmission is immediately released if focus is lost, the car disconnects, or any media button is pressed.
 - **Play vs full GitHub edition:** the Google Play edition is **listen-only** in the car (you can still browse, switch nodes, mute, and disconnect). The full GitHub APK edition (`NodeX-android.apk`, [install guide](docs/INSTALL_ANDROID.md)) adds an optional **Talk** screen button and optional steering-wheel **Next** or **Back** PTT trigger in **Settings** (disabled by default, with audible key/unkey confirmation tones and a car transmission time limit).
+
+## Audio Replay and sharing
+
+- **Listen again:** tap **Audio Replay** in the header to play the last received clip or browse received and transmitted clips. Playback uses your device's speaker and stops when you key PTT.
+- **Share a WAV:** select **Share** on a clip to open Android's share sheet in either Android edition. On desktop, this opens the clip's location in your file manager so you can share the file yourself.
+- **Manage local history:** saving is on by default and keeps the 50 most recent clips. Change the limit or turn saving off in **Settings**. Delete individual clips or clear the history from Audio Replay. Clips stay on your device until you choose to share them.
 
 ## Platforms and status
 
