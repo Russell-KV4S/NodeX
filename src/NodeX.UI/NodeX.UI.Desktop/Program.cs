@@ -99,16 +99,19 @@ sealed class Program
         AppServices.AudioDeviceLister = DesktopAudioDevices.List;
 
         // Desktop "send logs": show the log file in the file manager; the user attaches it to an e-mail.
-        AppServices.LogSharer = (path, _) =>
-        {
-            var psi = OperatingSystem.IsWindows()
-                ? new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{path}\"")
-                : OperatingSystem.IsMacOS()
-                    ? new System.Diagnostics.ProcessStartInfo("open", $"-R \"{path}\"")
-                    : new System.Diagnostics.ProcessStartInfo("xdg-open", $"\"{System.IO.Path.GetDirectoryName(path)}\"");
-            psi.UseShellExecute = false;
-            System.Diagnostics.Process.Start(psi);
-            return System.Threading.Tasks.Task.CompletedTask;
-        };
+        AppServices.LogSharer = (path, _) => RevealFileInManager(path);
+        AppServices.AudioFileSharer = (path, _) => RevealFileInManager(path);
+    }
+
+    private static System.Threading.Tasks.Task RevealFileInManager(string path)
+    {
+        var psi = OperatingSystem.IsWindows()
+            ? new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{path}\"")
+            : OperatingSystem.IsMacOS()
+                ? new System.Diagnostics.ProcessStartInfo("open", $"-R \"{path}\"")
+                : new System.Diagnostics.ProcessStartInfo("xdg-open", $"\"{System.IO.Path.GetDirectoryName(path)}\"");
+        psi.UseShellExecute = false;
+        System.Diagnostics.Process.Start(psi);
+        return System.Threading.Tasks.Task.CompletedTask;
     }
 }

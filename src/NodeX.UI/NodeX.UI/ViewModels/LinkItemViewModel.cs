@@ -19,6 +19,9 @@ public sealed partial class LinkItemViewModel : ObservableObject
     private readonly Func<string, bool> _isFavorite;
     private readonly Action<string> _toggleFavorite;
     private readonly Action<string, string> _saveLabel;
+    private readonly Func<string, bool> _isAutoConnect;
+    private readonly Action<string> _toggleAutoConnect;
+    private string _canonicalTarget;
     private string _shownLabel = "";
 
     public LinkItemViewModel(
@@ -29,9 +32,12 @@ public sealed partial class LinkItemViewModel : ObservableObject
         Action<string> disconnect,
         Func<string, bool>? isFavorite = null,
         Action<string>? toggleFavorite = null,
-        Action<string, string>? saveLabel = null)
+        Action<string, string>? saveLabel = null,
+        Func<string, bool>? isAutoConnect = null,
+        Action<string>? toggleAutoConnect = null)
     {
         Node = node;
+        _canonicalTarget = node;
         _labelFor = labelFor;
         _selectTransmit = selectTransmit;
         _toggleMute = toggleMute;
@@ -39,6 +45,8 @@ public sealed partial class LinkItemViewModel : ObservableObject
         _isFavorite = isFavorite ?? (_ => false);
         _toggleFavorite = toggleFavorite ?? (_ => { });
         _saveLabel = saveLabel ?? ((_, _) => { });
+        _isAutoConnect = isAutoConnect ?? (_ => false);
+        _toggleAutoConnect = toggleAutoConnect ?? (_ => { });
         Title = $"Node {node}";
     }
 
@@ -154,6 +162,18 @@ public sealed partial class LinkItemViewModel : ObservableObject
 
     public string RenameAutomationName => $"Rename favorite {Node}";
 
+    // --- Auto-connect on startup (up to 8 public or private nodes) ---
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AutoConnectAutomationName), nameof(AutoConnectToolTip))]
+    public partial bool IsAutoConnect { get; set; }
+
+    public string AutoConnectAutomationName =>
+        IsAutoConnect ? $"Remove node {Node} from auto-connect on startup" : $"Auto-connect node {Node} on startup";
+
+    public string AutoConnectToolTip =>
+        IsAutoConnect ? "Auto-connects on startup (tap to turn off)" : "Auto-connect on startup";
+
     // --- Compact chip shown in the always-visible top bar ---
 
     /// <summary>"27339 · East Coast HUB1" or just the number.</summary>
@@ -168,6 +188,8 @@ public sealed partial class LinkItemViewModel : ObservableObject
     public void Refresh(NodeConnection c)
     {
         IsPrivate = c.IsPrivate;
+        _canonicalTarget = c.IsPrivate && c.PrivateAddress != null ? c.PrivateAddress.CanonicalInput : Node;
+        IsAutoConnect = _isAutoConnect(_canonicalTarget);
         if (c.IsPrivate)
         {
             // The card shows the node number and name with the PRIVATE pill; the host stays in the log and the Private
@@ -244,6 +266,9 @@ public sealed partial class LinkItemViewModel : ObservableObject
 
     [RelayCommand]
     public void ToggleFavorite() => _toggleFavorite(Node);
+
+    [RelayCommand]
+    public void ToggleAutoConnect() => _toggleAutoConnect(_canonicalTarget);
 
     [RelayCommand]
     public void SaveLabel()

@@ -1,0 +1,258 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:NodeX.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="820"
+             x:Class="NodeX.UI.Views.AudioHistoryView"
+             x:DataType="vm:AudioHistoryViewModel"
+             Background="{DynamicResource ConsoleBackgroundBrush}">
+
+    <UserControl.Styles>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="14" />
+        </Style>
+        <Style Selector="Border.clipCard">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="12" />
+        </Style>
+        <Style Selector="Border.clipCard.rx">
+            <Setter Property="BorderBrush" Value="{DynamicResource RxGreenBrush}" />
+            <Setter Property="BorderThickness" Value="3,1,1,1" />
+        </Style>
+        <Style Selector="Border.clipCard.tx">
+            <Setter Property="BorderBrush" Value="{DynamicResource TxRedBrush}" />
+            <Setter Property="BorderThickness" Value="1,1,3,1" />
+        </Style>
+        <Style Selector="Border.clipCard.playing">
+            <Setter Property="Background" Value="{DynamicResource SelectedBackgroundBrush}" />
+        </Style>
+        <Style Selector="Button.filterPill">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSize12}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.filterPill.active">
+            <Setter Property="Background" Value="{DynamicResource SelectedBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CyanAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource CyanAccentBrush}" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style Selector="Button.iconbtn">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="MinWidth" Value="44" />
+            <Setter Property="MinHeight" Value="44" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- PINNED HEADER -->
+        <Border Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}"
+                BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,0,0,1" Padding="8,6">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Button Grid.Column="0" Classes="iconbtn" Command="{Binding BackCommand}"
+                        AutomationProperties.Name="Back" Content="←" FontSize="{DynamicResource FontSize20}" />
+                <TextBlock Grid.Column="1" Text="Audio replay" FontSize="{DynamicResource FontSize18}" FontWeight="Bold"
+                           Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="4,0,0,0" />
+                <Button Grid.Column="2" Content="Clear" IsVisible="{Binding HasAnyClips}"
+                        Command="{Binding RequestClearCommand}" AutomationProperties.Name="Clear all saved audio clips"
+                        Background="Transparent" BorderThickness="0"
+                        Foreground="{DynamicResource CyanAccentBrush}"
+                        FontWeight="SemiBold" FontSize="{DynamicResource FontSize13}" Padding="12,6" MinHeight="40" />
+            </Grid>
+        </Border>
+
+        <!-- SCROLLING BODY -->
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="16" Spacing="12" MaxWidth="640" HorizontalAlignment="Stretch">
+
+                <!-- Confirm clear all -->
+                <Border IsVisible="{Binding IsConfirmingClear}"
+                        Background="{DynamicResource ErrorBackgroundBrush}"
+                        BorderBrush="{DynamicResource TxRedBrush}" BorderThickness="1"
+                        CornerRadius="10" Padding="12">
+                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                        <TextBlock Grid.Column="0" Text="Delete all saved audio clips?" TextWrapping="Wrap"
+                                   FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TxRedBrush}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="Cancel" Command="{Binding CancelClearCommand}"
+                                Padding="12,6" CornerRadius="6" FontSize="{DynamicResource FontSize12}" />
+                        <Button Grid.Column="2" Content="Delete all" Command="{Binding ConfirmClearCommand}"
+                                Background="{DynamicResource DangerButtonBrush}" Foreground="#FFFFFF"
+                                Padding="12,6" CornerRadius="6" FontSize="{DynamicResource FontSize12}" FontWeight="Bold" />
+                    </Grid>
+                </Border>
+
+                <!-- Recording disabled notice -->
+                <Border IsVisible="{Binding IsRecordingOff}"
+                        Background="{DynamicResource WarningBackgroundBrush}"
+                        BorderBrush="{DynamicResource AmberAccentBrush}" BorderThickness="1"
+                        CornerRadius="10" Padding="12">
+                    <TextBlock Text="Audio history saving is turned off in Settings. Previously saved clips can still be replayed here."
+                               TextWrapping="Wrap" FontSize="{DynamicResource FontSize12}"
+                               Foreground="{DynamicResource WarningTextBrush}" />
+                </Border>
+
+                <!-- Status / error feedback -->
+                <Border IsVisible="{Binding HasStatus}"
+                        Background="{DynamicResource SelectedBackgroundBrush}"
+                        BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1"
+                        CornerRadius="10" Padding="10,8">
+                    <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" FontSize="{DynamicResource FontSize12}"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                </Border>
+
+                <!-- ZELLO-STYLE QUICK "REPLAY LAST RECEIVED" CARD -->
+                <Border IsVisible="{Binding HasLatestRx}"
+                        Background="{DynamicResource SuccessBackgroundBrush}"
+                        BorderBrush="{DynamicResource RxGreenBrush}" BorderThickness="1"
+                        CornerRadius="14" Padding="14">
+                    <StackPanel Spacing="10">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                            <Button Grid.Column="0" Command="{Binding ReplayLastCommand}"
+                                    AutomationProperties.Name="{Binding LatestRxPlayLabel}"
+                                    Width="50" Height="50" CornerRadius="25" Padding="0"
+                                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                    Background="{DynamicResource RxGreenBrush}" Foreground="{DynamicResource OnGreenBrush}">
+                                <TextBlock Text="{Binding LatestRxPlayGlyph}" FontSize="{DynamicResource FontSize20}" FontWeight="Bold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Button>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                <TextBlock Text="LAST RECEIVED" FontSize="{DynamicResource FontSize10}" FontWeight="Bold"
+                                           Foreground="{DynamicResource RxGreenBrush}" />
+                                <TextBlock Text="{Binding LatestRxTitle}" FontSize="{DynamicResource FontSize15}" FontWeight="Bold"
+                                           TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Text="{Binding LatestRxMeta}" FontSize="{DynamicResource FontSize11}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
+                        </Grid>
+                        <ProgressBar Minimum="0" Maximum="1" Value="{Binding LatestRxProgress}"
+                                     IsVisible="{Binding IsPlayingLatestRx}"
+                                     MinWidth="0" Height="6" CornerRadius="3"
+                                     Foreground="{DynamicResource RxGreenBrush}" Background="{DynamicResource CardBackgroundBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- FILTER PILLS -->
+                <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="6" IsVisible="{Binding HasAnyClips}">
+                    <Button Classes="filterPill" Classes.active="{Binding IsAllFilter}" Content="All"
+                            Command="{Binding SetFilterCommand}" CommandParameter="all" />
+                    <Button Classes="filterPill" Classes.active="{Binding IsRxFilter}" Content="Received (RX)"
+                            Command="{Binding SetFilterCommand}" CommandParameter="rx" />
+                    <Button Classes="filterPill" Classes.active="{Binding IsTxFilter}" Content="Sent (TX)"
+                            Command="{Binding SetFilterCommand}" CommandParameter="tx" />
+                </WrapPanel>
+
+                <!-- EMPTY STATE -->
+                <Border Classes="card" IsVisible="{Binding IsEmpty}" Padding="20">
+                    <StackPanel Spacing="8" HorizontalAlignment="Center">
+                        <TextBlock Text="No saved audio clips yet" FontSize="{DynamicResource FontSize15}" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" HorizontalAlignment="Center" />
+                        <TextBlock Text="Incoming and outgoing transmissions are saved locally as you operate, so you can replay anything you missed — just like Zello."
+                                   TextWrapping="Wrap" TextAlignment="Center" FontSize="{DynamicResource FontSize12}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ZELLO-STYLE CHRONOLOGICAL VOICE MESSAGE TIMELINE -->
+                <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding HasVisibleClips}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><StackPanel Spacing="8" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AudioClipItemViewModel">
+                            <Border Classes="clipCard" Classes.rx="{Binding IsRx}" Classes.tx="{Binding IsTx}"
+                                    Classes.playing="{Binding IsPlaying}">
+                                <StackPanel Spacing="8">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                        <!-- Play / Stop circular button -->
+                                        <Button Grid.Column="0" Command="{Binding TogglePlayCommand}"
+                                                AutomationProperties.Name="{Binding PlayAutomationName}"
+                                                Width="44" Height="44" CornerRadius="22" Padding="0"
+                                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                                Background="{DynamicResource SelectedBackgroundBrush}"
+                                                BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1">
+                                            <TextBlock Text="{Binding PlayGlyph}" FontSize="{DynamicResource FontSize16}" FontWeight="Bold"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        </Button>
+
+                                        <!-- Clip info -->
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                            <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="2">
+                                                <Ellipse Width="8" Height="8" Fill="{DynamicResource RxGreenBrush}"
+                                                         IsVisible="{Binding IsUnheard}" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSize14}" FontWeight="Bold"
+                                                           TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           VerticalAlignment="Center" />
+                                                <Border CornerRadius="5" Padding="6,1" VerticalAlignment="Center"
+                                                        Background="{DynamicResource SelectedBackgroundBrush}">
+                                                    <TextBlock Text="{Binding DirectionBadge}" FontSize="{DynamicResource FontSize10}" FontWeight="Bold"
+                                                               Foreground="{DynamicResource CyanAccentBrush}" />
+                                                </Border>
+                                            </WrapPanel>
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="{Binding TimeText}" FontSize="{DynamicResource FontSize11}"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock Text="·" FontSize="{DynamicResource FontSize11}"
+                                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                                <TextBlock Text="{Binding DurationDisplay}" FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                            </StackPanel>
+                                        </StackPanel>
+
+                                        <!-- Share & Delete -->
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                            <Button Command="{Binding ShareCommand}" IsVisible="{Binding CanShare}"
+                                                    AutomationProperties.Name="{Binding ShareAutomationName}"
+                                                    ToolTip.Tip="Share or save WAV file"
+                                                    MinWidth="38" MinHeight="38" Padding="0" CornerRadius="8"
+                                                    Background="Transparent" BorderThickness="0"
+                                                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                                                <TextBlock Text="↗" FontSize="{DynamicResource FontSize16}" Foreground="{DynamicResource CyanAccentBrush}" />
+                                            </Button>
+                                            <Button Command="{Binding DeleteCommand}"
+                                                    AutomationProperties.Name="{Binding DeleteAutomationName}"
+                                                    ToolTip.Tip="Delete clip"
+                                                    MinWidth="38" MinHeight="38" Padding="0" CornerRadius="8"
+                                                    Background="Transparent" BorderThickness="0"
+                                                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                                                <TextBlock Text="✕" FontSize="{DynamicResource FontSize14}" Foreground="{DynamicResource TextMutedBrush}" />
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- Live playback bar -->
+                                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding Progress}"
+                                                 IsVisible="{Binding IsPlaying}"
+                                                 MinWidth="0" Height="6" CornerRadius="3"
+                                                 Foreground="{DynamicResource CyanAccentBrush}"
+                                                 Background="{DynamicResource ConsoleBackgroundBrush}" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Text="Saved locally on this device only (never uploaded). Replay always plays through your speaker and never transmits."
+                           TextWrapping="Wrap" FontSize="{DynamicResource FontSize11}"
+                           Foreground="{DynamicResource TextMutedBrush}" Margin="2,4,2,0" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

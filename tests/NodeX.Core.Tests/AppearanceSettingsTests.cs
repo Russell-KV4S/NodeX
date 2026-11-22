@@ -8,9 +8,14 @@ public class AppearanceSettingsTests
     private static NodeSettings Valid => new() { NodeNumber = "55553" };
 
     [Theory]
+    [InlineData("System", 1)]
     [InlineData("Dark", 1)]
     [InlineData("Light", 1.3)]
     [InlineData("HighContrast", 1.5)]
+    [InlineData("Amoled", 1.1)]
+    [InlineData("Nord", 1.2)]
+    [InlineData("Terminal", 1.0)]
+    [InlineData("Sepia", 1.4)]
     public void Appearance_RoundTripsInSettingsAndTransfer(string theme, double scale)
     {
         var settings = Valid with { Theme = theme, TextScale = scale };
@@ -20,6 +25,7 @@ public class AppearanceSettingsTests
         Assert.True(imported.Success);
         Assert.Equal(theme, imported.Settings!.Theme);
         Assert.Equal(scale, imported.Settings.TextScale);
+        Assert.Equal(theme, AppThemes.FromIndex(AppThemes.IndexOf(theme)));
     }
 
     [Theory]
@@ -31,10 +37,17 @@ public class AppearanceSettingsTests
         Assert.NotEmpty(NodeSettingsValidator.Validate(Valid with { Theme = theme, TextScale = scale }, "pw"));
 
     [Fact]
-    public void ExistingSettings_KeepDarkAndNormalTextSize()
+    public void NewAndUnspecifiedSettings_DefaultToSystemAndNormalTextSize()
     {
+        var fresh = new NodeSettings();
+        Assert.Equal(AppThemes.System, fresh.Theme);
+        Assert.Equal(1, fresh.TextScale);
+
         var settings = JsonSerializer.Deserialize<NodeSettings>("""{"NodeNumber":"55553"}""")!;
-        Assert.Equal("Dark", settings.Theme);
+        Assert.Equal(AppThemes.System, settings.Theme);
         Assert.Equal(1, settings.TextScale);
+
+        var explicitDark = JsonSerializer.Deserialize<NodeSettings>("""{"NodeNumber":"55553","Theme":"Dark"}""")!;
+        Assert.Equal(AppThemes.Dark, explicitDark.Theme);
     }
 }

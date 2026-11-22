@@ -1,5 +1,13 @@
 # Change log
 
+## Unreleased (2026-11-21)
+
+- **Follow-system default theme + 4 new themes:** **Follow system** (`System`) is now the default appearance, automatically matching your device's dark or light mode and updating live when the OS switches (`PlatformSettings.ColorValuesChanged`). Added **AMOLED black**, **Nord**, **Terminal green**, and **Sepia (warm light)** alongside **Dark**, **Light**, and **High contrast** (all 7 palettes verified ≥ 4.5:1 WCAG AA contrast in `AppearanceTests`). Existing saved configs with an explicit theme keep their selection.
+- **Auto-connect on startup (up to 8 public or private nodes):** replaced the single `"Default node to connect to"` box with **"Auto-connect on startup (optional, up to 8)"** (migrating legacy `DefaultTargetNode` automatically). Connects once per app launch after the first successful registration and never re-dials nodes you manually disconnect later in the same session. Added a theme-aware vector lightning-bolt toggle right beside the favorite star on the Connect box and linked-node cards (public and private), plus an indicator bolt and context-menu toggle on public and private favorite chips.
+- **Zello-style local audio saving & replay:** incoming RX and outgoing TX overs (≥ 300 ms, capped at 5 min) are saved locally as standard 8 kHz 16-bit mono PCM WAV clips (`history/` under app data, auto-pruned to 25 / 50 / 100 / 200 clips, toggleable in Settings, never uploaded). Tapping the header Replay button opens the Zello-style **Audio replay** screen with a pinned **"LAST RECEIVED"** quick-replay card, `All` / `Received (RX)` / `Sent (TX)` filters, unread dots, play/stop progress bars, Delete, confirmed Clear All, and WAV sharing (Android `AudioShareFileProvider` in both editions; Desktop file-manager reveal). Replay plays strictly through the local speaker, never transmits, and automatically stops if you key PTT.
+- **Compact header icon buttons:** replaced the misaligned `"Exit"` text box with centered rounded vector icon buttons for **Exit** (power icon) and **Audio replay** (replay icon with green unread dot, to the right of Exit).
+- **Validation:** `dotnet build NodeX.sln` succeeds with 0 warnings and 0 errors across all 7 projects (Desktop, Android, iOS, Core, UI, Tests); 820 Core tests and 44 headless UI tests pass (with Skia screenshots checked). **Not yet verified on a physical phone.**
+
 ## 2026-11-21: 1.27 / code 30
 
 - The MIC and SPK level meters now sit inside the shared PTT and Speaker frame.

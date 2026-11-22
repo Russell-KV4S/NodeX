@@ -121,6 +121,12 @@ public sealed class NodeAudioEngine : IAsyncDisposable
     /// <summary>Raised when received audio starts (true) or the jitter buffer drains (false).</summary>
     public event Action<bool>? RemoteAudioActiveChanged;
 
+    /// <summary>Raised on the playout thread for each 20 ms unmuted frame (zero allocation when unsubscribed).</summary>
+    public event Action<ReadOnlyMemory<short>>? RxFrameDecoded;
+
+    /// <summary>Raised on the capture thread for each 20 ms transmitted frame after gain/processing.</summary>
+    public event Action<ReadOnlyMemory<short>>? TxFrameCaptured;
+
     public event Action<string>? ErrorOccurred;
 
     /// <summary>Starts playback (and capture, per the options). Does nothing once running or after disposal.</summary>
@@ -285,6 +291,12 @@ public sealed class NodeAudioEngine : IAsyncDisposable
 
         if (!_channel.IsTransmitting) return;
 
+        if (TxFrameCaptured is { } txHandler)
+        {
+            short[] copy = scaled.ToArray();
+            txHandler(copy);
+        }
+
         byte[] ulaw = new byte[scaled.Length];
         G711Ulaw.Encode(scaled, ulaw);
         _sendQueue.Writer.TryWrite(ulaw);
@@ -368,6 +380,9 @@ public sealed class NodeAudioEngine : IAsyncDisposable
         // A Silence result is all zeros already (JitterBuffer clears it): feed the known level instead of scanning 160
         // samples 50 times a second on every idle link. Same smoothing, same callbacks (battery review 2026-11-21).
         OutputLevelChanged?.Invoke(hasAudio ? _outputMeter.Process(frame) : _outputMeter.Update(AudioLevels.Silent));
+
+        if (!Muted && RxFrameDecoded is { } rxHandler)
+            rxHandler(frame);
 
         if (Muted)
         {

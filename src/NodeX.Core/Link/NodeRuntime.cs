@@ -48,6 +48,7 @@ public sealed class NodeRuntime : IAsyncDisposable
     private string? _activeNode;
     private bool _started;
     private Task? _startTask;                                   // guarded by _connLock
+    private int _startupAutoConnectDone;
     private bool _disposed;
     private volatile bool _exited;
 
@@ -546,7 +547,55 @@ public sealed class NodeRuntime : IAsyncDisposable
         var registration = _registration;
         if (registration != null) _registrationInterval = registration.CurrentInterval;
         SetRegistration(registered, message, registration?.PerceivedAddress, registration?.PerceivedPort ?? 0);
-        if (registered) _ = RunNetworkCheckOnceAsync();
+        if (registered)
+        {
+            _ = RunNetworkCheckOnceAsync();
+            MaybeAutoConnectOnStartup();
+        }
+    }
+
+    /// <summary>
+    /// Runs once per app launch after the first successful registration: connects every configured
+    /// auto-connect node (up to <see cref="MaxLinks"/>), skipping any already linked. Never re-dials after
+    /// the user manually disconnects during the same session.
+    /// </summary>
+    private void MaybeAutoConnectOnStartup()
+    {
+        if (_exited || _disposed || !Config.IsComplete) return;
+        if (Interlocked.CompareExchange(ref _startupAutoConnectDone, 1, 0) != 0) return;
+
+        var targets = Config.Settings.GetEffectiveAutoConnectNodes();
+        if (targets.Count == 0) return;
+
+        var privateNodes = (Config.Settings.PrivateNodes ?? []).ToArray();
+        var list = targets.Take(MaxLinks).ToArray();
+        _ = Task.Run(() => RunStartupAutoConnectAsync(list, privateNodes));
+    }
+
+    private async Task RunStartupAutoConnectAsync(string[] targets, PrivateNodeEntry[] privateNodes)
+    {
+        Log.Info("link", $"startup auto-connect starting for {targets.Length} node(s): {string.Join(", ", targets)}");
+        Notice?.Invoke($"Auto-connecting to {targets.Length} startup node{(targets.Length == 1 ? "" : "s")}…");
+
+        foreach (string raw in targets)
+        {
+            if (_exited || _disposed) break;
+            if (SnapshotConnections().Length >= MaxLinks) break;
+            if (!ManualNodeAddress.TryParse(raw, out var addr, out _) || addr == null || addr.IsIpv6) continue;
+            if (FindConnection(addr.Node) != null) continue;
+
+            string? name = addr.IsPrivate
+                ? privateNodes.FirstOrDefault(p => p.ToManualAddress().SameTargetAs(addr))?.Name
+                : null;
+            try
+            {
+                await ConnectAsync(addr, name).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Log.Info("link", $"startup auto-connect to '{raw}' failed: {ex.Message}");
+            }
+        }
     }
 
     private void SetRegistration(bool registered, string status, IPAddress? address, int port = 0)

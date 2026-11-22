@@ -6,8 +6,8 @@ namespace NodeX.Core.Settings;
 /// </summary>
 public sealed record NodeSettings
 {
-    /// <summary>App appearance: Dark (default), Light, or HighContrast.</summary>
-    public string Theme { get; init; } = "Dark";
+    /// <summary>App appearance: System (default, follows OS dark/light), Dark, Light, HighContrast, Amoled, Nord, Terminal, or Sepia.</summary>
+    public string Theme { get; init; } = AppThemes.System;
 
     /// <summary>Text size multiplier, from 1.0 through 1.5.</summary>
     public double TextScale { get; init; } = 1.0;
@@ -15,8 +15,24 @@ public sealed record NodeSettings
     /// <summary>Your AllStarLink node number (from the allstarlink.org portal).</summary>
     public string NodeNumber { get; init; } = "";
 
-    /// <summary>Node pre-filled in the connect box.</summary>
+    /// <summary>Legacy single default node pre-filled in the connect box (kept for backward compatibility; see <see cref="AutoConnectNodes"/>).</summary>
     public string DefaultTargetNode { get; init; } = "";
+
+    /// <summary>
+    /// Nodes (public numbers or private <c>node@host[:port]</c> addresses, up to <see cref="NodeRuntime.MaxLinks"/>)
+    /// that NodeX connects to automatically on startup once registration succeeds.
+    /// </summary>
+    public List<string> AutoConnectNodes { get; init; } = [];
+
+    /// <summary>
+    /// Returns the active startup auto-connect list, falling back to legacy <see cref="DefaultTargetNode"/> only when
+    /// <see cref="AutoConnectNodes"/> has not been populated.
+    /// </summary>
+    public IReadOnlyList<string> GetEffectiveAutoConnectNodes()
+    {
+        if (AutoConnectNodes is { Count: > 0 }) return AutoConnectNodes;
+        return !string.IsNullOrWhiteSpace(DefaultTargetNode) ? [DefaultTargetNode.Trim()] : [];
+    }
 
     /// <summary>Quick-connect node numbers.</summary>
     public List<string> FavoriteNodes { get; init; } = [];
@@ -143,6 +159,14 @@ public sealed record NodeSettings
 
     /// <summary>Minutes after the user starts transmitting before the ID reminder appears.</summary>
     public int IdReminderMinutes { get; init; } = 10;
+
+    /// <summary>
+    /// Save received and transmitted audio overs locally as WAV clips for Zello-style replay. Stored only on this device.
+    /// </summary>
+    public bool SaveAudioHistory { get; init; } = true;
+
+    /// <summary>Maximum number of saved audio clips kept on disk (oldest are pruned automatically).</summary>
+    public int AudioHistoryMaxClips { get; init; } = Audio.AudioHistoryStore.DefaultMaxClips;
 
     /// <summary>
     /// Write per-step timings and protocol state to the troubleshooting log file (in addition to the normal event

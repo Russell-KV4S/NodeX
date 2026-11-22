@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
+using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -19,6 +20,10 @@ public class AppearanceTests
     [InlineData("Dark")]
     [InlineData("Light")]
     [InlineData("HighContrast")]
+    [InlineData("Amoled")]
+    [InlineData("Nord")]
+    [InlineData("Terminal")]
+    [InlineData("Sepia")]
     public void KeyedPtt_UsesTheThemeFillAndReadableText(string theme)
     {
         Appearance.Apply(Application.Current!, new() { Theme = theme, TextScale = 1.5 });
@@ -53,6 +58,10 @@ public class AppearanceTests
     [InlineData("Dark")]
     [InlineData("Light")]
     [InlineData("HighContrast")]
+    [InlineData("Amoled")]
+    [InlineData("Nord")]
+    [InlineData("Terminal")]
+    [InlineData("Sepia")]
     public void TextAndTransmitColors_HaveReadableContrast(string theme)
     {
         Appearance.Apply(Application.Current!, new() { Theme = theme });
@@ -67,10 +76,33 @@ public class AppearanceTests
             double a = Luminance(ColorOf(text)), b = Luminance(ColorOf(background));
             return (Math.Max(a, b) + 0.05) / (Math.Min(a, b) + 0.05);
         }
-        Assert.True(Ratio("TextPrimaryBrush", "CardBackgroundBrush") >= 4.5);
-        Assert.True(Ratio("TextMutedBrush", "CardBackgroundBrush") >= 4.5);
-        Assert.True(Ratio("OnRedBrush", "TransmitFillBrush") >= 4.5);
-        Assert.True(Ratio("OnGreenBrush", "RxGreenBrush") >= 4.5);
+        Assert.True(Ratio("TextPrimaryBrush", "CardBackgroundBrush") >= 4.5, $"{theme}: TextPrimary on Card");
+        Assert.True(Ratio("TextSecondaryBrush", "CardBackgroundBrush") >= 4.5, $"{theme}: TextSecondary on Card");
+        Assert.True(Ratio("TextMutedBrush", "CardBackgroundBrush") >= 4.5, $"{theme}: TextMuted on Card");
+        Assert.True(Ratio("TextMutedBrush", "HeaderBackgroundBrush") >= 4.5, $"{theme}: TextMuted on Header");
+        Assert.True(Ratio("WarningTextBrush", "WarningBackgroundBrush") >= 4.5, $"{theme}: WarningText on WarningBackground");
+        Assert.True(Ratio("OnRedBrush", "TransmitFillBrush") >= 4.5, $"{theme}: OnRed on TransmitFill");
+        Assert.True(Ratio("OnGreenBrush", "RxGreenBrush") >= 4.5, $"{theme}: OnGreen on RxGreen");
+    }
+
+    [AvaloniaFact]
+    public void SystemTheme_FollowsPlatformLightAndDark()
+    {
+        var app = Application.Current!;
+        var settings = new NodeSettings { Theme = AppThemes.System };
+
+        Appearance.Apply(app, settings, PlatformThemeVariant.Light);
+        Assert.Equal(ThemeVariant.Light, app.RequestedThemeVariant);
+        Assert.Equal(Color.Parse("#FFFFFF"), ((ISolidColorBrush)app.Resources["CardBackgroundBrush"]!).Color);
+
+        Appearance.Apply(app, settings, PlatformThemeVariant.Dark);
+        Assert.Equal(ThemeVariant.Dark, app.RequestedThemeVariant);
+        Assert.Equal(Color.Parse("#161B22"), ((ISolidColorBrush)app.Resources["CardBackgroundBrush"]!).Color);
+
+        Assert.Equal(AppThemes.Light, Appearance.ResolveEffectiveTheme(AppThemes.System, PlatformThemeVariant.Light));
+        Assert.Equal(AppThemes.Dark, Appearance.ResolveEffectiveTheme(AppThemes.System, PlatformThemeVariant.Dark));
+        Assert.Equal(AppThemes.Dark, Appearance.ResolveEffectiveTheme(AppThemes.System, null));
+        Assert.Equal(AppThemes.Nord, Appearance.ResolveEffectiveTheme(AppThemes.Nord, PlatformThemeVariant.Light));
     }
 
     [AvaloniaFact]
@@ -104,12 +136,16 @@ public class AppearanceTests
     [InlineData("HighContrast", 1.5, 420, 860, false)]
     [InlineData("Light", 1.5, 420, 860, true)]
     [InlineData("HighContrast", 1.5, 860, 420, false)]
+    [InlineData("Amoled", 1.0, 420, 860, false)]
+    [InlineData("Nord", 1.0, 420, 860, false)]
+    [InlineData("Terminal", 1.0, 420, 860, false)]
+    [InlineData("Sepia", 1.0, 420, 860, false)]
     public async Task ViewsRender_WithThemesAndLargeText(string theme, double scale, int width, int height, bool settings)
     {
         Appearance.Apply(Application.Current!, new() { Theme = theme, TextScale = scale });
         using var vm = new MainViewModel();
         await vm.Settings.LoadAsync();
-        vm.Settings.ThemeIndex = theme == "Light" ? 1 : theme == "HighContrast" ? 2 : 0;
+        vm.Settings.ThemeIndex = AppThemes.IndexOf(theme);
         vm.Settings.TextScale = scale;
         vm.IsSettingsOpen = settings;
         var view = new MainView { DataContext = vm };

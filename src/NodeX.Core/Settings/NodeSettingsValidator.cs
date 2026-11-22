@@ -13,6 +13,7 @@ public static partial class NodeSettingsValidator
         public const string NodeNumber = nameof(NodeSettings.NodeNumber);
         public const string Password = "Password";
         public const string DefaultTargetNode = nameof(NodeSettings.DefaultTargetNode);
+        public const string AutoConnectNodes = nameof(NodeSettings.AutoConnectNodes);
         public const string FavoriteNodes = nameof(NodeSettings.FavoriteNodes);
         public const string PrivateNodes = nameof(NodeSettings.PrivateNodes);
         public const string RegistrationUrl = nameof(NodeSettings.RegistrationUrl);
@@ -35,6 +36,7 @@ public static partial class NodeSettingsValidator
     {
         NodeNumber = (s.NodeNumber ?? "").Trim(),
         DefaultTargetNode = (s.DefaultTargetNode ?? "").Trim(),
+        AutoConnectNodes = CleanAutoConnectNodes(s),
         RegistrationUrl = (s.RegistrationUrl ?? "").Trim(),
         FavoriteNodes = (s.FavoriteNodes ?? [])
             .Select(n => (n ?? "").Trim())
@@ -70,6 +72,23 @@ public static partial class NodeSettingsValidator
         return result;
     }
 
+    /// <summary>Trims, canonicalizes valid addresses, and deduplicates startup auto-connect entries.</summary>
+    private static List<string> CleanAutoConnectNodes(NodeSettings s)
+    {
+        var result = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string raw in s.AutoConnectNodes ?? [])
+        {
+            string trimmed = (raw ?? "").Trim();
+            if (trimmed.Length == 0) continue;
+            string item = ManualNodeAddress.TryParse(trimmed, out var parsed, out _) && parsed != null
+                ? parsed.CanonicalInput
+                : trimmed;
+            if (seen.Add(item)) result.Add(item);
+        }
+        return result;
+    }
+
     /// <summary>Keeps only non-empty labels for nodes that are still favourites, trimmed and length-capped.</summary>
     private static Dictionary<string, string> CleanLabels(NodeSettings s)
     {
@@ -91,8 +110,8 @@ public static partial class NodeSettingsValidator
         var s = Normalize(settings);
         var issues = new List<SettingsIssue>();
 
-        if (s.Theme is not ("Dark" or "Light" or "HighContrast"))
-            issues.Add(new(nameof(NodeSettings.Theme), "Choose Dark, Light or High contrast."));
+        if (!AppThemes.IsValid(s.Theme))
+            issues.Add(new(nameof(NodeSettings.Theme), "Choose a valid theme."));
         if (!double.IsFinite(s.TextScale) || s.TextScale < 1 || s.TextScale > 1.5)
             issues.Add(new(nameof(NodeSettings.TextScale), "Text size must be between 100% and 150%."));
 
@@ -108,6 +127,21 @@ public static partial class NodeSettingsValidator
 
         if (s.DefaultTargetNode.Length > 0 && !NodeNumberPattern().IsMatch(s.DefaultTargetNode))
             issues.Add(new(Fields.DefaultTargetNode, "Default target must be a 3 to 7 digit node number."));
+
+        if (s.AutoConnectNodes.Count > NodeRuntime.MaxLinks)
+            issues.Add(new(Fields.AutoConnectNodes, $"Choose at most {NodeRuntime.MaxLinks} auto-connect nodes."));
+
+        foreach (string target in s.AutoConnectNodes)
+        {
+            if (!ManualNodeAddress.TryParse(target, out var parsed, out var error) || parsed == null)
+                issues.Add(new(Fields.AutoConnectNodes, $"Auto-connect entry '{target}' is invalid: {error}"));
+            else if (parsed.IsIpv6)
+                issues.Add(new(Fields.AutoConnectNodes, $"Auto-connect entry '{target}' uses IPv6, which is not supported yet."));
+        }
+
+        if (s.AudioHistoryMaxClips is < Audio.AudioHistoryStore.MinMaxClips or > Audio.AudioHistoryStore.MaxAllowedClips)
+            issues.Add(new(nameof(NodeSettings.AudioHistoryMaxClips),
+                $"Audio history limit must be between {Audio.AudioHistoryStore.MinMaxClips} and {Audio.AudioHistoryStore.MaxAllowedClips} clips."));
 
         foreach (string fav in s.FavoriteNodes.Where(f => !NodeNumberPattern().IsMatch(f)))
             issues.Add(new(Fields.FavoriteNodes, $"Favourite '{fav}' is not a 3 to 7 digit node number."));

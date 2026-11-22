@@ -9,6 +9,10 @@ using Avalonia.Android;
 
 namespace NodeX.UI.Android;
 
+[global::Android.Content.ContentProvider(["com.kv4s.nodex.audio"], Exported = false, GrantUriPermissions = true)]
+[MetaData("android.support.FILE_PROVIDER_PATHS", Resource = "@xml/audio_share_paths")]
+public class AudioShareFileProvider : AndroidX.Core.Content.FileProvider;
+
 [Activity(
     Label = "NodeX",
     Theme = "@style/MyTheme.NoActionBar",
@@ -62,6 +66,7 @@ public class MainActivity : AvaloniaMainActivity
         AppServices.ExitHandler = () => AndroidAppExit.Finish(this);
         AppServices.SpeakerphoneSetter = speaker => AndroidAudioRoute.SetSpeaker(this, speaker);
         AppServices.LogSharer = ShareLogText;
+        AppServices.AudioFileSharer = ShareAudioFile;
         AppServices.BleTransport ??= new AndroidBlePttTransport(this);
 
         base.OnCreate(savedInstanceState);
@@ -171,6 +176,24 @@ public class MainActivity : AvaloniaMainActivity
         send.PutExtra(global::Android.Content.Intent.ExtraSubject, $"NodeX log {DateTime.Now:yyyy-MM-dd HH:mm}");
         send.PutExtra(global::Android.Content.Intent.ExtraText, text);
         StartActivity(global::Android.Content.Intent.CreateChooser(send, "Send NodeX log"));
+        return System.Threading.Tasks.Task.CompletedTask;
+    }
+
+    private System.Threading.Tasks.Task ShareAudioFile(string path, string title)
+    {
+        if (CacheDir == null || !System.IO.File.Exists(path)) return System.Threading.Tasks.Task.CompletedTask;
+        string shareDir = System.IO.Path.Combine(CacheDir.AbsolutePath, "shared_audio");
+        System.IO.Directory.CreateDirectory(shareDir);
+        string dest = System.IO.Path.Combine(shareDir, System.IO.Path.GetFileName(path));
+        System.IO.File.Copy(path, dest, overwrite: true);
+
+        var uri = AndroidX.Core.Content.FileProvider.GetUriForFile(this, "com.kv4s.nodex.audio", new Java.IO.File(dest));
+        var send = new global::Android.Content.Intent(global::Android.Content.Intent.ActionSend);
+        send.SetType("audio/wav");
+        send.PutExtra(global::Android.Content.Intent.ExtraStream, uri);
+        send.PutExtra(global::Android.Content.Intent.ExtraSubject, title);
+        send.AddFlags(global::Android.Content.ActivityFlags.GrantReadUriPermission);
+        StartActivity(global::Android.Content.Intent.CreateChooser(send, "Share audio clip"));
         return System.Threading.Tasks.Task.CompletedTask;
     }
 

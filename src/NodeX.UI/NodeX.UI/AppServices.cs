@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using NodeX.Core;
@@ -17,7 +18,38 @@ public static class AppServices
 {
     public static ViewModels.AppUpdateViewModel Updates { get; set; } = new();
     private static NodeRuntime? _runtime;
+    private static AudioHistoryStore? _audioHistory;
+    private static AudioClipRecorder? _audioRecorder;
+    private static AudioClipPlayer? _audioPlayer;
     private static readonly object Gate = new();
+
+    /// <summary>Local Zello-style audio clip history store (WAV files under app data).</summary>
+    public static AudioHistoryStore AudioHistory
+    {
+        get
+        {
+            lock (Gate)
+            {
+                return _audioHistory ??= new AudioHistoryStore(
+                    Path.Combine(Path.GetTempPath(), "NodeX-preview-history"));
+            }
+        }
+    }
+
+    /// <summary>Local speaker-only clip replay engine (never keys PTT or touches IAX2).</summary>
+    public static AudioClipPlayer AudioPlayer
+    {
+        get
+        {
+            lock (Gate)
+            {
+                return _audioPlayer ??= new AudioClipPlayer(() => new NullAudioDeviceService());
+            }
+        }
+    }
+
+    /// <summary>Shares or reveals a saved WAV clip file (Android share sheet; desktop file manager).</summary>
+    public static Func<string, string, Task>? AudioFileSharer { get; set; }
 
     /// <summary>The application-wide runtime. Falls back to an in-memory, silent one (designer/previews).</summary>
     public static NodeRuntime Runtime
@@ -204,8 +236,34 @@ public static class AppServices
             DiagnosticLog.Default.WriteHeader(_version);
 
             _runtime = Create(settings ?? new JsonFileSettingsStore(), secrets, audioFactory, audioOptions, networkMonitor);
+            _audioHistory = new AudioHistoryStore(Path.Combine(JsonFileSettingsStore.DefaultDirectory, "history"));
+            _audioHistory.Load();
+            _audioPlayer = new AudioClipPlayer(audioFactory);
+            _audioRecorder = new AudioClipRecorder(
+                _audioHistory,
+                () => _runtime.Config.Settings.SaveAudioHistory,
+                node => ResolveClipLabel(_runtime, node));
+            _runtime.LinkAdded += link => _audioRecorder?.Attach(link);
+            _runtime.LinkRemoved += link => _audioRecorder?.Detach(link);
+            _runtime.ConfigService.Changed += cfg =>
+            {
+                if (_audioHistory != null) _audioHistory.MaxClips = cfg.Settings.AudioHistoryMaxClips;
+            };
             IsInitialized = true;
         }
+    }
+
+    private static string ResolveClipLabel(NodeRuntime runtime, string node)
+    {
+        var s = runtime.Config.Settings;
+        if (s.FavoriteLabels.TryGetValue(node, out var favLabel) && !string.IsNullOrWhiteSpace(favLabel))
+            return favLabel;
+        var priv = (s.PrivateNodes ?? []).FirstOrDefault(p => p.Node == node && !string.IsNullOrWhiteSpace(p.Name));
+        if (priv?.Name != null) return priv.Name;
+        var conn = runtime.Connections.FirstOrDefault(c => c.Node == node);
+        if (!string.IsNullOrWhiteSpace(conn?.PrivateName)) return conn.PrivateName!;
+        if (!string.IsNullOrWhiteSpace(conn?.Info?.Callsign)) return conn.Info.Callsign.Trim();
+        return "";
     }
 
     /// <summary>The release version for the log header: the entry assembly's version (the head's ApplicationDisplayVersion on Android), not this library's.</summary>
@@ -239,13 +297,23 @@ public static class AppServices
     public static void Shutdown(TimeSpan timeout)
     {
         NodeRuntime? runtime;
-        lock (Gate) runtime = _runtime;
+        AudioClipRecorder? recorder;
+        AudioClipPlayer? player;
+        lock (Gate)
+        {
+            runtime = _runtime;
+            recorder = _audioRecorder;
+            player = _audioPlayer;
+        }
         var ble = _blePtt;
-        if (runtime == null && ble == null) return;
+        if (runtime == null && ble == null && recorder == null && player == null) return;
 
         try
         {
-            Task.Run(() => Task.WhenAll(runtime?.DisposeAsync().AsTask() ?? Task.CompletedTask,
+            recorder?.Dispose();
+            Task.Run(() => Task.WhenAll(
+                player?.DisposeAsync().AsTask() ?? Task.CompletedTask,
+                runtime?.DisposeAsync().AsTask() ?? Task.CompletedTask,
                 ble?.DisposeAsync().AsTask() ?? Task.CompletedTask)).Wait(timeout);
         }
         catch (Exception) { /* exiting anyway */ }

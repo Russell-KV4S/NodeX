@@ -83,6 +83,12 @@ public partial class MainView : UserControl
             _ = vm.RemoveFavoriteAsync(item.Node);
     }
 
+    private void OnToggleFavoriteAutoConnectClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: FavoriteItem item } && DataContext is MainViewModel vm)
+            _ = vm.ToggleAutoConnectAsync(item.Node);
+    }
+
     /// <summary>Opens the favourite's stats.allstarlink.org bubble chart in the system browser.</summary>
     private async void OnFavoriteBubbleChartClick(object? sender, RoutedEventArgs e)
     {
@@ -108,6 +114,12 @@ public partial class MainView : UserControl
     {
         if (sender is Control { DataContext: PrivateFavoriteItem item } && DataContext is MainViewModel vm)
             _ = vm.RemovePrivateFavoriteAsync(item.Entry);
+    }
+
+    private void OnTogglePrivateFavoriteAutoConnectClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: PrivateFavoriteItem item } && DataContext is MainViewModel vm)
+            _ = vm.ToggleAutoConnectAsync(item.CanonicalTarget);
     }
 
     // --- Drag favourites to reorder. A plain click still connects (the Button gets it); once the pointer moves
@@ -251,7 +263,7 @@ public partial class MainView : UserControl
         if (_spacePttDown) { e.Handled = true; return; }
         if (DataContext is MainViewModel vm)
         {
-            if (vm.IsSettingsOpen || vm.IsSearchOpen || vm.IsPrivateNodesOpen) return;   // a panel is in front
+            if (vm.IsSettingsOpen || vm.IsSearchOpen || vm.IsPrivateNodesOpen || vm.IsHistoryOpen) return;   // a panel is in front
             _spacePttDown = true;
             e.Handled = true;
             _ = vm.HandleSpacebarPttAsync(true);

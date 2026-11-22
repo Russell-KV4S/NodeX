@@ -133,6 +133,52 @@
             <Setter Property="HorizontalContentAlignment" Value="Center" />
         </Style>
 
+        <!-- Compact centered header icon buttons (Exit & Audio Replay) -->
+        <Style Selector="Button.headerIcon">
+            <Setter Property="Width" Value="40" />
+            <Setter Property="Height" Value="40" />
+            <Setter Property="MinWidth" Value="40" />
+            <Setter Property="MinHeight" Value="40" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Background" Value="{DynamicResource SelectedBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="UserControl.narrow Button.headerIcon">
+            <Setter Property="Width" Value="44" />
+            <Setter Property="Height" Value="44" />
+            <Setter Property="MinWidth" Value="44" />
+            <Setter Property="MinHeight" Value="44" />
+        </Style>
+
+        <!-- Auto-connect on startup toggle button (sits beside the favorite star) -->
+        <Style Selector="Button.autoToggle">
+            <Setter Property="Background" Value="{DynamicResource SelectedBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.autoToggle Path.bolt">
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="Stroke" Value="{DynamicResource TextMutedBrush}" />
+        </Style>
+        <Style Selector="Button.autoToggle.active">
+            <Setter Property="Background" Value="{DynamicResource PrivateBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CyanAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource CyanAccentBrush}" />
+        </Style>
+        <Style Selector="Button.autoToggle.active Path.bolt">
+            <Setter Property="Fill" Value="{DynamicResource CyanAccentBrush}" />
+            <Setter Property="Stroke" Value="{DynamicResource CyanAccentBrush}" />
+        </Style>
+
         <!-- Phone / narrow mode (the 'narrow' class is toggled by MainView.axaml.cs): finger-sized targets -->
         <Style Selector="UserControl.narrow Button">
             <Setter Property="MinHeight" Value="44" />
@@ -233,15 +279,32 @@
                     </Border>
                 </WrapPanel>
 
-                <!-- Navigation (including Settings) is the bottom bar, at every width. -->
-                <StackPanel x:Name="HeaderActions" Grid.Column="3" Orientation="Horizontal" Spacing="8"
-                            Margin="10,0,0,0" VerticalAlignment="Center">
-                    <Button x:Name="ExitButton" AutomationProperties.Name="Exit NodeX" Content="Exit"
-                            Command="{Binding ExitCommand}" IsVisible="{Binding CanExit}"
-                            Background="{DynamicResource CardBackgroundBrush}"
-                            BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1"
-                            Foreground="{DynamicResource TextPrimaryBrush}"
-                            CornerRadius="12" Padding="12,5" FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold" />
+                <!-- Compact header action icon buttons: Exit (power) and Audio Replay (Zello-style history) -->
+                <StackPanel x:Name="HeaderActions" Grid.Column="3" Orientation="Horizontal" Spacing="6"
+                            Margin="8,0,0,0" VerticalAlignment="Center">
+                    <Button x:Name="ExitButton" Classes="headerIcon"
+                            AutomationProperties.Name="Exit NodeX" ToolTip.Tip="Exit NodeX"
+                            Command="{Binding ExitCommand}" IsVisible="{Binding CanExit}">
+                        <!-- Standard IEC power symbol -->
+                        <Path Width="18" Height="18" Stretch="Uniform"
+                              Stroke="{DynamicResource TxRedBrush}" StrokeThickness="2"
+                              StrokeLineCap="Round" StrokeJoin="Round"
+                              Data="M12 3 V11 M7.05 6.05 A7.5 7.5 0 1 0 16.95 6.05" />
+                    </Button>
+                    <Button x:Name="ReplayButton" Classes="headerIcon"
+                            AutomationProperties.Name="Audio replay and history" ToolTip.Tip="Audio replay &amp; history"
+                            Command="{Binding OpenHistoryCommand}">
+                        <Grid Width="26" Height="26">
+                            <!-- Counter-clockwise replay arrow with play triangle -->
+                            <Path Width="19" Height="19" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Stroke="{DynamicResource CyanAccentBrush}" StrokeThickness="2"
+                                  StrokeLineCap="Round" StrokeJoin="Round"
+                                  Data="M4.5 11 A7.5 7.5 0 1 1 6.7 16.8 M4.5 5.5 V11 H10 M10.5 9.2 L15 12 L10.5 14.8 Z" />
+                            <Ellipse Width="8" Height="8" Fill="{DynamicResource RxGreenBrush}"
+                                     IsVisible="{Binding History.HasUnheard}"
+                                     HorizontalAlignment="Right" VerticalAlignment="Top" />
+                        </Grid>
+                    </Button>
                 </StackPanel>
             </Grid>
 
@@ -642,7 +705,16 @@
                                                                            Foreground="{DynamicResource RxGreenBrush}" />
                                                             </StackPanel>
                                                         </Border>
-                                                        <!-- Favourite this node: star toggles, pencil (favourites only) renames (public links only) -->
+                                                        <!-- Auto-connect on startup (public or private) + Favourite star + rename pencil -->
+                                                        <Button Classes="autoToggle" Classes.active="{Binding IsAutoConnect}"
+                                                                Command="{Binding ToggleAutoConnectCommand}"
+                                                                AutomationProperties.Name="{Binding AutoConnectAutomationName}"
+                                                                ToolTip.Tip="{Binding AutoConnectToolTip}"
+                                                                MinWidth="36" MinHeight="36">
+                                                            <Path Classes="bolt" Width="15" Height="15" Stretch="Uniform"
+                                                                  StrokeThickness="1.8" StrokeJoin="Round"
+                                                                  Data="M13 2 L4 14 H11 L10 22 L20 10 H13 Z" />
+                                                        </Button>
                                                         <Button Content="✎" FontSize="{DynamicResource FontSize14}" IsVisible="{Binding IsFavorite}"
                                                                 Command="{Binding ToggleEditLabelCommand}"
                                                                 AutomationProperties.Name="{Binding RenameAutomationName}"
@@ -724,14 +796,24 @@
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
 
                             <Grid x:Name="ConnectGrid" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto">
-                                <!-- Star saves the number typed in the box; the pencil (favourites only) renames it -->
+                                <!-- Star saves as favorite; bolt toggles auto-connect on startup (up to 8); pencil renames favorites -->
                                 <StackPanel x:Name="TargetFavButtons" Grid.Column="0" Orientation="Horizontal" Spacing="4" Margin="0,0,8,0">
                                     <Button Content="{Binding TargetFavoriteGlyph}" FontSize="{DynamicResource FontSize20}"
                                             AutomationProperties.Name="{Binding TargetFavoriteName}"
+                                            ToolTip.Tip="{Binding TargetFavoriteName}"
                                             Command="{Binding ToggleTargetFavoriteCommand}"
-                                            MinWidth="44" MinHeight="40" Padding="0" CornerRadius="6"
+                                            MinWidth="40" MinHeight="40" Padding="0" CornerRadius="6"
                                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                             Foreground="{DynamicResource AmberAccentBrush}" />
+                                    <Button x:Name="TargetAutoConnectButton" Classes="autoToggle" Classes.active="{Binding TargetIsAutoConnect}"
+                                            Command="{Binding ToggleTargetAutoConnectCommand}"
+                                            AutomationProperties.Name="{Binding TargetAutoConnectName}"
+                                            ToolTip.Tip="{Binding TargetAutoConnectToolTip}"
+                                            MinWidth="38" MinHeight="40">
+                                        <Path Classes="bolt" Width="16" Height="16" Stretch="Uniform"
+                                              StrokeThickness="1.8" StrokeJoin="Round"
+                                              Data="M13 2 L4 14 H11 L10 22 L20 10 H13 Z" />
+                                    </Button>
                                     <Button Content="✎" FontSize="{DynamicResource FontSize16}" IsVisible="{Binding TargetIsFavorite}"
                                             Command="{Binding ToggleEditFavoriteLabelCommand}"
                                             AutomationProperties.Name="Rename this favorite"
@@ -869,6 +951,8 @@
                                                     Background="{DynamicResource SelectedBackgroundBrush}" CornerRadius="6" BorderThickness="0">
                                                 <Button.ContextFlyout>
                                                     <MenuFlyout>
+                                                        <MenuItem Header="{Binding AutoConnectMenuHeader}"
+                                                                  Click="OnToggleFavoriteAutoConnectClick" />
                                                         <MenuItem Header="Bubble chart (opens browser)"
                                                                   IsVisible="{Binding HasBubbleChart}"
                                                                   Click="OnFavoriteBubbleChartClick" />
@@ -877,8 +961,14 @@
                                                     </MenuFlyout>
                                                 </Button.ContextFlyout>
                                                 <StackPanel>
-                                                    <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
-                                                               Foreground="{DynamicResource CyanAccentBrush}" />
+                                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                                        <Path Width="11" Height="11" Stretch="Uniform"
+                                                              IsVisible="{Binding IsAutoConnect}" VerticalAlignment="Center"
+                                                              Fill="{DynamicResource CyanAccentBrush}"
+                                                              Data="M13 2 L4 14 H11 L10 22 L20 10 H13 Z" />
+                                                        <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource CyanAccentBrush}" />
+                                                    </StackPanel>
                                                     <TextBlock Text="{Binding Node}" FontSize="{DynamicResource FontSize11}" IsVisible="{Binding HasLabel}"
                                                                Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 </StackPanel>
@@ -907,12 +997,17 @@
                                                             Padding="10,6" Background="Transparent" BorderThickness="0" CornerRadius="6,0,0,6">
                                                         <Button.ContextFlyout>
                                                             <MenuFlyout>
+                                                                <MenuItem Header="{Binding AutoConnectMenuHeader}" Click="OnTogglePrivateFavoriteAutoConnectClick" />
                                                                 <MenuItem Header="Edit private node" Click="OnEditPrivateFavoriteClick" />
                                                                 <MenuItem Header="Remove private node" Click="OnRemovePrivateFavoriteClick" />
                                                             </MenuFlyout>
                                                         </Button.ContextFlyout>
                                                         <StackPanel Spacing="1">
                                                             <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                <Path Width="11" Height="11" Stretch="Uniform"
+                                                                      IsVisible="{Binding IsAutoConnect}" VerticalAlignment="Center"
+                                                                      Fill="{DynamicResource CyanAccentBrush}"
+                                                                      Data="M13 2 L4 14 H11 L10 22 L20 10 H13 Z" />
                                                                 <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
                                                                            Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
                                                                 <Border CornerRadius="4" Padding="5,1" VerticalAlignment="Center"
@@ -1075,6 +1170,12 @@
         <Border Grid.RowSpan="4" IsVisible="{Binding IsPrivateNodesOpen}"
                 Background="{DynamicResource ConsoleBackgroundBrush}">
             <views:PrivateNodesView DataContext="{Binding PrivateNodes}" />
+        </Border>
+
+        <!-- ZELLO-STYLE AUDIO REPLAY / HISTORY OVERLAY -->
+        <Border Grid.RowSpan="4" IsVisible="{Binding IsHistoryOpen}"
+                Background="{DynamicResource ConsoleBackgroundBrush}">
+            <views:AudioHistoryView DataContext="{Binding History}" />
         </Border>
 
         <!-- SETTINGS OVERLAY (full screen so it works on phones as well as desktop) -->

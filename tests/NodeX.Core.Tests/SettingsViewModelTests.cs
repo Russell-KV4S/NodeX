@@ -44,13 +44,13 @@ public class SettingsViewModelTests : IDisposable
     {
         var vm = Create();
         Fill(vm);
-        vm.ThemeIndex = 2;
+        vm.ThemeIndex = AppThemes.IndexOf(AppThemes.Nord);
         vm.TextScale = 1.4;
         await vm.SaveCommand.ExecuteAsync(null);
         Assert.False(vm.HasError);
         var loaded = Create();
         await loaded.LoadAsync();
-        Assert.Equal(2, loaded.ThemeIndex);
+        Assert.Equal(AppThemes.IndexOf(AppThemes.Nord), loaded.ThemeIndex);
         Assert.Equal(1.4, loaded.TextScale);
     }
 
@@ -68,7 +68,7 @@ public class SettingsViewModelTests : IDisposable
 
         Assert.Equal("55553", vm.NodeNumber);
         Assert.Equal("pw123", vm.Password);
-        Assert.Equal("27339", vm.DefaultTargetNode);
+        Assert.Equal("27339", vm.AutoConnectText);
         Assert.Equal("1999, 2000", vm.FavoritesText);
         Assert.True(vm.TogglePtt);
         Assert.Equal("90", vm.TimeOutSecondsText);

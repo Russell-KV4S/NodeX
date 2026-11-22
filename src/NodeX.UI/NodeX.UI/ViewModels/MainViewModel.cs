@@ -13,7 +13,7 @@ using NodeX.Core.Settings;
 namespace NodeX.UI.ViewModels;
 
 /// <summary>A saved favourite: the node number and its friendly name (empty when none was given).</summary>
-public sealed record FavoriteItem(string Node, string Label)
+public sealed record FavoriteItem(string Node, string Label, bool IsAutoConnect = false)
 {
     public bool HasLabel => Label.Length > 0;
 
@@ -22,17 +22,25 @@ public sealed record FavoriteItem(string Node, string Label)
 
     public string AutomationName => HasLabel ? $"Connect to {Label}, node {Node}" : $"Connect to node {Node}";
 
+    public string AutoConnectMenuHeader => IsAutoConnect
+        ? "Remove auto-connect on startup"
+        : "Auto-connect on startup";
+
     /// <summary>stats.allstarlink.org bubble chart (network map) for this node.</summary>
     public Uri? BubbleChartUri => NodeX.Core.AllStarStatsLinks.BubbleChart(Node);
     public bool HasBubbleChart => BubbleChartUri != null;
 }
 
 /// <summary>A saved private node chip shown alongside favourites, clearly marked as private (§4.9).</summary>
-public sealed record PrivateFavoriteItem(PrivateNodeEntry Entry)
+public sealed record PrivateFavoriteItem(PrivateNodeEntry Entry, bool IsAutoConnect = false)
 {
     public string Title => !string.IsNullOrWhiteSpace(Entry.Name) ? Entry.Name!.Trim() : $"Node {Entry.Node}";
     public string Endpoint => Entry.DisplayAddress;
+    public string CanonicalTarget => Entry.CanonicalInput;
     public string AutomationName => $"Connect to private node {Title}, {Endpoint}";
+    public string AutoConnectMenuHeader => IsAutoConnect
+        ? "Remove auto-connect on startup"
+        : "Auto-connect on startup";
 }
 
 /// <summary>
@@ -66,6 +74,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _timer?.Stop();
         _ageTimer?.Stop();
         _idReminder.Dispose();
+        History.Dispose();
         _runtime.RegistrationChanged -= OnRegistrationChanged;
         _runtime.LinkAdded -= OnRuntimeLinkAdded;
         _runtime.LinkRemoved -= OnRuntimeLinkRemoved;
@@ -163,10 +172,24 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     public bool CloseTopOverlay()
     {
+        if (IsHistoryOpen) { IsHistoryOpen = false; _ = History.StopPlaybackAsync(); return true; }
         if (IsPrivateNodesOpen) { IsPrivateNodesOpen = false; return true; }
         if (IsSearchOpen) { IsSearchOpen = false; return true; }
         if (IsSettingsOpen) { IsSettingsOpen = false; return true; }
         return false;
+    }
+
+    // --- Zello-style Audio Replay / History overlay ---
+    public AudioHistoryViewModel History { get; }
+
+    [ObservableProperty]
+    public partial bool IsHistoryOpen { get; set; }
+
+    [RelayCommand]
+    public void OpenHistory()
+    {
+        History.OnOpened();
+        IsHistoryOpen = true;
     }
 
     // --- Private / manually addressed nodes overlay (§4.9) ---
@@ -449,6 +472,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial bool IsTransmitting { get; set; }
 
+    partial void OnIsTransmittingChanged(bool value)
+    {
+        if (value) _ = History.StopPlaybackAsync();
+    }
+
     [ObservableProperty]
     public partial bool IsRemoteKeyed { get; set; }
 
@@ -517,6 +545,17 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [NotifyPropertyChangedFor(nameof(TargetFavoriteGlyph), nameof(TargetFavoriteName))]
     public partial bool TargetIsFavorite { get; set; }
 
+    /// <summary>True when the node/address in the connect box is set to auto-connect on startup.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TargetAutoConnectName), nameof(TargetAutoConnectToolTip))]
+    public partial bool TargetIsAutoConnect { get; set; }
+
+    public string TargetAutoConnectName =>
+        TargetIsAutoConnect ? "Remove this node from auto-connect on startup" : "Auto-connect this node on startup";
+
+    public string TargetAutoConnectToolTip =>
+        TargetIsAutoConnect ? "Auto-connects on startup (tap to turn off)" : "Auto-connect on startup (up to 8)";
+
     /// <summary>The friendly name being edited for the favourite in the connect box.</summary>
     [ObservableProperty]
     public partial string FavoriteLabelInput { get; set; } = "";
@@ -557,6 +596,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 && string.Equals(p.Entry.Host, parsed.Host, StringComparison.OrdinalIgnoreCase)
                 && p.Entry.Port == parsed.Port);
             TargetIsFavorite = saved != null;
+            TargetIsAutoConnect = !parsed.IsIpv6 && IsAutoConnectTarget(parsed.CanonicalInput);
             FavoriteLabelInput = saved?.Entry.Name ?? "";
             IsEditingFavoriteLabel = false;
 
@@ -577,8 +617,97 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
         var item = FavoriteNodes.FirstOrDefault(f => f.Node == raw);
         TargetIsFavorite = item != null;
+        TargetIsAutoConnect = IsAutoConnectTarget(raw);
         FavoriteLabelInput = item?.Label ?? "";
         IsEditingFavoriteLabel = false;   // a different node was typed: close the rename box
+    }
+
+    private bool IsAutoConnectTarget(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+        string canonical = ManualNodeAddress.TryParse(raw.Trim(), out var parsed, out _) && parsed != null
+            ? parsed.CanonicalInput
+            : raw.Trim();
+        return _runtime.Config.Settings.GetEffectiveAutoConnectNodes()
+            .Any(a => string.Equals(a, canonical, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void ToggleAutoConnectNode(string canonicalTarget) => _ = ToggleAutoConnectAsync(canonicalTarget);
+
+    [RelayCommand]
+    public async Task ToggleTargetAutoConnectAsync()
+    {
+        string raw = TargetNodeInput?.Trim() ?? "";
+        if (!ManualNodeAddress.TryParse(raw, out var parsed, out var error) || parsed == null)
+        {
+            ConnectErrorText = error ?? "Enter a valid node number (3 to 7 digits) or private address to auto-connect.";
+            return;
+        }
+        if (parsed.IsIpv6)
+        {
+            ConnectErrorText = "IPv6 addresses cannot be added to auto-connect yet.";
+            return;
+        }
+        await ToggleAutoConnectAsync(parsed.CanonicalInput);
+    }
+
+    /// <summary>Adds or removes a public or private target from the startup auto-connect list (up to 8).</summary>
+    public async Task<bool> ToggleAutoConnectAsync(string? rawTarget)
+    {
+        if (string.IsNullOrWhiteSpace(rawTarget)) return false;
+        if (!ManualNodeAddress.TryParse(rawTarget.Trim(), out var parsed, out var parseError) || parsed == null || parsed.IsIpv6)
+        {
+            ConnectErrorText = parseError ?? "Enter a valid node number or private address.";
+            return false;
+        }
+
+        var cfg = _runtime.Config;
+        if (!cfg.IsComplete || cfg.Password == null)
+        {
+            LogActivity("[ERROR] Finish your Settings before saving auto-connect nodes.");
+            return false;
+        }
+
+        string canonical = parsed.CanonicalInput;
+        var list = cfg.Settings.GetEffectiveAutoConnectNodes().ToList();
+        int existing = list.FindIndex(a => string.Equals(a, canonical, StringComparison.OrdinalIgnoreCase));
+        bool added;
+        if (existing >= 0)
+        {
+            list.RemoveAt(existing);
+            added = false;
+        }
+        else
+        {
+            if (list.Count >= NodeRuntime.MaxLinks)
+            {
+                string msg = $"You can auto-connect up to {NodeRuntime.MaxLinks} nodes on startup.";
+                ConnectErrorText = msg;
+                LogActivity($"[ERROR] {msg}");
+                return false;
+            }
+            list.Add(canonical);
+            added = true;
+        }
+
+        try
+        {
+            var result = await _runtime.ConfigService.SaveAsync(
+                cfg.Settings with { AutoConnectNodes = list, DefaultTargetNode = "" }, cfg.Password);
+            if (result.Success)
+            {
+                ConnectErrorText = "";
+                LogActivity(added
+                    ? $"{parsed.DisplayAddress} will auto-connect on startup ({list.Count} / {NodeRuntime.MaxLinks})."
+                    : $"{parsed.DisplayAddress} removed from startup auto-connect.");
+            }
+            return result.Success;
+        }
+        catch (Exception ex)
+        {
+            LogActivity($"[ERROR] Could not save auto-connect nodes: {ex.Message}");
+            return false;
+        }
     }
 
     [RelayCommand]
@@ -762,6 +891,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         AppServices.HardwarePtt.Pressed += OnHardwarePtt;
         AppServices.DeepLinkReceived += OnDeepLinkReceived;
         HookBle();
+
+        History = new AudioHistoryViewModel(
+            isRecordingEnabled: () => _runtime.Config.Settings.SaveAudioHistory);
+        History.Closed += () => IsHistoryOpen = false;
 
         PrivateNodes = new PrivateNodesViewModel(
             runtime,
@@ -1117,7 +1250,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     {
         if (TxLink is not { } link) return;
         // A panel opening or a permission change between key-down and key-up must never swallow the release.
-        if (pressed && (IsSettingsOpen || IsSearchOpen || IsPrivateNodesOpen || !CanKey)) return;
+        if (pressed && (IsSettingsOpen || IsSearchOpen || IsPrivateNodesOpen || IsHistoryOpen || !CanKey)) return;
         await link.Ptt.HandleUiPttAsync(pressed);
     }
 
@@ -1268,21 +1401,25 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         LocalNodeNumber = s.NodeNumber.Length > 0 ? s.NodeNumber : NotSet;
         RefreshTransmit();
 
+        var autoConnect = s.GetEffectiveAutoConnectNodes();
+        var autoSet = new HashSet<string>(autoConnect, StringComparer.OrdinalIgnoreCase);
+
         FavoriteNodes.Clear();
         foreach (string node in s.FavoriteNodes)
-            FavoriteNodes.Add(new FavoriteItem(node, s.FavoriteLabels.TryGetValue(node, out var label) ? label : ""));
+            FavoriteNodes.Add(new FavoriteItem(node, s.FavoriteLabels.TryGetValue(node, out var label) ? label : "", autoSet.Contains(node)));
         PrivateFavoriteNodes.Clear();
         foreach (var priv in s.PrivateNodes ?? [])
-            PrivateFavoriteNodes.Add(new PrivateFavoriteItem(priv));
+            PrivateFavoriteNodes.Add(new PrivateFavoriteItem(priv, autoSet.Contains(priv.CanonicalInput)));
         OnPropertyChanged(nameof(HasFavorites));
         OnPropertyChanged(nameof(HasPrivateFavorites));
         OnPropertyChanged(nameof(HasAnyFavorites));
         OnPropertyChanged(nameof(PrivateNodesButtonText));
         PrivateNodes.ReloadFromConfig();
+        History.RefreshRecordingFlag();
         if (!IsTransmitting) TotCounterText = FormatTot(TimeSpan.Zero, TotLimit);
 
-        if (string.IsNullOrWhiteSpace(TargetNodeInput) && s.DefaultTargetNode.Length > 0)
-            TargetNodeInput = s.DefaultTargetNode;
+        if (string.IsNullOrWhiteSpace(TargetNodeInput) && autoConnect.Count > 0)
+            TargetNodeInput = autoConnect[0];
         RefreshTargetFavorite();
 
         AppServices.HardwarePtt.MappedKey = s.HardwarePttKey;
@@ -1373,7 +1510,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             if (at < 0)
                 LinkItems.Insert(Math.Min(i, LinkItems.Count),
                     new LinkItemViewModel(c.Node, LabelFor, SelectTransmitNode, ToggleMuteNode, DisconnectOne,
-                        IsFavoriteNode, ToggleFavoriteNode, SaveFavoriteNodeLabel));
+                        IsFavoriteNode, ToggleFavoriteNode, SaveFavoriteNodeLabel,
+                        IsAutoConnectTarget, ToggleAutoConnectNode));
             else if (at != i)
                 LinkItems.Move(at, i);
 

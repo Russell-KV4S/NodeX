@@ -24,6 +24,15 @@ public partial class App : Application
         if (IsTestHost) { base.OnFrameworkInitializationCompleted(); return; }
         AppServices.Runtime.ConfigService.Changed += config => Avalonia.Threading.Dispatcher.UIThread.Post(
             () => Appearance.Apply(this, config.Settings));
+        if (PlatformSettings is { } platformSettings)
+        {
+            platformSettings.ColorValuesChanged += (_, values) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                var settings = AppServices.Runtime.Config.Settings;
+                if (settings.Theme == NodeX.Core.Settings.AppThemes.System)
+                    Appearance.Apply(this, settings, values.ThemeVariant);
+            });
+        }
         // One view model for the whole app session; platform heads have already supplied their
         // secure storage and audio backend through AppServices.Initialize.
         var viewModel = new MainViewModel();

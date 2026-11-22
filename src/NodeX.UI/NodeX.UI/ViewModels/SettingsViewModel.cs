@@ -48,8 +48,9 @@ public partial class SettingsViewModel : ViewModelBase
 
     // ----- connecting -----
 
+    /// <summary>Up to 8 public or private nodes to connect automatically on startup after registration succeeds.</summary>
     [ObservableProperty]
-    public partial string DefaultTargetNode { get; set; } = "";
+    public partial string AutoConnectText { get; set; } = "";
 
     /// <summary>Quick-connect nodes, separated by commas, spaces or new lines.</summary>
     [ObservableProperty]
@@ -60,6 +61,17 @@ public partial class SettingsViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial bool AutoReconnect { get; set; } = true;
+
+    // ----- audio history / replay -----
+
+    [ObservableProperty]
+    public partial bool SaveAudioHistory { get; set; } = true;
+
+    /// <summary>0 = 25 clips, 1 = 50 clips (default), 2 = 100 clips, 3 = 200 clips.</summary>
+    [ObservableProperty]
+    public partial int AudioHistoryLimitIndex { get; set; } = 1;
+
+    private static readonly int[] AudioHistoryLimits = [25, 50, 100, 200];
 
     // ----- PTT & audio -----
 
@@ -405,12 +417,14 @@ public partial class SettingsViewModel : ViewModelBase
     private void FillForm(NodeSettings s, string password)
     {
         _loadedSettings = s;
-        ThemeIndex = s.Theme == "Light" ? 1 : s.Theme == "HighContrast" ? 2 : 0;
+        ThemeIndex = AppThemes.IndexOf(s.Theme);
         TextScale = s.TextScale;
         NodeNumber = s.NodeNumber;
         Password = password;
-        DefaultTargetNode = s.DefaultTargetNode;
+        AutoConnectText = string.Join(", ", s.GetEffectiveAutoConnectNodes());
         FavoritesText = string.Join(", ", s.FavoriteNodes);
+        SaveAudioHistory = s.SaveAudioHistory;
+        AudioHistoryLimitIndex = LimitIndexFor(s.AudioHistoryMaxClips);
         _favoriteLabels = new Dictionary<string, string>(s.FavoriteLabels);
         _privateNodes = (s.PrivateNodes ?? []).ToList();
         OnPropertyChanged(nameof(PrivateNodesSummaryText));
@@ -597,15 +611,22 @@ public partial class SettingsViewModel : ViewModelBase
         if (!int.TryParse(IaxPortText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out port))
             issues.Add(new(NodeSettingsValidator.Fields.IaxPort, "IAX port must be a whole number."));
 
+        var autoConnect = AutoConnectText
+            .Split([',', ' ', ';', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+
         settings = _loadedSettings with
         {
-            Theme = ThemeIndex == 1 ? "Light" : ThemeIndex == 2 ? "HighContrast" : "Dark",
+            Theme = AppThemes.FromIndex(ThemeIndex),
             TextScale = TextScale,
             NodeNumber = NodeNumber,
-            DefaultTargetNode = DefaultTargetNode,
+            DefaultTargetNode = "",
+            AutoConnectNodes = autoConnect,
             FavoriteNodes = FavoritesText
                 .Split([',', ' ', ';', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToList(),
+            SaveAudioHistory = SaveAudioHistory,
+            AudioHistoryMaxClips = AudioHistoryLimits[Math.Clamp(AudioHistoryLimitIndex, 0, AudioHistoryLimits.Length - 1)],
             FavoriteLabels = _favoriteLabels,   // names are edited on the main screen; Normalize drops any for removed favourites
             PrivateNodes = _privateNodes.ToList(),
             RegistrationUrl = RegistrationUrl,
@@ -642,6 +663,13 @@ public partial class SettingsViewModel : ViewModelBase
         issues.AddRange(rules);
 
         return issues.Count == 0;
+    }
+
+    private static int LimitIndexFor(int maxClips)
+    {
+        for (int i = 0; i < AudioHistoryLimits.Length; i++)
+            if (maxClips <= AudioHistoryLimits[i]) return i;
+        return AudioHistoryLimits.Length - 1;
     }
 
     private static string Format(IEnumerable<SettingsIssue> issues) =>
