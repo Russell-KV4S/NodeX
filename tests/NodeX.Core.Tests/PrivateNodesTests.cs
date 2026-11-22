@@ -495,7 +495,9 @@ public class PrivateNodesTests
         var items = CarBrowse.BuildFavoritesItems(settings);
         Assert.Equal(2, items.Count);
         Assert.Contains("(Private)", items[1].Title);
-        Assert.Contains("Private · 1999 @ club.ddns.net:4570", items[1].Subtitle);
+        Assert.Contains("Private · Node 1999", items[1].Subtitle);
+        Assert.DoesNotContain("club.ddns.net", items[1].Title);
+        Assert.DoesNotContain("club.ddns.net", items[1].Subtitle);
         Assert.True(CarBrowse.TryParsePrivateMediaId(items[1].MediaId, out var parsed));
         Assert.Equal("1999", parsed!.Node);
         Assert.Equal("club.ddns.net", parsed.Host);

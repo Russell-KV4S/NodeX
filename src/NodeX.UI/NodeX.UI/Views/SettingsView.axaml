@@ -91,6 +91,25 @@
                     <Button Content="Check for updates" Command="{Binding Updates.CheckCommand}" IsEnabled="{Binding Updates.IsIdle}" />
                     <Button Content="Download and install" Command="{Binding Updates.InstallCommand}"
                             IsVisible="{Binding Updates.HasUpdate}" IsEnabled="{Binding Updates.IsIdle}" />
+                    <Border IsVisible="{Binding Updates.IsConfirmingDisconnect}"
+                            Background="{DynamicResource WarningBackgroundBrush}"
+                            BorderBrush="{DynamicResource AmberAccentBrush}" BorderThickness="1"
+                            CornerRadius="8" Padding="12">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="{Binding Updates.DisconnectPromptText}" TextWrapping="Wrap"
+                                       FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource WarningTextBrush}" AutomationProperties.LiveSetting="Polite" />
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                <Button Grid.Column="0" Content="Cancel" Command="{Binding Updates.CancelDisconnectPromptCommand}"
+                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                        Padding="10,8" CornerRadius="6" />
+                                <Button Grid.Column="1" Content="Disconnect &amp; update" Command="{Binding Updates.DisconnectAndInstallCommand}"
+                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                        Background="{DynamicResource DangerButtonBrush}" Foreground="#FFFFFF"
+                                        FontWeight="Bold" Padding="10,8" CornerRadius="6" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                     <Button Content="Cancel update" Command="{Binding Updates.CancelCommand}" IsVisible="{Binding Updates.IsBusy}" />
                 </StackPanel>
             </Border>
@@ -131,9 +150,9 @@
                     <StackPanel>
                         <TextBlock Classes="label" Text="Auto-connect on startup (optional, up to 8)" />
                         <TextBox AutomationProperties.Name="Auto-connect on startup" Text="{Binding AutoConnectText}"
-                                 PlaceholderText="e.g. 523800, 48168, 1999@host:4569" AcceptsReturn="False" />
+                                 PlaceholderText="e.g. 523800, 48168, 1999" AcceptsReturn="False" />
                         <TextBlock Classes="hint"
-                                   Text="Connects automatically when NodeX opens after registration succeeds. Separate public node numbers or private addresses with commas or spaces (up to 8). You can also toggle auto-connect next to the favorite star on the Nodes tab." />
+                                   Text="Connects automatically when NodeX opens after registration succeeds. Separate node numbers with commas or spaces (up to 8). You can also toggle auto-connect next to the favorite star on the Nodes tab." />
                     </StackPanel>
 
                     <StackPanel>
@@ -181,6 +200,8 @@
                             <ComboBoxItem Content="Last 200 clips" />
                         </ComboBox>
                     </StackPanel>
+                    <TextBlock Text="{Binding AudioHistoryUsageText}" FontSize="{DynamicResource FontSize12}"
+                               Foreground="{DynamicResource CyanAccentBrush}" TextWrapping="Wrap" />
                     <TextBlock Classes="hint"
                                Text="Saved locally as compact WAV files on this device only (never uploaded). Replaying a clip plays through your speaker and never transmits." />
                 </StackPanel>

@@ -64,7 +64,7 @@ public class MainActivity : AvaloniaMainActivity
             catch (Exception) { }
         };
         AppServices.ExitHandler = () => AndroidAppExit.Finish(this);
-        AppServices.SpeakerphoneSetter = speaker => AndroidAudioRoute.SetSpeaker(this, speaker);
+        AppServices.SpeakerphoneSetter = speaker => AndroidAudioRoute.SetSpeaker(ApplicationContext ?? this, speaker);
         AppServices.LogSharer = ShareLogText;
         AppServices.AudioFileSharer = ShareAudioFile;
         AppServices.BleTransport ??= new AndroidBlePttTransport(this);

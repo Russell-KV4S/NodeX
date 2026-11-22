@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -30,14 +31,24 @@ public sealed partial class AudioClipItemViewModel : ViewModelBase
 
     public AudioClip Clip { get; }
     public string Id => Clip.Id;
-    public bool IsRx => Clip.Direction == AudioClipDirection.Rx;
-    public bool IsTx => Clip.Direction == AudioClipDirection.Tx;
-    public string DirectionBadge => IsRx ? "RX" : "TX";
+    public bool IsRx => Clip.Direction == AudioClipDirection.Rx && !Clip.IsCombined;
+    public bool IsTx => Clip.Direction == AudioClipDirection.Tx && !Clip.IsCombined;
+    public bool IsCombined => Clip.IsCombined;
+    public string DirectionBadge => IsCombined ? "COMBINED" : IsRx ? "RX" : "TX";
 
     public string Title
     {
         get
         {
+            if (IsCombined)
+            {
+                if (string.IsNullOrWhiteSpace(Clip.NodeLabel))
+                    return $"Combined ({Clip.Node})";
+                return string.Equals(Clip.Node, "Combined", StringComparison.OrdinalIgnoreCase)
+                    ? Clip.NodeLabel
+                    : $"Node {Clip.Node} · {Clip.NodeLabel}";
+            }
+
             string target = string.IsNullOrWhiteSpace(Clip.NodeLabel)
                 ? $"Node {Clip.Node}"
                 : $"{Clip.Node} · {Clip.NodeLabel}";
@@ -82,6 +93,14 @@ public sealed partial class AudioClipItemViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsUnheard { get; set; }
 
+    [ObservableProperty]
+    public partial bool IsSelecting { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsSelected { get; set; }
+
+    partial void OnIsSelectedChanged(bool value) => _owner.SetItemSelected(Clip.Id, value);
+
     public string PlayGlyph => IsPlaying ? "■" : "▶";
     public string PlayLabel => IsPlaying ? "Stop" : "Play";
 
@@ -92,6 +111,9 @@ public sealed partial class AudioClipItemViewModel : ViewModelBase
     public string PlayAutomationName => IsPlaying ? $"Stop replay of {Title}" : $"Play clip from {Title}, {TotalDurationText}";
     public string ShareAutomationName => $"Share audio clip from {Title}";
     public string DeleteAutomationName => $"Delete audio clip from {Title}";
+
+    [RelayCommand]
+    private void ToggleSelect() => IsSelected = !IsSelected;
 
     [RelayCommand]
     private Task TogglePlayAsync() => _owner.TogglePlayClipAsync(Clip);
@@ -115,6 +137,8 @@ public sealed partial class AudioHistoryViewModel : ViewModelBase, IDisposable
     private readonly AudioHistoryStore _store;
     private readonly AudioClipPlayer _player;
     private readonly Func<bool> _isRecordingEnabled;
+    private readonly HashSet<string> _selectedIds = new(StringComparer.Ordinal);
+    private bool _suppressSelectionSync;
     private bool _disposed;
 
     public AudioHistoryViewModel(
@@ -194,22 +218,86 @@ public sealed partial class AudioHistoryViewModel : ViewModelBase, IDisposable
 
     public bool HasStatus => !string.IsNullOrEmpty(StatusText);
 
+    [ObservableProperty]
+    public partial string StorageSummaryText { get; set; } = "";
+
+    // ----- multi-select & combine -----
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanCombineSelected))]
+    [NotifyPropertyChangedFor(nameof(CanDeleteSelected))]
+    [NotifyPropertyChangedFor(nameof(SelectAllLabel))]
+    public partial bool IsSelecting { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanCombineSelected))]
+    [NotifyPropertyChangedFor(nameof(CanDeleteSelected))]
+    [NotifyPropertyChangedFor(nameof(SelectionSummaryText))]
+    [NotifyPropertyChangedFor(nameof(CombineButtonText))]
+    [NotifyPropertyChangedFor(nameof(SelectAllLabel))]
+    public partial int SelectedCount { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectionSummaryText))]
+    public partial double SelectedDurationSeconds { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanCombineSelected))]
+    [NotifyPropertyChangedFor(nameof(CanDeleteSelected))]
+    [NotifyPropertyChangedFor(nameof(CombineButtonText))]
+    public partial bool IsCombining { get; set; }
+
+    [ObservableProperty]
+    public partial string CombineTitle { get; set; } = "";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLastCombinedClip))]
+    [NotifyPropertyChangedFor(nameof(CanShareLastCombined))]
+    public partial AudioClip? LastCombinedClip { get; set; }
+
+    public bool HasLastCombinedClip => LastCombinedClip != null;
+    public bool CanShareLastCombined => LastCombinedClip != null && AppServices.AudioFileSharer != null;
+    public bool CanCombineSelected => IsSelecting && SelectedCount >= 2 && !IsCombining;
+    public bool CanDeleteSelected => IsSelecting && SelectedCount >= 1 && !IsCombining;
+    public string CombineButtonText => IsCombining ? "Combining…" : $"Combine ({SelectedCount})";
+
+    public string SelectionSummaryText => SelectedCount == 0
+        ? "Tap clips to select"
+        : $"{SelectedCount} {(SelectedCount == 1 ? "clip" : "clips")} ({AudioClipItemViewModel.FormatClipTime(SelectedDurationSeconds)})";
+
+    public string SelectAllLabel =>
+        Items.Count > 0 && Items.All(i => i.IsSelected) ? "Clear" : "Select all";
+
     private AudioClip? _latestRx;
 
     public void OnOpened()
     {
         StatusText = "";
         IsConfirmingClear = false;
+        ExitSelectionMode();
+        LastCombinedClip = null;
         RefreshFromStore();
     }
 
     public void RefreshRecordingFlag() => IsRecordingOff = !_isRecordingEnabled();
+
+    public void RefreshFromSettings()
+    {
+        if (_disposed) return;
+        if (Dispatcher.UIThread.CheckAccess()) RefreshFromStore();
+        else Dispatcher.UIThread.Post(RefreshFromStore);
+    }
 
     public Task StopPlaybackAsync() => _player.StopAsync();
 
     [RelayCommand]
     private async Task BackAsync()
     {
+        if (IsSelecting)
+        {
+            CancelSelect();
+            return;
+        }
         IsConfirmingClear = false;
         await _player.StopAsync();
         Closed?.Invoke();
@@ -225,6 +313,98 @@ public sealed partial class AudioHistoryViewModel : ViewModelBase, IDisposable
             _ => AudioHistoryFilter.All
         };
         RefreshFromStore();
+    }
+
+    [RelayCommand]
+    private async Task BeginSelectAsync()
+    {
+        if (!HasAnyClips) return;
+        IsConfirmingClear = false;
+        LastCombinedClip = null;
+        StatusText = "";
+        await _player.StopAsync();
+        _selectedIds.Clear();
+        CombineTitle = "";
+        IsSelecting = true;
+        ApplySelectionFlagsToItems();
+        UpdateSelectionMetrics();
+    }
+
+    [RelayCommand]
+    private void CancelSelect() => ExitSelectionMode();
+
+    [RelayCommand]
+    private void ToggleSelectAll()
+    {
+        if (!IsSelecting || Items.Count == 0) return;
+        bool selectAll = !Items.All(i => i.IsSelected);
+        _suppressSelectionSync = true;
+        try
+        {
+            foreach (var item in Items)
+            {
+                item.IsSelected = selectAll;
+                if (selectAll) _selectedIds.Add(item.Id);
+                else _selectedIds.Remove(item.Id);
+            }
+        }
+        finally
+        {
+            _suppressSelectionSync = false;
+        }
+        UpdateSelectionMetrics();
+    }
+
+    [RelayCommand]
+    private async Task CombineSelectedAsync()
+    {
+        if (!CanCombineSelected) return;
+        string[] ids = [.. _selectedIds];
+        string title = CombineTitle;
+
+        IsCombining = true;
+        StatusText = "";
+        LastCombinedClip = null;
+        try
+        {
+            var combined = await Task.Run(() => _store.CombineClips(ids, title));
+            ExitSelectionMode();
+            Filter = AudioHistoryFilter.All;
+            RefreshFromStore();
+            LastCombinedClip = combined;
+            StatusText = $"Combined {ids.Length} clips ({AudioClipItemViewModel.FormatClipTime(combined.DurationSeconds)}) in chronological order.";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Could not combine clips: {ex.Message}";
+        }
+        finally
+        {
+            IsCombining = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ShareLastCombinedAsync()
+    {
+        if (LastCombinedClip is { } clip)
+            await ShareClipAsync(clip);
+    }
+
+    [RelayCommand]
+    private async Task DeleteSelectedAsync()
+    {
+        if (!CanDeleteSelected) return;
+        string[] ids = [.. _selectedIds];
+        if (ids.Length == 0) return;
+
+        if (_player.CurrentClipId is { } playing && _selectedIds.Contains(playing))
+            await _player.StopAsync();
+
+        int deleted = _store.DeleteMany(ids);
+        ExitSelectionMode();
+        LastCombinedClip = null;
+        StatusText = deleted == 1 ? "Deleted 1 clip." : $"Deleted {deleted} clips.";
     }
 
     [RelayCommand]
@@ -247,9 +427,63 @@ public sealed partial class AudioHistoryViewModel : ViewModelBase, IDisposable
     private async Task ConfirmClearAsync()
     {
         IsConfirmingClear = false;
+        ExitSelectionMode();
+        LastCombinedClip = null;
         await _player.StopAsync();
         _store.ClearAll();
         StatusText = "Audio history cleared.";
+    }
+
+    internal void SetItemSelected(string clipId, bool selected)
+    {
+        if (_suppressSelectionSync) return;
+        if (selected) _selectedIds.Add(clipId);
+        else _selectedIds.Remove(clipId);
+        UpdateSelectionMetrics();
+    }
+
+    private void ExitSelectionMode()
+    {
+        IsSelecting = false;
+        CombineTitle = "";
+        _selectedIds.Clear();
+        ApplySelectionFlagsToItems();
+        UpdateSelectionMetrics();
+    }
+
+    private void ApplySelectionFlagsToItems()
+    {
+        _suppressSelectionSync = true;
+        try
+        {
+            foreach (var item in Items)
+            {
+                item.IsSelecting = IsSelecting;
+                item.IsSelected = IsSelecting && _selectedIds.Contains(item.Id);
+            }
+        }
+        finally
+        {
+            _suppressSelectionSync = false;
+        }
+    }
+
+    private void UpdateSelectionMetrics()
+    {
+        var clips = _store.Clips;
+        int count = 0;
+        double totalSeconds = 0;
+        foreach (var c in clips)
+        {
+            if (_selectedIds.Contains(c.Id))
+            {
+                count++;
+                totalSeconds += c.DurationSeconds;
+            }
+        }
+        SelectedCount = count;
+        SelectedDurationSeconds = totalSeconds;
+        OnPropertyChanged(nameof(SelectAllLabel));
     }
 
     public async Task TogglePlayClipAsync(AudioClip clip)
@@ -281,7 +515,9 @@ public sealed partial class AudioHistoryViewModel : ViewModelBase, IDisposable
         }
         try
         {
-            string title = $"NodeX {clip.Direction} Node {clip.Node} ({clip.TimestampUtc.ToLocalTime():yyyy-MM-dd HH:mm})";
+            string title = clip.IsCombined
+                ? $"NodeX Combined {clip.NodeLabel} ({clip.TimestampUtc.ToLocalTime():yyyy-MM-dd HH:mm})"
+                : $"NodeX {clip.Direction} Node {clip.Node} ({clip.TimestampUtc.ToLocalTime():yyyy-MM-dd HH:mm})";
             await sharer(path, title);
         }
         catch (Exception ex)
@@ -326,6 +562,16 @@ public sealed partial class AudioHistoryViewModel : ViewModelBase, IDisposable
         HasAnyClips = all.Count > 0;
         UnheardCount = _store.UnheardCount;
 
+        string used = AudioHistoryStore.FormatBytes(_store.TotalSizeBytes);
+        StorageSummaryText = $"{used} · {all.Count} / {_store.MaxClips} clips";
+
+        if (IsSelecting)
+        {
+            var validIds = all.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
+            _selectedIds.IntersectWith(validIds);
+            if (!HasAnyClips) IsSelecting = false;
+        }
+
         _latestRx = _store.LatestRxClip;
         HasLatestRx = _latestRx != null;
         if (_latestRx != null)
@@ -342,17 +588,32 @@ public sealed partial class AudioHistoryViewModel : ViewModelBase, IDisposable
 
         var filtered = Filter switch
         {
-            AudioHistoryFilter.Rx => all.Where(c => c.Direction == AudioClipDirection.Rx),
-            AudioHistoryFilter.Tx => all.Where(c => c.Direction == AudioClipDirection.Tx),
+            AudioHistoryFilter.Rx => all.Where(c => c.Direction == AudioClipDirection.Rx && !c.IsCombined),
+            AudioHistoryFilter.Tx => all.Where(c => c.Direction == AudioClipDirection.Tx && !c.IsCombined),
             _ => all
         };
 
-        Items.Clear();
-        foreach (var clip in filtered)
+        _suppressSelectionSync = true;
+        try
         {
-            Items.Add(new AudioClipItemViewModel(this, clip) { IsUnheard = clip.IsUnheard });
+            Items.Clear();
+            foreach (var clip in filtered)
+            {
+                Items.Add(new AudioClipItemViewModel(this, clip)
+                {
+                    IsUnheard = clip.IsUnheard,
+                    IsSelecting = IsSelecting,
+                    IsSelected = IsSelecting && _selectedIds.Contains(clip.Id)
+                });
+            }
         }
+        finally
+        {
+            _suppressSelectionSync = false;
+        }
+
         HasVisibleClips = Items.Count > 0;
+        UpdateSelectionMetrics();
         ApplyPlaybackState();
     }
 

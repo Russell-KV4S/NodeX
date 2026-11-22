@@ -1,6 +1,7 @@
 using System;
 using Android.Content;
 using Android.Media;
+using NodeX.Core.Diagnostics;
 
 namespace NodeX.UI.Android;
 
@@ -23,7 +24,8 @@ public static class AndroidAudioRoute
     /// <summary>True = loudspeaker; false = Bluetooth headset if one is connected, else the earpiece.</summary>
     public static bool SetSpeaker(Context context, bool speaker)
     {
-        if (context.GetSystemService(Context.AudioService) is not AudioManager am) return false;
+        var app = context.ApplicationContext ?? context;
+        if (app.GetSystemService(Context.AudioService) is not AudioManager am) return false;
 
         if (speaker)
         {
@@ -37,34 +39,36 @@ public static class AndroidAudioRoute
             }
             am.Mode = Mode.Normal;
             SpeakerActive = true;
+            DiagnosticLog.Default.Info("audio", "route -> speaker (Media, Mode.Normal)");
             RouteChanged?.Invoke();
             return true;
         }
 
         SpeakerActive = false;
         am.Mode = Mode.InCommunication;
-        RouteChanged?.Invoke();
 
+        bool result;
+        string chosenDesc;
         if (OperatingSystem.IsAndroidVersionAtLeast(31))
         {
-            AudioDeviceInfo? chosen = null;
-            if (speaker)
-            {
-                chosen = Find(am, AudioDeviceType.BuiltinSpeaker);
-            }
-            else
-            {
-                chosen = Find(am, AudioDeviceType.BluetoothSco)
-                         ?? Find(am, AudioDeviceType.WiredHeadset)
-                         ?? Find(am, AudioDeviceType.BuiltinEarpiece);
-            }
-            return chosen != null && am.SetCommunicationDevice(chosen);
+            AudioDeviceInfo? chosen = Find(am, AudioDeviceType.BluetoothSco)
+                                      ?? Find(am, AudioDeviceType.WiredHeadset)
+                                      ?? Find(am, AudioDeviceType.BuiltinEarpiece);
+            result = chosen != null && am.SetCommunicationDevice(chosen);
+            chosenDesc = chosen != null ? $"{chosen.Type} ({result})" : "none";
+        }
+        else
+        {
+#pragma warning disable CA1422 // SpeakerphoneOn is the route control below API 31
+            am.SpeakerphoneOn = false;
+#pragma warning restore CA1422
+            result = true;
+            chosenDesc = "legacy earpiece/BT";
         }
 
-#pragma warning disable CA1422 // SpeakerphoneOn is the route control below API 31
-        am.SpeakerphoneOn = speaker;
-#pragma warning restore CA1422
-        return true;
+        DiagnosticLog.Default.Info("audio", $"route -> phone/headset (VoiceCommunication, Mode.InCommunication, device={chosenDesc})");
+        RouteChanged?.Invoke();
+        return result;
     }
 
     /// <summary>
@@ -73,7 +77,8 @@ public static class AndroidAudioRoute
     /// </summary>
     public static void EnterCar(Context context)
     {
-        if (context.GetSystemService(Context.AudioService) is AudioManager am)
+        var app = context.ApplicationContext ?? context;
+        if (app.GetSystemService(Context.AudioService) is AudioManager am)
         {
             try
             {
@@ -82,22 +87,33 @@ public static class AndroidAudioRoute
             }
             catch (Exception) { /* routing stays as it was */ }
         }
+        DiagnosticLog.Default.Info("audio", "route -> car (Media, Mode.Normal)");
         RouteChanged?.Invoke();
     }
 
     /// <summary>The car went away while linked: put the phone/headset route back (the loudspeaker needs nothing).</summary>
     public static void LeaveCar(Context context)
     {
-        if (SpeakerActive) RouteChanged?.Invoke();
-        else SetSpeaker(context, false);
+        if (SpeakerActive)
+        {
+            DiagnosticLog.Default.Info("audio", "route <- car (restoring loudspeaker)");
+            RouteChanged?.Invoke();
+        }
+        else
+        {
+            SetSpeaker(context, false);
+        }
     }
 
     /// <summary>Back to the system's normal routing (nothing is linked any more).</summary>
     public static void Reset(Context context)
     {
+        bool wasSpeaker = SpeakerActive;
         SpeakerActive = false;
-        if (context.GetSystemService(Context.AudioService) is not AudioManager am) return;
+        var app = context.ApplicationContext ?? context;
+        if (app.GetSystemService(Context.AudioService) is not AudioManager am) return;
 
+        bool wasNonNormal = am.Mode != Mode.Normal;
         if (OperatingSystem.IsAndroidVersionAtLeast(31))
         {
             am.ClearCommunicationDevice();
@@ -109,6 +125,8 @@ public static class AndroidAudioRoute
 #pragma warning restore CA1422
         }
         am.Mode = Mode.Normal;
+        if (wasSpeaker || wasNonNormal)
+            DiagnosticLog.Default.Info("audio", $"route -> reset (Mode.Normal, wasSpeaker={wasSpeaker}, wasNonNormalMode={wasNonNormal})");
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("android31.0")]

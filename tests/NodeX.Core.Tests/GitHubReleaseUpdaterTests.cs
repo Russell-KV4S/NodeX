@@ -193,6 +193,98 @@ public class GitHubReleaseUpdaterTests : IDisposable
         Assert.Equal("installer opened", vm.Status);
     }
 
+    [Fact]
+    public async Task Install_WhileLinked_PromptsDisconnect_AndCancelLeavesLinksUntouched()
+    {
+        var handler = ValidHandler();
+        using var client = new HttpClient(handler);
+        int installs = 0, disconnects = 0;
+        bool linked = true;
+        var vm = new AppUpdateViewModel(
+            new GitHubReleaseUpdater(client), 17, _directory,
+            (_, _) => { installs++; return Task.FromResult("installer opened"); },
+            canInstall: () => !linked,
+            disconnectAll: () => { disconnects++; linked = false; return Task.CompletedTask; },
+            isCarActive: () => false,
+            linkedCount: () => linked ? 2 : 0);
+
+        await vm.CheckCommand.ExecuteAsync(null);
+        await vm.InstallCommand.ExecuteAsync(null);
+
+        Assert.True(vm.IsConfirmingDisconnect);
+        Assert.Contains("2 linked nodes", vm.DisconnectPromptText);
+        Assert.Equal(0, disconnects);
+        Assert.Equal(0, installs);
+        Assert.Equal(2, handler.Requests.Count); // never fetched APK
+
+        vm.CancelDisconnectPromptCommand.Execute(null);
+        Assert.False(vm.IsConfirmingDisconnect);
+        Assert.Contains("manually", vm.Status);
+        Assert.Equal(0, disconnects);
+        Assert.Equal(0, installs);
+        Assert.True(linked);
+    }
+
+    [Fact]
+    public async Task Install_WhileLinked_DisconnectAndUpdate_DisconnectsThenDownloadsAndInstalls()
+    {
+        var handler = ValidHandler();
+        using var client = new HttpClient(handler);
+        int installs = 0, disconnects = 0;
+        bool linked = true;
+        var vm = new AppUpdateViewModel(
+            new GitHubReleaseUpdater(client), 17, _directory,
+            async (path, release) =>
+            {
+                Assert.False(linked);
+                Assert.Equal(Apk, await File.ReadAllBytesAsync(path));
+                Assert.Equal(18, release.VersionCode);
+                installs++;
+                return "installer opened";
+            },
+            canInstall: () => !linked,
+            disconnectAll: () => { disconnects++; linked = false; return Task.CompletedTask; },
+            isCarActive: () => false,
+            linkedCount: () => linked ? 1 : 0);
+
+        await vm.CheckCommand.ExecuteAsync(null);
+        await vm.InstallCommand.ExecuteAsync(null);
+        Assert.True(vm.IsConfirmingDisconnect);
+        Assert.Contains("1 linked node", vm.DisconnectPromptText);
+
+        await vm.DisconnectAndInstallCommand.ExecuteAsync(null);
+
+        Assert.False(vm.IsConfirmingDisconnect);
+        Assert.False(linked);
+        Assert.Equal(1, disconnects);
+        Assert.Equal(1, installs);
+        Assert.Equal("installer opened", vm.Status);
+    }
+
+    [Fact]
+    public async Task Install_WhileInCar_DoesNotOfferDisconnectPrompt()
+    {
+        var handler = ValidHandler();
+        using var client = new HttpClient(handler);
+        int installs = 0, disconnects = 0;
+        var vm = new AppUpdateViewModel(
+            new GitHubReleaseUpdater(client), 17, _directory,
+            (_, _) => { installs++; return Task.FromResult("installer opened"); },
+            canInstall: () => false,
+            disconnectAll: () => { disconnects++; return Task.CompletedTask; },
+            isCarActive: () => true,
+            linkedCount: () => 0);
+
+        await vm.CheckCommand.ExecuteAsync(null);
+        await vm.InstallCommand.ExecuteAsync(null);
+
+        Assert.False(vm.IsConfirmingDisconnect);
+        Assert.Contains("Android Auto", vm.Status);
+        Assert.Equal(0, disconnects);
+        Assert.Equal(0, installs);
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);

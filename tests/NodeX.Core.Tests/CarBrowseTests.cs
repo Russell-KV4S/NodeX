@@ -93,8 +93,10 @@ public class CarBrowseTests
         Assert.Equal(clubId, CarBrowse.FindFavorite(s, "1999"));
         Assert.Equal("27339", CarBrowse.FindFavorite(s, "27339"));           // public first
         Assert.Equal("Club Hub", CarBrowse.TitleFor(s, clubId));
-        Assert.Equal("1999 @ club.ddns.net · Club Hub", CarBrowse.CardTitle(s, clubId));
-        Assert.Equal("1888 @ 10.0.0.5:4570", CarBrowse.CardTitle(s, CarBrowse.PrivateMediaId(bare)));
+        Assert.Equal("1999 · Club Hub", CarBrowse.CardTitle(s, clubId));
+        Assert.Equal("Node 1888", CarBrowse.CardTitle(s, CarBrowse.PrivateMediaId(bare)));
+        Assert.DoesNotContain("club.ddns.net", CarBrowse.CardTitle(s, clubId));
+        Assert.DoesNotContain("10.0.0.5", CarBrowse.CardTitle(s, CarBrowse.PrivateMediaId(bare)));
 
         // Two private nodes with the same number: a spoken number is ambiguous.
         var s2 = WithPrivate(club, new PrivateNodeEntry("1999", "other.example.org"));

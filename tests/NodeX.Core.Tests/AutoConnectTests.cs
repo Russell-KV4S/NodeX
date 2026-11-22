@@ -114,4 +114,47 @@ public sealed class AutoConnectTests
         await Task.Delay(150);
         Assert.Empty(runtime.Connections);
     }
+
+    [Fact]
+    public async Task Runtime_AutoConnect_SucceedsEvenIfBackgroundChangedListenerThrows()
+    {
+        using var remoteA = new FakeIaxRemote();
+        var handler = new StubRegistry { AllowRegistration = true };
+        using var http = new HttpClient(handler);
+
+        var settings = new NodeSettings
+        {
+            NodeNumber = "523802",
+            RegisterOnStartup = true,
+            AutoReconnect = false,
+            AutoConnectNodes = ["2000"]
+        };
+
+        var secrets = new InMemorySecretStore();
+        await secrets.SetAsync(SecretKeys.NodePassword, "test-password");
+
+        var resolver = new NodeResolution();
+        resolver.SetStaticOverride("2000", remoteA.EndPoint);
+
+        await using var runtime = new NodeRuntime(
+            new NodeConfigService(new Store(settings), secrets),
+            () => new NullAudioDeviceService(),
+            resolver: resolver,
+            registrationFactory: cfg => new AslRegistrationService(cfg, http),
+            networkMonitor: new Network(),
+            configureSession: s => { s.KeepAliveInterval = TimeSpan.FromMinutes(1); s.HangupAckWait = TimeSpan.Zero; });
+
+        runtime.BackgroundChanged += _ => throw new InvalidOperationException("boom");
+
+        var acceptA = remoteA.AcceptCallAsync();
+        await runtime.StartAsync();
+
+        await acceptA.WaitAsync(TimeSpan.FromSeconds(5));
+        using var wait = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (runtime.Connections.Count < 1 && !wait.IsCancellationRequested)
+            await Task.Delay(20);
+
+        Assert.Single(runtime.Connections);
+        Assert.Equal("2000", runtime.TransmitNode);
+    }
 }

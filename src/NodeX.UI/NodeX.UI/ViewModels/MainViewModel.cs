@@ -35,9 +35,10 @@ public sealed record FavoriteItem(string Node, string Label, bool IsAutoConnect 
 public sealed record PrivateFavoriteItem(PrivateNodeEntry Entry, bool IsAutoConnect = false)
 {
     public string Title => !string.IsNullOrWhiteSpace(Entry.Name) ? Entry.Name!.Trim() : $"Node {Entry.Node}";
-    public string Endpoint => Entry.DisplayAddress;
+    public string Subtitle => !string.IsNullOrWhiteSpace(Entry.Name) ? $"Node {Entry.Node}" : "";
+    public bool HasSubtitle => Subtitle.Length > 0;
     public string CanonicalTarget => Entry.CanonicalInput;
-    public string AutomationName => $"Connect to private node {Title}, {Endpoint}";
+    public string AutomationName => $"Connect to private node {Title}, node {Entry.Node}";
     public string AutoConnectMenuHeader => IsAutoConnect
         ? "Remove auto-connect on startup"
         : "Auto-connect on startup";
@@ -53,6 +54,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     private readonly NodeRuntime _runtime;
     private DispatcherTimer? _timer;
+    private bool _wasLinkActive;
 
     /// <summary>
     /// Keeps the "Last heard 3:03 PM (4 min ago)" age text current. It is separate from the 100 ms meter timer
@@ -698,8 +700,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             {
                 ConnectErrorText = "";
                 LogActivity(added
-                    ? $"{parsed.DisplayAddress} will auto-connect on startup ({list.Count} / {NodeRuntime.MaxLinks})."
-                    : $"{parsed.DisplayAddress} removed from startup auto-connect.");
+                    ? $"Node {parsed.Node} will auto-connect on startup ({list.Count} / {NodeRuntime.MaxLinks})."
+                    : $"Node {parsed.Node} removed from startup auto-connect.");
             }
             return result.Success;
         }
@@ -956,8 +958,16 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private void OnTransmitChanged() => OnUi(RefreshTransmit);
     private void OnLinkActiveChanged(bool active, string? node) => OnUi(() =>
     {
-        if (!active) { IsSpeakerOn = false; return; }
-        if (!IsSpeakerOn && _runtime.Config.Settings.DefaultToSpeaker && AppServices.SpeakerphoneSetter is { } setter && setter(true))
+        if (!active)
+        {
+            if (_runtime.Background.IsLinked || _runtime.Connections.Count > 0) return;
+            _wasLinkActive = false;
+            IsSpeakerOn = false;
+            return;
+        }
+        if (_wasLinkActive) return;
+        _wasLinkActive = true;
+        if (_runtime.Config.Settings.DefaultToSpeaker && AppServices.SpeakerphoneSetter is { } setter && setter(true))
         {
             IsSpeakerOn = true;
             LogActivity("Audio: loudspeaker (default).");
@@ -1089,6 +1099,15 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         string target = parsed.Node;
+        bool alreadyLinked = _runtime.Connections.Any(c => c.Node == target);
+        var savedPrivates = _runtime.Config.Settings.PrivateNodes?
+            .Where(p => p.Node == target)
+            .ToList() ?? [];
+        if (!alreadyLinked && !IsFavoriteNode(target) && savedPrivates.Count == 1)
+        {
+            await ConnectPrivateAsync(savedPrivates[0].ToManualAddress(), savedPrivates[0].Name);
+            return;
+        }
         try
         {
             LogActivity($"Resolving node {target}...");
@@ -1123,22 +1142,22 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        TargetNodeInput = address.CanonicalInput;
+        TargetNodeInput = address.Node;
         try
         {
-            LogActivity($"Resolving private node {address.DisplayAddress}...");
+            LogActivity($"Resolving private node {address.Node}...");
             var info = await _runtime.ConnectAsync(address, name);
             if (info == null)
             {
-                ConnectErrorText = $"Cannot find host {address.Host}.";
+                ConnectErrorText = $"Could not resolve private node {address.Node}.";
                 return;
             }
 
-            LogActivity($"Connecting to {address.DisplayAddress} at {info.EndPoint}...");
+            LogActivity($"Connecting to private node {address.Node}...");
         }
         catch (OperationCanceledException)
         {
-            LogActivity($"Connect to {address.DisplayAddress} cancelled.");
+            LogActivity($"Connect to private node {address.Node} cancelled.");
         }
         catch (Exception ex)
         {
@@ -1415,11 +1434,16 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(HasAnyFavorites));
         OnPropertyChanged(nameof(PrivateNodesButtonText));
         PrivateNodes.ReloadFromConfig();
-        History.RefreshRecordingFlag();
+        AppServices.AudioHistory.MaxClips = s.AudioHistoryMaxClips;
+        History.RefreshFromSettings();
         if (!IsTransmitting) TotCounterText = FormatTot(TimeSpan.Zero, TotLimit);
 
         if (string.IsNullOrWhiteSpace(TargetNodeInput) && autoConnect.Count > 0)
-            TargetNodeInput = autoConnect[0];
+        {
+            TargetNodeInput = ManualNodeAddress.TryParse(autoConnect[0], out var firstAddr, out _) && firstAddr != null
+                ? firstAddr.Node
+                : autoConnect[0];
+        }
         RefreshTargetFavorite();
 
         AppServices.HardwarePtt.MappedKey = s.HardwarePttKey;
@@ -1478,13 +1502,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private string LabelFor(string node) =>
         _runtime.Config.Settings.FavoriteLabels.TryGetValue(node, out var label) ? label : "";
 
-    /// <summary>"[node] " (or "[1999 @ host] " for private links) so log lines identify the link clearly.</summary>
-    private string Tag(string node)
-    {
-        var conn = _runtime.Connections.FirstOrDefault(c => c.Node == node);
-        if (conn is { IsPrivate: true }) return $"[{conn.DisplayNode}] ";
-        return _runtime.Connections.Count > 1 ? $"[{node}] " : "";
-    }
+    /// <summary>"[node] " so log lines identify the link clearly.</summary>
+    private string Tag(string node) => _runtime.Connections.Count > 1 ? $"[{node}] " : "";
 
     /// <summary>
     /// Brings the link rows, the hero card and the PTT state in line with the runtime's connections.
@@ -1569,17 +1588,17 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
         var item = LinkItems.First(l => l.Node == tx.Node);
         ConnectionStateBadgeText = item.StatusText;
-        ConnectedNodeDisplay = tx.IsPrivate ? tx.DisplayNode : $"Node {tx.Node}";
+        ConnectedNodeDisplay = $"Node {tx.Node}";
 
         string details = tx.Reconnect.Active && !item.IsConnected ? ReconnectText(tx)
             : tx.Info == null ? "Resolving…"
             : tx.IsPrivate
-                ? $"{(string.IsNullOrWhiteSpace(tx.PrivateName) ? "Private direct" : tx.PrivateName)} ({tx.Info.EndPoint})"
+                ? (string.IsNullOrWhiteSpace(tx.PrivateName) ? "Private node" : $"{tx.PrivateName} · Private")
             : string.IsNullOrWhiteSpace(tx.Info.Callsign)
                 ? $"{tx.Info.Description} ({tx.Info.EndPoint.Address})"
                 : $"{tx.Info.Callsign} • {tx.Info.Description} ({tx.Info.EndPoint.Address})";
         if (conns.Count > 1)
-            details += $" · also listening: {string.Join(", ", conns.Where(c => c != tx).Select(c => c.DisplayNode))}";
+            details += $" · also listening: {string.Join(", ", conns.Where(c => c != tx).Select(c => c.Node))}";
         ConnectedNodeDetails = details;
     }
 

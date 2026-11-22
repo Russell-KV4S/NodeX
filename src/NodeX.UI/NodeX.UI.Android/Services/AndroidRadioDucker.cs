@@ -67,7 +67,7 @@ public sealed class AndroidRadioDucker : Java.Lang.Object, AudioManager.IOnAudio
             .Build()!;
         _request = new AudioFocusRequestClass.Builder(AudioFocus.GainTransientMayDuck)
             .SetAudioAttributes(attributes)!
-            .SetOnAudioFocusChangeListener(this)!
+            .SetOnAudioFocusChangeListener(this, new global::Android.OS.Handler(global::Android.OS.Looper.MainLooper!))!
             .Build()!;
         var result = am.RequestAudioFocus(_request);
         NodeX.Core.Diagnostics.DiagnosticLog.Default.Detail("car", $"radio mix: node talking, ducking the car audio ({result})");

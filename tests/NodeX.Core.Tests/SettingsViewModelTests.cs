@@ -238,4 +238,36 @@ public class SettingsViewModelTests : IDisposable
             NodeX.UI.AppServices.AudioDeviceLister = previous;
         }
     }
+
+    [Fact]
+    public async Task AutoConnectText_HidesPrivateHostsOnLoad_AndPreservesPrivateTargetsOnSave()
+    {
+        await _config.SaveAsync(new NodeSettings
+        {
+            NodeNumber = "523802",
+            AutoConnectNodes = ["523800", "1999@ysf.alert-alabama.org", "1993@ysf.alert-alabama.org:4570"],
+            PrivateNodes =
+            [
+                new PrivateNodeEntry("1999", "ysf.alert-alabama.org", 4569, "YSF 1"),
+                new PrivateNodeEntry("1993", "ysf.alert-alabama.org", 4570, "YSF 2"),
+                new PrivateNodeEntry("1992", "ysf.alert-alabama.org", 4569, "YSF 3")
+            ]
+        }, "pw");
+
+        var vm = Create();
+        await vm.LoadAsync();
+
+        Assert.Equal("523800, 1999, 1993", vm.AutoConnectText);
+        Assert.DoesNotContain("ysf.alert-alabama.org", vm.AutoConnectText);
+
+        // Adding another private node by number only resolves its host/port from saved PrivateNodes on Save.
+        vm.AutoConnectText = "523800, 1999, 1993, 1992";
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.False(vm.HasError);
+
+        var reloaded = await _config.LoadAsync();
+        Assert.Equal(
+            ["523800", "1999@ysf.alert-alabama.org", "1993@ysf.alert-alabama.org:4570", "1992@ysf.alert-alabama.org"],
+            reloaded.Settings.AutoConnectNodes);
+    }
 }

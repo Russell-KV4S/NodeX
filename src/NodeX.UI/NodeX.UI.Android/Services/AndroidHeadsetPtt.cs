@@ -45,7 +45,7 @@ public sealed class AndroidHeadsetPtt : IDisposable
     {
         var session = new MediaSession(_context, "NodeX headset PTT");
         session.SetFlags(MediaSessionFlags.HandlesMediaButtons | MediaSessionFlags.HandlesTransportControls);
-        session.SetCallback(new Callback(this));
+        session.SetCallback(new Callback(this), new Handler(Looper.MainLooper!));
         session.SetPlaybackState(new PlaybackState.Builder()
             .SetActions(PlaybackState.ActionPlayPause | PlaybackState.ActionPlay | PlaybackState.ActionPause)!
             .SetState(PlaybackStateCode.Playing, 0, 1f)!

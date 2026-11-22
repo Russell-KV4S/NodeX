@@ -103,9 +103,15 @@ public class PrivateNodesUiTests
 
         Assert.True(f.Vm.LinkItems[0].IsPrivate);
         Assert.False(f.Vm.LinkItems[0].HasBubbleChart);   // private nodes are not on the stats site
-        Assert.Equal("Node 1999", f.Vm.LinkItems[0].Title);   // host not shown on the card (owner, 2026-11-20)
+        Assert.Equal("Node 1999", f.Vm.LinkItems[0].Title);   // host not shown anywhere except creation/edit screen
         Assert.DoesNotContain("127.0.0.1", f.Vm.LinkItems[0].ChipTitle);
-        Assert.Contains("1999 @ 127.0.0.1", f.Vm.ConnectedNodeDisplay);
+        Assert.Equal("Node 1999", f.Vm.ConnectedNodeDisplay);
+        Assert.DoesNotContain("127.0.0.1", f.Vm.ConnectedNodeDetails);
+        Assert.DoesNotContain("club.local", f.Vm.PrivateFavoriteNodes[0].Subtitle);
+        f.Vm.OpenPrivateNodes();
+        Assert.DoesNotContain("club.local", f.Vm.PrivateNodes.Items[0].NodeLine);
+        f.Vm.PrivateNodes.OpenEdit(f.Store.Current.PrivateNodes[0]);
+        Assert.Equal("club.local", f.Vm.PrivateNodes.HostInput);   // host shown on creation/edit form
 
         // Trying to link public 1999 simultaneously is refused with a clear inline error.
         f.Vm.TargetNodeInput = "1999";

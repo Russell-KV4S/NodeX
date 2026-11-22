@@ -30,7 +30,10 @@ internal static class AndroidAppUpdater
         var info = context.PackageManager!.GetPackageInfo(context.PackageName!, 0)!;
         AppServices.Updates = new AppUpdateViewModel(new GitHubReleaseUpdater(Http), VersionCode(info),
             Path.Combine(context.CacheDir!.AbsolutePath, "updates"), InstallAsync,
-            () => AppServices.Runtime.Connections.Count == 0 && !CarSession.Active);
+            canInstall: () => AppServices.Runtime.Connections.Count == 0 && !CarSession.Active,
+            disconnectAll: () => AppServices.Runtime.DisconnectAsync(),
+            isCarActive: () => CarSession.Active,
+            linkedCount: () => AppServices.Runtime.Connections.Count);
     }
 
     private static long VersionCode(PackageInfo info) => OperatingSystem.IsAndroidVersionAtLeast(28)

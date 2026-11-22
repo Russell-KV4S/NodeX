@@ -51,6 +51,7 @@ public sealed class NodeForegroundService : Service
     private int? _types;          // the service types of the last successful start; null = not started
     private bool _micGranted;
     private bool _carMode;        // the audio route was last set up for a car
+    private bool _wasLinked;      // tracks false->true link transitions so DefaultToSpeaker applies before SCO plan
     private static NodeForegroundService? _current;
 
     // Apply/Shutdown/Teardown run on the main thread (service starts) and on pool threads (runtime, settings and car
@@ -110,17 +111,29 @@ public sealed class NodeForegroundService : Service
         base.OnCreate();
         // The service follows the runtime itself, so notification text, service type and locks can change while
         // the app is in the background without any new service start (which Android restricts there).
-        _handler = state => Apply(state);
+        _handler = state => SafeApply(state);
         AppServices.Runtime.BackgroundChanged += _handler;
 
         // Settings saved while linked (the headset-button option) take effect without a relink.
-        _configHandler = _ => { if (IsRunning) Apply(AppServices.Runtime.Background); };
+        _configHandler = _ => { if (IsRunning) SafeApply(AppServices.Runtime.Background); };
         AppServices.Runtime.ConfigService.Changed += _configHandler;
 
         // Android Auto connecting or disconnecting changes the audio route and who owns the media buttons.
-        _carHandler = () => { if (IsRunning) Apply(AppServices.Runtime.Background); };
+        _carHandler = () => { if (IsRunning) SafeApply(AppServices.Runtime.Background); };
         CarSession.Changed += _carHandler;
         _current = this;
+    }
+
+    private void SafeApply(BackgroundState state)
+    {
+        try
+        {
+            Apply(state);
+        }
+        catch (Exception ex)
+        {
+            NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("bg", $"background service update failed: {ex.Message}");
+        }
     }
 
     public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
@@ -275,6 +288,17 @@ public sealed class NodeForegroundService : Service
         CarSession.MicrophoneUsable = micGranted;
 
         _keeper ??= new AndroidBackgroundKeeper(this);
+        if (state.IsLinked && !_wasLinked)
+        {
+            _wasLinked = true;
+            if (!car && AppServices.Runtime.Config.Settings.DefaultToSpeaker && !AndroidAudioRoute.SpeakerActive)
+                AndroidAudioRoute.SetSpeaker(this, true);
+        }
+        else if (!state.IsLinked)
+        {
+            _wasLinked = false;
+        }
+
         var plan = AndroidServicePlan.Create(state, (int)global::Android.OS.Build.VERSION.SdkInt,
             micAllowed, car, AndroidAudioRoute.SpeakerActive, AppServices.Runtime.Config.Settings.MediaKeyPtt);
         if (plan.HoldLocks)
@@ -297,6 +321,7 @@ public sealed class NodeForegroundService : Service
                 // starting SCO puts the phone back in communication mode and moves the audio to the headset.
                 // Switching back to Phone picks the headset itself (AndroidAudioRoute.SetSpeaker).
                 if (plan.BluetoothSco) _keeper.StartBluetoothSco();
+                else _keeper.StopBluetoothSco();
             }
             _carMode = car;
         }
@@ -304,6 +329,7 @@ public sealed class NodeForegroundService : Service
         {
             // Idle: no reason to hold the CPU or Wi-Fi awake, but then the registration timer stops while the phone
             // sleeps, so a periodic alarm wakes it briefly to re-register.
+            _wasLinked = false;
             _keeper.StopBluetoothSco();
             _keeper.Release();
             RegistrationAlarm.Schedule(this);
@@ -312,8 +338,15 @@ public sealed class NodeForegroundService : Service
         }
 
         // A headset's Play/Pause button as push-to-talk, only while linked, only if the user turned it on, never in the car.
-        _headset ??= new AndroidHeadsetPtt(this);
-        _headset.Update(plan.HeadsetKeys);
+        try
+        {
+            _headset ??= new AndroidHeadsetPtt(this);
+            _headset.Update(plan.HeadsetKeys);
+        }
+        catch (Exception ex)
+        {
+            NodeX.Core.Diagnostics.DiagnosticLog.Default.Info("headset", $"headset PTT setup failed: {ex.Message}");
+        }
 
         // "Hear nodes over the car radio": the option is read here (settings saves re-run Apply); the ducker only acts
         // while it applies (in a car, while the car plays something else).
@@ -395,6 +428,7 @@ public sealed class NodeForegroundService : Service
         _types = null;
         _micGranted = false;
         _carMode = false;
+        _wasLinked = false;
         IsRunning = false;
     }
 

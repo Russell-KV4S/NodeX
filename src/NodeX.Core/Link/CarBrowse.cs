@@ -109,16 +109,16 @@ public static class CarBrowse
     {
         var conn = connections?.FirstOrDefault(c => c.Node == node);
         if (conn is { IsPrivate: true })
-            return !string.IsNullOrWhiteSpace(conn.PrivateName) ? conn.PrivateName.Trim() : conn.DisplayNode;
+            return !string.IsNullOrWhiteSpace(conn.PrivateName) ? conn.PrivateName.Trim() : $"Node {conn.Node}";
         return TitleFor(settings, node);
     }
 
-    /// <summary>Card heading for a linked node: <c>1999 @ host · Club Hub</c> for private links, else <see cref="CardTitle"/>.</summary>
+    /// <summary>Card heading for a linked node: <c>1999 · Club Hub</c> for private links, else <see cref="CardTitle"/>.</summary>
     public static string LinkCardTitle(NodeSettings settings, string node, IEnumerable<NodeConnection>? connections)
     {
         var conn = connections?.FirstOrDefault(c => c.Node == node);
         if (conn is { IsPrivate: true })
-            return !string.IsNullOrWhiteSpace(conn.PrivateName) ? $"{conn.DisplayNode} · {conn.PrivateName.Trim()}" : conn.DisplayNode;
+            return !string.IsNullOrWhiteSpace(conn.PrivateName) ? $"{conn.Node} · {conn.PrivateName.Trim()}" : $"Node {conn.Node}";
         return CardTitle(settings, node);
     }
 
@@ -170,12 +170,12 @@ public static class CarBrowse
         {
             if (string.IsNullOrWhiteSpace(priv.Node) || string.IsNullOrWhiteSpace(priv.Host)) continue;
             bool isConnected = connectedSet.Contains(priv.Node);
-            string title = !string.IsNullOrWhiteSpace(priv.Name) ? $"{priv.Name.Trim()} (Private)" : $"{priv.DisplayAddress} (Private)";
+            string title = !string.IsNullOrWhiteSpace(priv.Name) ? $"{priv.Name.Trim()} (Private)" : $"Node {priv.Node} (Private)";
             string subtitle = isConnected
                 ? (priv.Node == transmitNode
-                    ? $"Private · {priv.DisplayAddress} • Connected (Transmit)"
-                    : $"Private · {priv.DisplayAddress} • Connected (Listen)")
-                : $"Private · {priv.DisplayAddress}";
+                    ? $"Private · Node {priv.Node} • Connected (Transmit)"
+                    : $"Private · Node {priv.Node} • Connected (Listen)")
+                : $"Private · Node {priv.Node}";
             var icon = !isConnected ? CarIcon.Favorite : priv.Node == transmitNode ? CarIcon.Transmit : CarIcon.Listen;
             items.Add(new CarBrowseItem(PrivateMediaId(priv), title, true, subtitle, icon));
         }
@@ -212,8 +212,8 @@ public static class CarBrowse
             string status = StatusLine(isTx, isConnected, conn.Reconnect.Active, isTalking, conn.Muted);
             string title = conn.IsPrivate
                 ? (!string.IsNullOrWhiteSpace(conn.PrivateName)
-                    ? $"{conn.DisplayNode} · {conn.PrivateName} (Private)"
-                    : $"{conn.DisplayNode} (Private)")
+                    ? $"{conn.Node} · {conn.PrivateName} (Private)"
+                    : $"Node {conn.Node} (Private)")
                 : CardTitle(settings, node);
             items.Add(new CarBrowseItem(ActivePrefix + node, title, true, status, isTx ? CarIcon.Transmit : CarIcon.Listen));
         }
@@ -247,7 +247,7 @@ public static class CarBrowse
     public static string CardTitle(NodeSettings settings, string node)
     {
         if (FindPrivateEntry(settings, node) is { } priv)
-            return string.IsNullOrWhiteSpace(priv.Name) ? priv.DisplayAddress : $"{priv.DisplayAddress} · {priv.Name.Trim()}";
+            return string.IsNullOrWhiteSpace(priv.Name) ? $"Node {priv.Node}" : $"{priv.Node} · {priv.Name.Trim()}";
         string label = TitleFor(settings, node);
         return label == node ? node : $"{node} · {label}";
     }
@@ -256,7 +256,7 @@ public static class CarBrowse
     public static string TitleFor(NodeSettings settings, string node)
     {
         if (FindPrivateEntry(settings, node) is { } priv)
-            return string.IsNullOrWhiteSpace(priv.Name) ? priv.DisplayAddress : priv.Name.Trim();
+            return string.IsNullOrWhiteSpace(priv.Name) ? $"Node {priv.Node}" : priv.Name.Trim();
         if (settings.FavoriteLabels != null
             && settings.FavoriteLabels.TryGetValue(node, out string? label)
             && !string.IsNullOrWhiteSpace(label))

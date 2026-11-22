@@ -103,7 +103,7 @@
                                                                    Foreground="{DynamicResource CyanAccentBrush}" />
                                                     </Border>
                                                 </WrapPanel>
-                                                <TextBlock Text="{Binding EndpointText}" FontFamily="Consolas,Menlo,monospace"
+                                                <TextBlock Text="{Binding NodeLine}" IsVisible="{Binding HasNodeLine}"
                                                            FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource CyanAccentBrush}" />
                                                 <TextBlock Text="{Binding MetaText}" FontSize="{DynamicResource FontSize11}"
                                                            Foreground="{DynamicResource TextSecondaryBrush}" />

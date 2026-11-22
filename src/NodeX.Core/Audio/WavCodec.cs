@@ -26,6 +26,66 @@ public static class WavCodec
         stream.Write(wav, 0, wav.Length);
     }
 
+    /// <summary>
+    /// Reads a seekable 16-bit mono PCM WAV stream without loading its audio payload into memory,
+    /// returning the sample rate and the byte range of the <c>data</c> chunk.
+    /// </summary>
+    public static bool TryReadPcm16DataChunk(Stream stream, out int sampleRate, out long dataOffset, out int dataBytes)
+    {
+        sampleRate = 0;
+        dataOffset = 0;
+        dataBytes = 0;
+        if (!stream.CanSeek || stream.Length < HeaderBytes) return false;
+
+        stream.Position = 0;
+        Span<byte> riff = stackalloc byte[12];
+        if (ReadExact(stream, riff) < 12
+            || riff[0] != (byte)'R' || riff[1] != (byte)'I' || riff[2] != (byte)'F' || riff[3] != (byte)'F'
+            || riff[8] != (byte)'W' || riff[9] != (byte)'A' || riff[10] != (byte)'V' || riff[11] != (byte)'E')
+            return false;
+
+        ushort audioFormat = 0;
+        ushort channels = 0;
+        ushort bitsPerSample = 0;
+        bool hasFmt = false;
+        bool hasData = false;
+
+        Span<byte> chunkHeader = stackalloc byte[8];
+        Span<byte> fmtBuf = stackalloc byte[16];
+        long len = stream.Length;
+
+        while (stream.Position + 8 <= len)
+        {
+            if (ReadExact(stream, chunkHeader) < 8) return false;
+            int chunkSize = BinaryPrimitives.ReadInt32LittleEndian(chunkHeader.Slice(4, 4));
+            if (chunkSize < 0 || stream.Position + chunkSize > len) return false;
+
+            long nextPos = stream.Position + chunkSize + (chunkSize & 1);
+            if (chunkHeader[0] == (byte)'f' && chunkHeader[1] == (byte)'m' && chunkHeader[2] == (byte)'t' && chunkHeader[3] == (byte)' '
+                && chunkSize >= 16)
+            {
+                if (ReadExact(stream, fmtBuf) < 16) return false;
+                audioFormat = BinaryPrimitives.ReadUInt16LittleEndian(fmtBuf.Slice(0, 2));
+                channels = BinaryPrimitives.ReadUInt16LittleEndian(fmtBuf.Slice(2, 2));
+                sampleRate = BinaryPrimitives.ReadInt32LittleEndian(fmtBuf.Slice(4, 4));
+                bitsPerSample = BinaryPrimitives.ReadUInt16LittleEndian(fmtBuf.Slice(14, 2));
+                hasFmt = true;
+            }
+            else if (chunkHeader[0] == (byte)'d' && chunkHeader[1] == (byte)'a' && chunkHeader[2] == (byte)'t' && chunkHeader[3] == (byte)'a')
+            {
+                dataOffset = stream.Position;
+                dataBytes = chunkSize - (chunkSize & 1); // ensure even PCM16 byte count
+                hasData = true;
+            }
+
+            if (hasFmt && hasData) break;
+            if (nextPos > len) return false;
+            stream.Position = nextPos;
+        }
+
+        return hasFmt && hasData && audioFormat == 1 && channels == 1 && bitsPerSample == 16 && sampleRate > 0;
+    }
+
     public static short[] DecodePcm16(ReadOnlySpan<byte> wav, out int sampleRate)
     {
         if (wav.Length < HeaderBytes
@@ -77,8 +137,11 @@ public static class WavCodec
         return samples;
     }
 
-    private static void WriteHeader(Span<byte> header, int dataBytes, int sampleRate)
+    public static void WriteHeader(Span<byte> header, int dataBytes, int sampleRate)
     {
+        if (header.Length < HeaderBytes)
+            throw new ArgumentException($"Header buffer must be at least {HeaderBytes} bytes.", nameof(header));
+
         // RIFF header
         header[0] = (byte)'R'; header[1] = (byte)'I'; header[2] = (byte)'F'; header[3] = (byte)'F';
         BinaryPrimitives.WriteInt32LittleEndian(header.Slice(4, 4), 36 + dataBytes);
@@ -95,5 +158,17 @@ public static class WavCodec
         // data chunk
         header[36] = (byte)'d'; header[37] = (byte)'a'; header[38] = (byte)'t'; header[39] = (byte)'a';
         BinaryPrimitives.WriteInt32LittleEndian(header.Slice(40, 4), dataBytes);
+    }
+
+    private static int ReadExact(Stream stream, Span<byte> buffer)
+    {
+        int total = 0;
+        while (total < buffer.Length)
+        {
+            int n = stream.Read(buffer[total..]);
+            if (n == 0) break;
+            total += n;
+        }
+        return total;
     }
 }

@@ -79,7 +79,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
 
         _session = new MediaSession(this, "NodeX");
         _session.SetFlags(MediaSessionFlags.HandlesMediaButtons | MediaSessionFlags.HandlesTransportControls);
-        _session.SetCallback(new Callback(this));
+        _session.SetCallback(new Callback(this), new Handler(Looper.MainLooper!));
         SessionToken = _session.SessionToken;
         _session.Active = true;
         PublishState();
@@ -827,7 +827,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
             .Build()!;
         _focus = new AudioFocusRequestClass.Builder(AudioFocus.Gain)
             .SetAudioAttributes(attributes)!
-            .SetOnAudioFocusChangeListener(this)!
+            .SetOnAudioFocusChangeListener(this, new Handler(Looper.MainLooper!))!
             .SetWillPauseWhenDucked(false)!
             .Build()!;
         var granted = am.RequestAudioFocus(_focus);

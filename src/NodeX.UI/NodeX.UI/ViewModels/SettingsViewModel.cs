@@ -73,6 +73,22 @@ public partial class SettingsViewModel : ViewModelBase
 
     private static readonly int[] AudioHistoryLimits = [25, 50, 100, 200];
 
+    public string AudioHistoryUsageText
+    {
+        get
+        {
+            var store = AppServices.AudioHistory;
+            int count = store.Clips.Count;
+            string used = NodeX.Core.Audio.AudioHistoryStore.FormatBytes(store.TotalSizeBytes);
+            return count switch
+            {
+                0 => "Currently using 0 B (no clips saved yet).",
+                1 => $"Currently using {used} across 1 clip.",
+                _ => $"Currently using {used} across {count} clips."
+            };
+        }
+    }
+
     // ----- PTT & audio -----
 
     [ObservableProperty]
@@ -380,6 +396,7 @@ public partial class SettingsViewModel : ViewModelBase
 
     private Dictionary<string, string> _favoriteLabels = [];
     private List<PrivateNodeEntry> _privateNodes = [];
+    private Dictionary<string, string> _loadedAutoConnectByNode = new(StringComparer.Ordinal);
 
     // The settings the form was filled from. Saving starts from these, so a setting the form does not show (such as
     // IaxRegistration) keeps its value instead of silently reverting to its default (2026-11-21 review).
@@ -407,6 +424,7 @@ public partial class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(CarTalkSupported));
         OnPropertyChanged(nameof(LogSharingSupported));
         OnPropertyChanged(nameof(PermissionsSupported));
+        OnPropertyChanged(nameof(AudioHistoryUsageText));
 
         ShowPassword = false;
         TransferPassphrase = "";
@@ -421,10 +439,26 @@ public partial class SettingsViewModel : ViewModelBase
         TextScale = s.TextScale;
         NodeNumber = s.NodeNumber;
         Password = password;
-        AutoConnectText = string.Join(", ", s.GetEffectiveAutoConnectNodes());
+        _loadedAutoConnectByNode.Clear();
+        var autoDisplay = new List<string>();
+        foreach (string raw in s.GetEffectiveAutoConnectNodes())
+        {
+            if (ManualNodeAddress.TryParse(raw, out var parsed, out _) && parsed != null)
+            {
+                if (parsed.IsPrivate)
+                    _loadedAutoConnectByNode[parsed.Node] = parsed.CanonicalInput;
+                autoDisplay.Add(parsed.Node);
+            }
+            else
+            {
+                autoDisplay.Add(raw);
+            }
+        }
+        AutoConnectText = string.Join(", ", autoDisplay);
         FavoritesText = string.Join(", ", s.FavoriteNodes);
         SaveAudioHistory = s.SaveAudioHistory;
         AudioHistoryLimitIndex = LimitIndexFor(s.AudioHistoryMaxClips);
+        OnPropertyChanged(nameof(AudioHistoryUsageText));
         _favoriteLabels = new Dictionary<string, string>(s.FavoriteLabels);
         _privateNodes = (s.PrivateNodes ?? []).ToList();
         OnPropertyChanged(nameof(PrivateNodesSummaryText));
@@ -611,8 +645,25 @@ public partial class SettingsViewModel : ViewModelBase
         if (!int.TryParse(IaxPortText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out port))
             issues.Add(new(NodeSettingsValidator.Fields.IaxPort, "IAX port must be a whole number."));
 
+        var favoriteNodes = FavoritesText
+            .Split([',', ' ', ';', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        var favoriteSet = favoriteNodes.ToHashSet(StringComparer.Ordinal);
+
         var autoConnect = AutoConnectText
             .Split([',', ' ', ';', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(token =>
+            {
+                if (NodeSettingsValidator.IsValidNodeNumber(token))
+                {
+                    if (_loadedAutoConnectByNode.TryGetValue(token, out string? existingPrivate))
+                        return existingPrivate;
+                    if (!favoriteSet.Contains(token)
+                        && _privateNodes.FirstOrDefault(p => p.Node == token) is { } savedPrivate)
+                        return savedPrivate.CanonicalInput;
+                }
+                return token;
+            })
             .ToList();
 
         settings = _loadedSettings with
@@ -622,9 +673,7 @@ public partial class SettingsViewModel : ViewModelBase
             NodeNumber = NodeNumber,
             DefaultTargetNode = "",
             AutoConnectNodes = autoConnect,
-            FavoriteNodes = FavoritesText
-                .Split([',', ' ', ';', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .ToList(),
+            FavoriteNodes = favoriteNodes,
             SaveAudioHistory = SaveAudioHistory,
             AudioHistoryMaxClips = AudioHistoryLimits[Math.Clamp(AudioHistoryLimitIndex, 0, AudioHistoryLimits.Length - 1)],
             FavoriteLabels = _favoriteLabels,   // names are edited on the main screen; Normalize drops any for removed favourites

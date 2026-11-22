@@ -1017,7 +1017,7 @@
                                                                                Foreground="{DynamicResource CyanAccentBrush}" />
                                                                 </Border>
                                                             </StackPanel>
-                                                            <TextBlock Text="{Binding Endpoint}" FontFamily="Consolas,Menlo,monospace"
+                                                            <TextBlock Text="{Binding Subtitle}" IsVisible="{Binding HasSubtitle}"
                                                                        FontSize="{DynamicResource FontSize11}"
                                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                                         </StackPanel>

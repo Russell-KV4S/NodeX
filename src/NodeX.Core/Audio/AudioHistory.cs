@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text.Json;
 using NodeX.Core.Diagnostics;
@@ -10,7 +11,7 @@ public enum AudioClipDirection
     Tx
 }
 
-/// <summary>Metadata for one saved received or transmitted voice over.</summary>
+/// <summary>Metadata for one saved received, transmitted, or combined voice clip.</summary>
 public sealed record AudioClip(
     string Id,
     DateTimeOffset TimestampUtc,
@@ -20,7 +21,8 @@ public sealed record AudioClip(
     double DurationSeconds,
     string FileName,
     long SizeBytes,
-    bool IsUnheard = true);
+    bool IsUnheard = true,
+    bool IsCombined = false);
 
 /// <summary>
 /// Persists recent RX/TX audio clips locally as standard 8 kHz 16-bit mono WAV files alongside a lightweight
@@ -32,6 +34,7 @@ public sealed class AudioHistoryStore
     public const int DefaultMaxClips = 50;
     public const int MinMaxClips = 10;
     public const int MaxAllowedClips = 200;
+    public const int CombineGapMilliseconds = 400;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly string _directory;
@@ -45,6 +48,16 @@ public sealed class AudioHistoryStore
         _directory = directory ?? throw new ArgumentNullException(nameof(directory));
         _indexPath = Path.Combine(_directory, "index.json");
         _maxClips = Math.Clamp(maxClips, MinMaxClips, MaxAllowedClips);
+    }
+
+    public static string FormatBytes(long bytes)
+    {
+        const long bytesPerGigabyte = 1024L * 1024L * 1024L;
+        if (bytes <= 0) return "0 B";
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:0.#} KB";
+        if (bytes < bytesPerGigabyte) return $"{bytes / (1024.0 * 1024.0):0.0} MB";
+        return $"{bytes / (double)bytesPerGigabyte:0.0#} GB";
     }
 
     public string DirectoryPath => _directory;
@@ -66,7 +79,15 @@ public sealed class AudioHistoryStore
         }
     }
 
-    /// <summary>Raised on any thread whenever clips are added, marked heard, deleted, or cleared.</summary>
+    public long TotalSizeBytes
+    {
+        get
+        {
+            lock (_lock) return TotalSizeBytesLocked();
+        }
+    }
+
+    /// <summary>Raised on any thread whenever clips are added, combined, marked heard, deleted, or cleared.</summary>
     public event Action? Changed;
 
     /// <summary>Newest-first snapshot of saved clips.</summary>
@@ -82,7 +103,7 @@ public sealed class AudioHistoryStore
             lock (_lock)
             {
                 int n = 0;
-                foreach (var c in _clips) if (c.IsUnheard && c.Direction == AudioClipDirection.Rx) n++;
+                foreach (var c in _clips) if (c.IsUnheard && c.Direction == AudioClipDirection.Rx && !c.IsCombined) n++;
                 return n;
             }
         }
@@ -95,8 +116,8 @@ public sealed class AudioHistoryStore
             lock (_lock)
             {
                 foreach (var c in _clips)
-                    if (c.Direction == AudioClipDirection.Rx) return c;
-                return null;
+                    if (c.Direction == AudioClipDirection.Rx && !c.IsCombined) return c;
+                return _clips.FirstOrDefault(c => c.Direction == AudioClipDirection.Rx);
             }
         }
     }
@@ -119,9 +140,11 @@ public sealed class AudioHistoryStore
                 foreach (var clip in loaded)
                 {
                     if (string.IsNullOrWhiteSpace(clip.FileName)) { pruned = true; continue; }
-                    string full = Path.Combine(_directory, Path.GetFileName(clip.FileName));
+                    string fileName = Path.GetFileName(clip.FileName);
+                    string full = Path.Combine(_directory, fileName);
                     if (!File.Exists(full)) { pruned = true; continue; }
-                    _clips.Add(clip with { FileName = Path.GetFileName(clip.FileName) });
+                    long size = clip.SizeBytes > 0 ? clip.SizeBytes : new FileInfo(full).Length;
+                    _clips.Add(clip with { FileName = fileName, SizeBytes = size });
                 }
                 _clips.Sort((a, b) => b.TimestampUtc.CompareTo(a.TimestampUtc));
                 if (PruneLocked() || pruned) SaveIndexLocked();
@@ -135,7 +158,7 @@ public sealed class AudioHistoryStore
         Changed?.Invoke();
     }
 
-    /// <summary>Writes a new WAV clip to disk, inserts it at the top of the list, and prunes beyond <see cref="MaxClips"/>.</summary>
+    /// <summary>Writes a new WAV clip to disk, inserts it at the top of the list, and prunes oldest beyond configured limits.</summary>
     public AudioClip SaveClip(
         string node,
         string nodeLabel,
@@ -174,6 +197,182 @@ public sealed class AudioHistoryStore
         }
         Changed?.Invoke();
         return clip;
+    }
+
+    /// <summary>
+    /// Combines two or more saved clips chronologically (oldest to newest) with a short silence gap between them
+    /// into one standalone 8 kHz 16-bit mono PCM WAV file and adds it to the library without deleting originals.
+    /// </summary>
+    public AudioClip CombineClips(IEnumerable<string> clipIds, string? customTitle = null, DateTimeOffset? timestampUtc = null)
+    {
+        ArgumentNullException.ThrowIfNull(clipIds);
+        var wanted = clipIds.Where(id => !string.IsNullOrWhiteSpace(id)).ToHashSet(StringComparer.Ordinal);
+        if (wanted.Count < 2)
+            throw new InvalidOperationException("Select at least 2 audio clips to combine.");
+
+        List<AudioClip> selected;
+        lock (_lock)
+        {
+            selected = _clips
+                .Where(c => wanted.Contains(c.Id) && File.Exists(Path.Combine(_directory, c.FileName)))
+                .OrderBy(c => c.TimestampUtc)
+                .ThenBy(c => c.Id, StringComparer.Ordinal)
+                .ToList();
+        }
+
+        if (selected.Count < 2)
+            throw new InvalidOperationException("At least 2 saved audio files must still exist on disk to combine.");
+
+        var ts = timestampUtc ?? DateTimeOffset.UtcNow;
+        string id = Guid.NewGuid().ToString("N")[..12];
+        string fileName = $"{ts:yyyyMMdd-HHmmss}-combined-{selected.Count}clips-{id}.wav";
+        Directory.CreateDirectory(_directory);
+        string fullPath = Path.Combine(_directory, fileName);
+        string tempPath = fullPath + ".tmp";
+
+        long totalPcmBytes = 0;
+        const long MaxPcmBytes = int.MaxValue - WavCodec.HeaderBytes;
+        int gapBytes = (AudioFormat.SampleRate * CombineGapMilliseconds / 1000) * sizeof(short);
+        byte[] gapSilence = new byte[gapBytes];
+        byte[] copyBuf = new byte[16 * 1024];
+
+        try
+        {
+            using (var outStream = File.Create(tempPath))
+            {
+                Span<byte> header = stackalloc byte[WavCodec.HeaderBytes];
+                header.Clear();
+                outStream.Write(header);
+
+                for (int idx = 0; idx < selected.Count; idx++)
+                {
+                    if (idx > 0)
+                    {
+                        if (totalPcmBytes + gapBytes > MaxPcmBytes)
+                            throw new InvalidOperationException("Combined recording would exceed the 2 GB WAV file limit.");
+                        outStream.Write(gapSilence, 0, gapSilence.Length);
+                        totalPcmBytes += gapBytes;
+                    }
+
+                    string srcPath = Path.Combine(_directory, selected[idx].FileName);
+                    using var inStream = File.OpenRead(srcPath);
+                    if (!WavCodec.TryReadPcm16DataChunk(inStream, out int sampleRate, out long dataOffset, out int dataBytes))
+                        throw new InvalidDataException($"Clip \"{selected[idx].FileName}\" is not a valid 16-bit mono WAV file.");
+
+                    inStream.Position = dataOffset;
+                    if (sampleRate == AudioFormat.SampleRate)
+                    {
+                        if (totalPcmBytes + dataBytes > MaxPcmBytes)
+                            throw new InvalidOperationException("Combined recording would exceed the 2 GB WAV file limit.");
+
+                        int remaining = dataBytes;
+                        while (remaining > 0)
+                        {
+                            int n = inStream.Read(copyBuf, 0, Math.Min(copyBuf.Length, remaining));
+                            if (n == 0) break;
+                            int even = n & ~1;
+                            if (even > 0)
+                            {
+                                outStream.Write(copyBuf, 0, even);
+                                totalPcmBytes += even;
+                            }
+                            remaining -= n;
+                        }
+                    }
+                    else
+                    {
+                        var resampler = new PcmResampler(sampleRate, AudioFormat.SampleRate);
+                        int sampleChunkSize = copyBuf.Length / 2;
+                        short[] inSamples = new short[sampleChunkSize];
+                        short[] outSamples = new short[resampler.MaxOutputSamples(sampleChunkSize)];
+                        byte[] outBytes = new byte[outSamples.Length * 2];
+
+                        int remaining = dataBytes;
+                        while (remaining >= 2)
+                        {
+                            int toRead = Math.Min(copyBuf.Length, remaining & ~1);
+                            int n = inStream.Read(copyBuf, 0, toRead);
+                            int count = n / 2;
+                            if (count == 0) break;
+
+                            for (int i = 0; i < count; i++)
+                                inSamples[i] = BinaryPrimitives.ReadInt16LittleEndian(copyBuf.AsSpan(i * 2, 2));
+
+                            int outCount = resampler.Process(inSamples.AsSpan(0, count), outSamples);
+                            int writeBytes = outCount * 2;
+                            if (totalPcmBytes + writeBytes > MaxPcmBytes)
+                                throw new InvalidOperationException("Combined recording would exceed the 2 GB WAV file limit.");
+
+                            for (int i = 0; i < outCount; i++)
+                                BinaryPrimitives.WriteInt16LittleEndian(outBytes.AsSpan(i * 2, 2), outSamples[i]);
+                            if (writeBytes > 0)
+                            {
+                                outStream.Write(outBytes, 0, writeBytes);
+                                totalPcmBytes += writeBytes;
+                            }
+                            remaining -= n;
+                        }
+                    }
+                }
+
+                outStream.Position = 0;
+                WavCodec.WriteHeader(header, (int)totalPcmBytes, AudioFormat.SampleRate);
+                outStream.Write(header);
+            }
+
+            File.Move(tempPath, fullPath, overwrite: true);
+        }
+        catch
+        {
+            TryDeleteFile(tempPath);
+            throw;
+        }
+
+        var distinctNodes = selected
+            .Select(c => c.Node)
+            .Where(n => !string.Equals(n, "Combined", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (distinctNodes.Count == 0)
+            distinctNodes = selected.Select(c => c.Node).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        string node = distinctNodes.Count == 1 ? distinctNodes[0] : "Combined";
+        string label;
+        string trimmedCustom = (customTitle ?? "").Trim();
+        if (trimmedCustom.Length > 0)
+        {
+            label = trimmedCustom.Length > 60 ? trimmedCustom[..60].TrimEnd() : trimmedCustom;
+        }
+        else if (distinctNodes.Count == 1)
+        {
+            label = $"Combined ({selected.Count} clips)";
+        }
+        else
+        {
+            label = $"Combined · {distinctNodes.Count} nodes ({selected.Count} clips)";
+        }
+
+        double duration = (double)totalPcmBytes / (AudioFormat.SampleRate * sizeof(short));
+        var combined = new AudioClip(
+            Id: id,
+            TimestampUtc: ts,
+            Node: node,
+            NodeLabel: label,
+            Direction: AudioClipDirection.Rx,
+            DurationSeconds: Math.Round(duration, 2),
+            FileName: fileName,
+            SizeBytes: WavCodec.HeaderBytes + totalPcmBytes,
+            IsUnheard: false,
+            IsCombined: true);
+
+        lock (_lock)
+        {
+            _clips.Insert(0, combined);
+            PruneLocked();
+            SaveIndexLocked();
+        }
+        Changed?.Invoke();
+        return combined;
     }
 
     public void MarkHeard(string clipId)
@@ -232,6 +431,31 @@ public sealed class AudioHistoryStore
         return true;
     }
 
+    public int DeleteMany(IEnumerable<string> clipIds)
+    {
+        ArgumentNullException.ThrowIfNull(clipIds);
+        var ids = clipIds.Where(id => !string.IsNullOrWhiteSpace(id)).ToHashSet(StringComparer.Ordinal);
+        if (ids.Count == 0) return 0;
+
+        List<AudioClip> removed = [];
+        lock (_lock)
+        {
+            for (int i = _clips.Count - 1; i >= 0; i--)
+            {
+                if (ids.Contains(_clips[i].Id))
+                {
+                    removed.Add(_clips[i]);
+                    _clips.RemoveAt(i);
+                }
+            }
+            if (removed.Count > 0) SaveIndexLocked();
+        }
+        if (removed.Count == 0) return 0;
+        foreach (var clip in removed) TryDeleteFile(Path.Combine(_directory, clip.FileName));
+        Changed?.Invoke();
+        return removed.Count;
+    }
+
     public void ClearAll()
     {
         List<AudioClip> old;
@@ -244,6 +468,13 @@ public sealed class AudioHistoryStore
         }
         foreach (var clip in old) TryDeleteFile(Path.Combine(_directory, clip.FileName));
         Changed?.Invoke();
+    }
+
+    private long TotalSizeBytesLocked()
+    {
+        long total = 0;
+        foreach (var c in _clips) total += Math.Max(0, c.SizeBytes);
+        return total;
     }
 
     private bool PruneLocked()

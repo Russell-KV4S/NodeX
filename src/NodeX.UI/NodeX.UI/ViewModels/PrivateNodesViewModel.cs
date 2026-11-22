@@ -41,11 +41,13 @@ public sealed partial class PrivateNodeRowViewModel : ObservableObject
 
     public string Title => !string.IsNullOrWhiteSpace(Entry.Name) ? Entry.Name!.Trim() : $"Node {Entry.Node}";
 
-    public string EndpointText => Entry.DisplayAddress;
+    public string NodeLine => !string.IsNullOrWhiteSpace(Entry.Name) ? $"Node {Entry.Node}" : "";
+
+    public bool HasNodeLine => NodeLine.Length > 0;
 
     public string MetaText => $"Port {Entry.Port} · IAX user radio";
 
-    public string ConnectAutomationName => $"Connect to private node {Title}, {EndpointText}";
+    public string ConnectAutomationName => $"Connect to private node {Title}";
     public string EditAutomationName => $"Edit private node {Title}";
     public string ShareAutomationName => $"Share private node {Title}";
     public string RemoveAutomationName => $"Remove private node {Title}";
@@ -387,7 +389,7 @@ public sealed partial class PrivateNodesViewModel : ViewModelBase
     {
         CancelPoke();
         ShareTitle = !string.IsNullOrWhiteSpace(entry.Name) ? entry.Name!.Trim() : $"Node {entry.Node}";
-        ShareEndpoint = entry.DisplayAddress;
+        ShareEndpoint = $"Node {entry.Node}";
         ShareUri = ManualNodeAddress.BuildShareUri(entry);
         CopyShareButtonText = "Copy nodex:// link";
         ErrorText = "";
@@ -504,12 +506,12 @@ public sealed partial class PrivateNodesViewModel : ViewModelBase
         {
             IsFromDeepLink = false;
             Mode = 0;
-            StatusText = $"Saved private node {entry.DisplayAddress}.";
+            StatusText = $"Saved private node {entry.Node}.";
         }
         else
         {
             Mode = 0;
-            StatusText = $"Saved {entry.DisplayAddress}.";
+            StatusText = $"Saved private node {entry.Node}.";
         }
     }
 
@@ -584,7 +586,7 @@ public sealed partial class PrivateNodesViewModel : ViewModelBase
         if (await _removeEntry(entry))
         {
             ReloadFromConfig();
-            StatusText = $"Removed {entry.DisplayAddress}.";
+            StatusText = $"Removed private node {entry.Node}.";
         }
     }
 

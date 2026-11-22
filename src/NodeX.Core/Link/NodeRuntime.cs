@@ -273,7 +273,14 @@ public sealed class NodeRuntime : IAsyncDisposable
             if (next == Background) return;
             Background = next;
         }
-        BackgroundChanged?.Invoke(next);
+        try
+        {
+            BackgroundChanged?.Invoke(next);
+        }
+        catch (Exception ex)
+        {
+            Log.Info("bg", $"background listener failed: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -839,15 +846,16 @@ public sealed class NodeRuntime : IAsyncDisposable
 
         Interlocked.Exchange(ref c.EarlyHangups, 0);
         Interlocked.Exchange(ref c.RemoteDrops, 0);
-        ApplyTransmitFlags();
-        UpdateActive();
-        ConnectionsChanged?.Invoke();
 
         // The user can hang this node up while we are still resolving (the row is already on screen).
         // That must stop the connect, not let it dial a node that is no longer in the list.
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, c.Abandoned.Token);
         try
         {
+            ApplyTransmitFlags();
+            UpdateActive();
+            ConnectionsChanged?.Invoke();
+
             var info = await DialAsync(c, linked.Token);
             if (info == null)
             {
