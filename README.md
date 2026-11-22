@@ -79,7 +79,7 @@ Respect node owners' linking policies. Don't test by keying a node you don't con
 
 You need an AllStarLink account and a registered node number and password (from the [ASL portal](https://www.allstarlink.org/)). Enter them on the first-run screen.
 
-**Downloads:** [GitHub Releases](https://github.com/Russell-KV4S/NodeX/releases) provide the full Android APK and self-contained Windows, Linux and macOS packages for x64 and ARM64. iOS is excluded. Releases are public. See each release's installation notes and [`docs/RELEASING.md`](docs/RELEASING.md).
+**Downloads** include the full Android APK for direct installation, the signed Android App Bundle for Play Console upload, and self-contained Windows, Linux and macOS packages for x64 and ARM64. See the installation notes on [GitHub Releases](https://github.com/Russell-KV4S/NodeX/releases) and the [release guide](docs/RELEASING.md).
 
 For Android Auto PTT, use `NodeX-android.apk`, then enable Talk from the car and choose a wheel button in Settings. The Play edition omits car PTT. Switching from Play may require uninstalling because the signing keys differ; export settings first and be prepared to re-enter your node password. Future same-key sideload updates preserve app data. The full edition has Settings → App updates.
 
