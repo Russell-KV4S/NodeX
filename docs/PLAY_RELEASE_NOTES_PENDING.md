@@ -14,7 +14,17 @@ Rules:
 
 ## Pending
 
-(Nothing pending: 1.25 sent to Play on 2026-11-20.)
+1.26 (code 28), GitHub only so far (2026-11-21). Play-wording block, re-count with `wc -m` before pasting:
+
+```
+<en-US>
+Fewer false "receiving" lights on busy hubs.
+Safety: a failed dial never becomes your transmit node; car push-to-talk state ends when Android Auto unplugs.
+Reconnect fixes: one call per node, rejected nodes aren't retried, auto-reconnect off stops retries.
+Works on IPv6-only mobile data; background service survives Android restarts.
+Settings Save keeps your registration choice; privacy notice updated.
+</en-US>
+```
 
 ## Play releases
 

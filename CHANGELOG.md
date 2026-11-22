@@ -1,6 +1,6 @@
 # Change log
 
-## Unreleased (after 1.25)
+## 2026-11-21: 1.26 / code 28: review fixes, hub-noise false-RX fix
 
 - **False RX on busy hubs:** hubs that send UNKEY but never KEY were lit by inaudible background noise. A voice frame now needs RMS above -40 dBFS to count as sound; the `[rx]` voice-only log line is always written and includes the level. Not verified on a phone.
 - **Audio: a very short blip (shorter than 60 ms) no longer leaves the next transmission from that node silent** for up to about 30 seconds; short blips themselves are now played. Not heard on a real link.
