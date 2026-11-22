@@ -1,4 +1,12 @@
-NodeX 1.29 fixes Android playback and startup auto-connect problems reported in 1.28 and lets you combine replay clips into one shareable WAV.
+NodeX 1.30 fixes IAX2 registration on cellular and carrier-NAT networks so registration and calls use the same public IP instead of falling back to HTTPS on a different address.
+
+- **IAX2 registration fix:** Fixed the Step 1 handshake with `register.allstarlink.org` (removed a premature `ACK` after `REGAUTH` and fixed sequence numbering), so IAX2 registration succeeds directly from the shared UDP call socket instead of timing out and falling back to HTTPS.
+- **Clearer diagnostics:** Reports numeric IAX2 rejection codes (such as `code 29`) and which step/server timed out.
+- **Audio Replay:** Hardened saving the local replay index on Windows against brief file-lock interruptions.
+
+Live IAX2 registration (`REGACK` + consistent STUN match) is verified on PC; physical phone retesting on AT&T cellular remains pending.
+
+**From 1.29**
 
 - **Android playback:** NodeX now rebuilds stalled audio tracks and releases idle tracks so playback can recover without toggling Phone/Speaker.
 - **Startup auto-connect on Android:** Fixed a background-thread error that could stop startup links from connecting.

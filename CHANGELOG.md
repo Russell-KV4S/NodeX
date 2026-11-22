@@ -1,5 +1,14 @@
 # Change log
 
+## 2026-11-22: 1.30 / code 33
+
+- **Fix IAX2 registration Step 1 against `register.allstarlink.org` (from v1.29 AT&T phone log):** Tom's v1.29 log showed AT&T CGNAT giving his UDP call socket one consistent public IP across both STUN servers (`74.254.84.65`), while IAX2 registration got `REGAUTH` on Step 0, timed out on Step 1 (`4 request(s)`), and fell back to HTTPS (`74.254.78.54`), causing `RegistryMismatch` and immediate remote hangups. Live probes against all three `register.allstarlink.org` IPs revealed why:
+  - `Iax2Registrar` sent an explicit `ACK` after `REGAUTH` before sending the authenticated second `REGREQ`, which caused `register.allstarlink.org` to tear down the pending transaction and answer Step 1 with a malformed `F=0` frame that was silently discarded; per RFC 5456 §6.1 / `chan_iax2`, the second `REGREQ` implicitly ACKs `REGAUTH` via `ISeqno`.
+  - `register.allstarlink.org` sends `REGAUTH` with `ISeqno = 0`, so copying `f.ISeqno` left our Step 1 `REGREQ` at `OSeqno = 0` instead of `1` (`oseq` now advances cleanly on `REGAUTH`, `REGACK`, and `REGREJ`, with `CallToken` omitted on Step 1 unless issued and retransmitted `REGAUTH` frames ignored).
+  - `Iax2Registrar` now parses numeric `CauseCode` IEs (reporting e.g. `"Registration rejected (IAX2): code 29"` when no text `Cause` IE is present) and includes the last received frame and pinned server IP when a multi-step exchange times out.
+  - **Verification:** `dotnet build NodeX.sln` succeeds with 0 warnings and 0 errors; **837 Core tests** and **45 headless UI tests** pass; live `LiveCheck register --iax` with dummy node `999999` verified `REGREJ (code 29)`; and live `LiveCheck register --iax` with node `523802` verified full `REGACK` acceptance (`Registered (IAX2)`, `refresh=60 s`, `verdict=Consistent` matching both STUN servers). Tom's AT&T phone re-test remains pending.
+- **Audio replay index persistence hardening (`AudioHistoryStore`):** retry `index.json` atomic replacement briefly on transient `IOException` / `UnauthorizedAccessException` file locks on Windows.
+
 ## 2026-11-21: 1.29 / code 32
 
 - **Android "connected with no audio until toggling Phone/Speaker" fix (from v1.28 phone log):** fixed silent playback on multi-node connects (where voice frames decoded cleanly with zero logged errors until toggling Phone/Speaker rebuilt the tracks):

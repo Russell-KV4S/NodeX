@@ -199,6 +199,7 @@ public sealed class Iax2Registrar : INodeRegistration, IDisposable
 
             // Until the registry answers, each re-send goes to the next address; after that, to the one that answered.
             IPEndPoint? pinned = null;
+            string? lastReply = null;
             int sends = 0;
 
             byte[]? token = null;
@@ -216,11 +217,14 @@ public sealed class Iax2Registrar : INodeRegistration, IDisposable
                     var target = pinned ?? servers[sends % servers.Length];
                     sends++;
                     await SendAsync(target, request, ct);
-                    reply = await ReceiveAsync(inbox, local, ct);
+                    reply = await ReceiveAsync(inbox, local, md5 != null, iseq, ct);
                 }
                 if (reply == null)
-                    return NoReply($"No reply from the registry over IAX2 (UDP {string.Join(", ", servers.Select(s => s.Address))}, " +
-                                   $"{sends} request(s) from local port {_endpoint.LocalPort})");
+                    return NoReply(pinned != null && lastReply != null
+                        ? $"No reply from the registry over IAX2 after {lastReply} from {pinned.Address} " +
+                          $"({sends} request(s) from local port {_endpoint.LocalPort})"
+                        : $"No reply from the registry over IAX2 (UDP {string.Join(", ", servers.Select(s => s.Address))}, " +
+                          $"{sends} request(s) from local port {_endpoint.LocalPort})");
                 pinned = reply.Value.From;
                 var server = pinned;
                 var f = reply.Value.Frame;
@@ -232,14 +236,18 @@ public sealed class Iax2Registrar : INodeRegistration, IDisposable
                         foreach (var ie in Iax2Protocol.ParseInformationElements(f.Payload))
                             if (ie.Id == Iax2Protocol.InformationElementId.CallToken) token = ie.Data;
                         remote = 0; oseq = 0; iseq = 0;   // stateless challenge; start over
+                        lastReply = "CALLTOKEN";
                         break;
 
                     case Iax2Protocol.IaxControlSubclass.RegAuth:
                     {
+                        // Do NOT send a separate ACK here: per RFC 5456 §6.1 / chan_iax2, the authenticated second
+                        // REGREQ implicitly acknowledges REGAUTH via its ISeqno; sending an explicit ACK causes
+                        // register.allstarlink.org to tear down the transaction and reply to the second REGREQ with F=0.
                         remote = f.SourceCallNumber;
+                        oseq = (byte)(oseq + 1);
                         iseq = (byte)(f.OSeqno + 1);
-                        oseq = f.ISeqno;                  // our next sequence number
-                        await SendAckAsync(server, local, remote, f, oseq, iseq, ct);
+                        lastReply = "REGAUTH";
 
                         string challenge = "";
                         int? authMethods = null;
@@ -254,13 +262,13 @@ public sealed class Iax2Registrar : INodeRegistration, IDisposable
                         // unsalted hash of the password, sendable by anyone who spoofs one REGAUTH (2026-11-21 review).
                         if (challenge.Length == 0 || authMethods is { } m && (m & 0x0002) == 0)
                             return NoReply("The registry's IAX2 challenge was unusable (no MD5 challenge); nothing was sent");
-                        md5 =Encoding.ASCII.GetBytes(Convert.ToHexString(
-                            MD5.HashData(Encoding.UTF8.GetBytes(challenge + _password))).ToLowerInvariant());
+                        md5 = Encoding.ASCII.GetBytes(Convert.ToHexStringLower(
+                            MD5.HashData(Encoding.UTF8.GetBytes(challenge + _password))));
                         break;
                     }
 
                     case Iax2Protocol.IaxControlSubclass.RegAck:
-                        await SendAckAsync(server, local, f.SourceCallNumber, f, f.ISeqno, (byte)(f.OSeqno + 1), ct);
+                        await SendAckAsync(server, local, f.SourceCallNumber, f, (byte)(oseq + 1), (byte)(f.OSeqno + 1), ct);
                         ApplyAck(f.Payload);
                         Volatile.Write(ref _noReplyFailures, 0);
                         LastFailureWasRejection = false;
@@ -271,14 +279,21 @@ public sealed class Iax2Registrar : INodeRegistration, IDisposable
 
                     case Iax2Protocol.IaxControlSubclass.RegRej:
                         string why = "";
+                        byte? causeCode = null;
                         foreach (var ie in Iax2Protocol.ParseInformationElements(f.Payload))
+                        {
                             if (ie.Id == Iax2Protocol.InformationElementId.Cause)
                                 why = Encoding.ASCII.GetString(ie.Data).TrimEnd('\0');
-                        await SendAckAsync(server, local, f.SourceCallNumber, f, f.ISeqno, (byte)(f.OSeqno + 1), ct);
+                            else if (ie.Id == Iax2Protocol.InformationElementId.CauseCode && ie.Data.Length >= 1)
+                                causeCode = ie.Data[0];
+                        }
+                        await SendAckAsync(server, local, f.SourceCallNumber, f, (byte)(oseq + 1), (byte)(f.OSeqno + 1), ct);
                         Volatile.Write(ref _noReplyFailures, 0);
                         LastFailureWasRejection = true;
-                        return Report(false, string.IsNullOrWhiteSpace(why)
-                            ? "Registration rejected (IAX2)" : $"Registration rejected (IAX2): {why}");
+                        string detail = !string.IsNullOrWhiteSpace(why) ? why
+                            : causeCode is { } c ? $"code {c}" : "";
+                        return Report(false, string.IsNullOrEmpty(detail)
+                            ? "Registration rejected (IAX2)" : $"Registration rejected (IAX2): {detail}");
                 }
             }
             return NoReply("IAX2 registration did not complete");
@@ -334,7 +349,8 @@ public sealed class Iax2Registrar : INodeRegistration, IDisposable
             Iax2InformationElement.UInt16(Iax2Protocol.InformationElementId.Refresh, (ushort)RefreshSeconds)
         };
         if (md5 != null) ies.Add(Iax2InformationElement.Raw(Iax2Protocol.InformationElementId.Md5Result, md5));
-        ies.Add(Iax2InformationElement.Raw(Iax2Protocol.InformationElementId.CallToken, token ?? []));
+        if (md5 == null || token != null)
+            ies.Add(Iax2InformationElement.Raw(Iax2Protocol.InformationElementId.CallToken, token ?? []));
 
         byte[] buf = new byte[512];
         int ieLen = Iax2Protocol.WriteInformationElements(buf.AsSpan(Iax2Protocol.FullHeaderSize), ies.ToArray());
@@ -356,7 +372,12 @@ public sealed class Iax2Registrar : INodeRegistration, IDisposable
         await SendAsync(server, ack, ct);
     }
 
-    private async Task<(IPEndPoint From, Iax2Frame Frame)?> ReceiveAsync(Channel<(IPEndPoint From, byte[] Packet)> inbox, ushort local, CancellationToken ct)
+    private async Task<(IPEndPoint From, Iax2Frame Frame)?> ReceiveAsync(
+        Channel<(IPEndPoint From, byte[] Packet)> inbox,
+        ushort local,
+        bool ignoreRegAuth,
+        byte minRegAuthOSeq,
+        CancellationToken ct)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(ReplyTimeout);
@@ -369,6 +390,10 @@ public sealed class Iax2Registrar : INodeRegistration, IDisposable
                 if (!frame.IsFullFrame || frame.DestCallNumber != local) continue;
                 if (frame.FrameType == Iax2Protocol.FrameType.IaxControl
                     && frame.Subclass == (byte)Iax2Protocol.IaxControlSubclass.Ack) continue;
+                if (ignoreRegAuth
+                    && frame.FrameType == Iax2Protocol.FrameType.IaxControl
+                    && frame.Subclass == (byte)Iax2Protocol.IaxControlSubclass.RegAuth
+                    && frame.OSeqno < minRegAuthOSeq) continue;
                 return (from, frame);
             }
         }

@@ -159,7 +159,7 @@ static async Task<int> RegProbeAsync(string node)
             string ies = f.IsFullFrame && f.Payload.Length > 0
                 ? string.Join(" ", Iax2Protocol.ParseInformationElements(f.Payload).Select(i => $"IE{(int)i.Id}={(i.Data.All(b => b >= 32 && b < 127) ? Encoding.ASCII.GetString(i.Data) : Convert.ToHexString(i.Data))}"))
                 : "";
-            Console.WriteLine($"  <- type={f.FrameType} subclass=0x{f.Subclass:X2} src={f.SourceCallNumber} dst={f.DestCallNumber} {ies}");
+            Console.WriteLine($"  <- type={f.FrameType} subclass=0x{f.Subclass:X2} src={f.SourceCallNumber} dst={f.DestCallNumber} o={f.OSeqno} i={f.ISeqno} {ies}");
             if (!echoed && f.FrameType == Iax2Protocol.FrameType.IaxControl && f.Subclass == (byte)Iax2Protocol.IaxControlSubclass.CallToken)
             {
                 echoed = true;

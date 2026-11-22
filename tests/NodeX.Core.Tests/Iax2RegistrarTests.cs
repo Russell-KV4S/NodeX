@@ -20,9 +20,18 @@ public class Iax2RegistrarTests
         {
             while (true)
             {
+                var (f, from) = await ReceiveRawAsync();
+                if (!(f.FrameType == FrameType.IaxControl && f.Subclass == (byte)IaxControlSubclass.Ack))
+                    return (f, from);
+            }
+        }
+
+        public async Task<(Iax2Frame frame, IPEndPoint from)> ReceiveRawAsync()
+        {
+            while (true)
+            {
                 var r = await _udp.ReceiveAsync().WaitAsync(TimeSpan.FromSeconds(3));
-                if (TryParseFrame(r.Buffer, out var f) && f.IsFullFrame
-                    && !(f.FrameType == FrameType.IaxControl && f.Subclass == (byte)IaxControlSubclass.Ack))
+                if (TryParseFrame(r.Buffer, out var f) && f.IsFullFrame)
                     return (f, r.RemoteEndPoint);
             }
         }
@@ -142,5 +151,88 @@ public class Iax2RegistrarTests
 
         Assert.False(await reg.RegisterOnceAsync());
         Assert.Contains("No reply", reg.LastStatusMessage);
+    }
+
+    [Fact]
+    public async Task DoesNotAckRegAuth_AndAdvancesOSeqWhenServerSendsZeroISeq()
+    {
+        using var registry = new FakeRegistry();
+        using var reg = new Iax2Registrar("523802", "s3cret", registry.EndPoint) { ReplyTimeout = TimeSpan.FromSeconds(2) };
+        var task = reg.RegisterOnceAsync();
+
+        var (req1, from) = await registry.ReceiveRawAsync();
+        Assert.Equal((byte)IaxControlSubclass.RegReq, req1.Subclass);
+
+        await registry.SendAsync(from, req1.SourceCallNumber, (byte)IaxControlSubclass.RegAuth, 0, 0,
+            Iax2InformationElement.UInt16(InformationElementId.AuthMethods, 2),
+            Iax2InformationElement.String(InformationElementId.Challenge, "270150193"));
+
+        var (req2, _) = await registry.ReceiveRawAsync();
+        Assert.Equal((byte)IaxControlSubclass.RegReq, req2.Subclass);
+        Assert.Equal(1, req2.OSeqno);
+        Assert.Equal(1, req2.ISeqno);
+        Assert.Equal(77, req2.DestCallNumber);
+        string expectedMd5 = Convert.ToHexStringLower(MD5.HashData(Encoding.UTF8.GetBytes("270150193s3cret")));
+        Assert.Equal(expectedMd5, Str(req2, InformationElementId.Md5Result));
+        Assert.DoesNotContain(ParseInformationElements(req2.Payload), i => i.Id == InformationElementId.CallToken);
+
+        byte[] addr = [0, 2, 0x11, 0xD9, 74, 254, 84, 65, 0, 0, 0, 0, 0, 0, 0, 0];
+        await registry.SendAsync(from, req2.SourceCallNumber, (byte)IaxControlSubclass.RegAck, 1, 1,
+            Iax2InformationElement.Raw(InformationElementId.ApparentAddr, addr),
+            Iax2InformationElement.UInt16(InformationElementId.Refresh, 60));
+
+        var (finalAck, _) = await registry.ReceiveRawAsync();
+        Assert.Equal((byte)IaxControlSubclass.Ack, finalAck.Subclass);
+        Assert.Equal(2, finalAck.OSeqno);
+        Assert.Equal(2, finalAck.ISeqno);
+
+        Assert.True(await task);
+        Assert.Equal(IPAddress.Parse("74.254.84.65"), reg.PerceivedAddress);
+    }
+
+    [Fact]
+    public async Task RejectedWithCauseCodeOnly_ReportsCauseCode()
+    {
+        using var registry = new FakeRegistry();
+        using var reg = new Iax2Registrar("999999", "dummy", registry.EndPoint) { ReplyTimeout = TimeSpan.FromSeconds(2) };
+        var task = reg.RegisterOnceAsync();
+
+        var (req1, from) = await registry.ReceiveAsync();
+        await registry.SendAsync(from, req1.SourceCallNumber, (byte)IaxControlSubclass.RegAuth, 0, 0,
+            Iax2InformationElement.UInt16(InformationElementId.AuthMethods, 2),
+            Iax2InformationElement.String(InformationElementId.Challenge, "123456789"));
+
+        var (req2, _) = await registry.ReceiveAsync();
+        await registry.SendAsync(from, req2.SourceCallNumber, (byte)IaxControlSubclass.RegRej, 1, 1,
+            Iax2InformationElement.Byte(InformationElementId.CauseCode, 29));
+
+        Assert.False(await task);
+        Assert.True(reg.LastFailureWasRejection);
+        Assert.Equal("Registration rejected (IAX2): code 29", reg.LastStatusMessage);
+    }
+
+    [Fact]
+    public async Task IgnoresRetransmittedRegAuth_WhileWaitingForRegAck()
+    {
+        using var registry = new FakeRegistry();
+        using var reg = new Iax2Registrar("523802", "s3cret", registry.EndPoint) { ReplyTimeout = TimeSpan.FromSeconds(2) };
+        var task = reg.RegisterOnceAsync();
+
+        var (req1, from) = await registry.ReceiveAsync();
+        await registry.SendAsync(from, req1.SourceCallNumber, (byte)IaxControlSubclass.RegAuth, 0, 0,
+            Iax2InformationElement.UInt16(InformationElementId.AuthMethods, 2),
+            Iax2InformationElement.String(InformationElementId.Challenge, "555555555"));
+
+        var (req2, _) = await registry.ReceiveAsync();
+        await registry.SendAsync(from, req2.SourceCallNumber, (byte)IaxControlSubclass.RegAuth, 0, 0,
+            Iax2InformationElement.UInt16(InformationElementId.AuthMethods, 2),
+            Iax2InformationElement.String(InformationElementId.Challenge, "555555555"));
+
+        byte[] addr = [0, 2, 0x11, 0xD9, 203, 0, 113, 9, 0, 0, 0, 0, 0, 0, 0, 0];
+        await registry.SendAsync(from, req2.SourceCallNumber, (byte)IaxControlSubclass.RegAck, 1, 1,
+            Iax2InformationElement.Raw(InformationElementId.ApparentAddr, addr));
+
+        Assert.True(await task);
+        Assert.Equal(IPAddress.Parse("203.0.113.9"), reg.PerceivedAddress);
     }
 }

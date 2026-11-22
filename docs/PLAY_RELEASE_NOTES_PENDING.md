@@ -14,15 +14,15 @@ Rules:
 
 ## Pending
 
-1.26 through 1.29 (code 32), pending Google Play upload (2026-11-21).
+1.26 through 1.30 (code 33), pending Google Play upload (2026-11-22).
 
 ```
 <en-US>
-Replay local audio and combine selected clips into one shareable WAV. Turn clip saving off in Settings.
-Auto-connect to up to eight public or private nodes. Fixed Android startup auto-connect and audio stalls.
-Private node hosts stay out of the main screen and Android Auto browse.
-Follow the system theme or try four new themes. MIC and SPK meters sit in the PTT frame.
-Fewer false receiving lights and fixes for reconnects, IPv6 mobile data, and the background service.
+Fixed IAX2 registration on cellular carrier NAT so calls and registration share one public IP.
+Replay local audio and combine clips into one shareable WAV. Turn clip saving off in Settings.
+Auto-connect to up to eight nodes. Fixed Android startup auto-connect and audio stalls.
+Follow the system theme or try four new themes. Private node hosts stay out of the main screen and Android Auto browse.
+Fewer false receiving lights and fixes for reconnects and IPv6 mobile data.
 </en-US>
 ```
 

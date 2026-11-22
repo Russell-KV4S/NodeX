@@ -495,9 +495,22 @@ public sealed class AudioHistoryStore
         try
         {
             Directory.CreateDirectory(_directory);
+            string json = JsonSerializer.Serialize(_clips, JsonOptions);
             string tmp = _indexPath + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(_clips, JsonOptions));
-            File.Move(tmp, _indexPath, overwrite: true);
+            for (int attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    File.WriteAllText(tmp, json);
+                    File.Move(tmp, _indexPath, overwrite: true);
+                    break;
+                }
+                catch (Exception ex) when (attempt < 5 && (ex is IOException or UnauthorizedAccessException))
+                {
+                    // Antivirus or file indexers on Windows can transiently lock index.json right after a save.
+                    Thread.Sleep(15 * (attempt + 1));
+                }
+            }
         }
         catch (Exception ex)
         {

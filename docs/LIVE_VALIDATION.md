@@ -36,4 +36,6 @@ Console harness driving the real Core engine with a decoded packet trace (`Iax2S
 
 These are owner observations, not instrumented traces: Android screen-off background audio works for an hour or more; Wi-Fi/cellular handoff works with a registration delay; transmitted voice clean-up sounds good. The owner subsequently reports **the Desktop Head Unit is working great**. Individual car voice-search, cold-start, audio-focus and physical-car scenarios have not been itemized in that report.
 
+**2026-11-22 (`LiveCheck register --iax`, node 523802):** VERIFIED full live IAX2 `REGREQ → REGAUTH → REGREQ(MD5) → REGACK` against `register.allstarlink.org:4569` (`registered=True`, status `'Registered (IAX2) as <dev-PC-public-IP>:<port>'`, `APPARENT_ADDR` matching `<dev-PC-public-IP>:<port>`, `refresh=60 s`), followed by STUN network check from the same UDP socket returning `verdict=Consistent` (both Google and Cloudflare STUN servers and the IAX2 registry agreed on `<dev-PC-public-IP>`).
+
 The current backlog is in `PROJECT_SPEC.md` §13. Older observations above are retained with their original dates; features such as desktop device pickers and ASL text parsing have since been implemented.
