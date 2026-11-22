@@ -46,10 +46,12 @@ internal sealed class Iax2RetransmitQueue
     /// <paramref name="exceeded"/> becomes true when a frame is due again after <paramref name="maxRetries"/>
     /// retransmissions, meaning the call leg is unusable and must be torn down.
     /// </summary>
-    public List<byte[]> CollectDue(long nowMs, int maxRetries, out bool exceeded)
+    public IReadOnlyList<byte[]> CollectDue(long nowMs, int maxRetries, out bool exceeded)
     {
         exceeded = false;
-        var due = new List<byte[]>();
+        // Called every 25 ms per call and almost always finds nothing: allocate only when a frame is due
+        // (battery review 2026-11-21: 32 bytes per empty check, about 4.6 MB/hour per call).
+        List<byte[]>? due = null;
         lock (_lock)
         {
             foreach (var e in _entries)
@@ -65,10 +67,10 @@ internal sealed class Iax2RetransmitQueue
                 e.Retries++;
                 e.TimeoutMs = Math.Min(e.TimeoutMs * 2, MaxTimeoutMs);
                 e.DueMs = nowMs + e.TimeoutMs;
-                due.Add(WithRetransmitBit(e.Packet));
+                (due ??= []).Add(WithRetransmitBit(e.Packet));
             }
         }
-        return due;
+        return due ?? (IReadOnlyList<byte[]>)Array.Empty<byte[]>();
     }
 
     /// <summary>

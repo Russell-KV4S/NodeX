@@ -365,7 +365,9 @@ public sealed class NodeAudioEngine : IAsyncDisposable
         if (hasAudio) SetRemoteAudioActive(true);
         else if (JitterBuffer.IsPriming) SetRemoteAudioActive(false);
 
-        OutputLevelChanged?.Invoke(_outputMeter.Process(frame));
+        // A Silence result is all zeros already (JitterBuffer clears it): feed the known level instead of scanning 160
+        // samples 50 times a second on every idle link. Same smoothing, same callbacks (battery review 2026-11-21).
+        OutputLevelChanged?.Invoke(hasAudio ? _outputMeter.Process(frame) : _outputMeter.Update(AudioLevels.Silent));
 
         if (Muted)
         {

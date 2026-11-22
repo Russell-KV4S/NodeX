@@ -318,7 +318,17 @@ public sealed class NodeForegroundService : Service
         // "Hear nodes over the car radio": the option is read here (settings saves re-run Apply); the ducker only acts
         // while it applies (in a car, while the car plays something else).
         CarSession.RadioMixEnabled = AppServices.Runtime.Config.Settings.CarRadioMix;
-        _ducker ??= new AndroidRadioDucker(this);
+        // Battery (2026-11-21 review): the ducker's 100 ms timer and per-frame analysis only run while ducking could
+        // apply at all (linked, option on, in a car). Apply re-runs on car connect/disconnect and settings saves.
+        if (state.IsLinked && CarSession.RadioMixEnabled && CarSession.Active)
+        {
+            _ducker ??= new AndroidRadioDucker(this);
+        }
+        else if (_ducker != null)
+        {
+            _ducker.Dispose();   // releases any focus it still holds
+            _ducker = null;
+        }
 
         IsRunning = true;
         return true;
