@@ -336,7 +336,10 @@ public class AppearanceTests
             Assert.True(gainsOrigin.Y + gainsGrid.Bounds.Height <= pttOrigin.Y + 1);
 
             if (width == 420 && height == 860)
+            {
                 Assert.True(pttButton.Bounds.Height <= 72, $"Expected shortened PTT button <= 72 px, got {pttButton.Bounds.Height:F1}");
+                Assert.True(gainsGrid.Bounds.Height <= 68, $"Expected compact RX/TX GainsGrid <= 68 px, got {gainsGrid.Bounds.Height:F1}");
+            }
 
             Assert.True(gainsOrigin.X >= 0 && gainsOrigin.X + gainsGrid.Bounds.Width <= width + 1);
             Assert.True(gainsOrigin.Y >= 0 && gainsOrigin.Y + gainsGrid.Bounds.Height <= height + 1);

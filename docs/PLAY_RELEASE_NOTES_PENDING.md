@@ -14,7 +14,7 @@ Rules:
 
 ## Pending
 
-1.26 through 1.32 (code 35), pending Google Play upload (2026-11-22).
+1.26 through 1.33 (code 36), pending Google Play upload (2026-11-22).
 
 ```
 <en-US>

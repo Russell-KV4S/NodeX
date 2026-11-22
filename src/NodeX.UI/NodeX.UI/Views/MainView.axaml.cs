@@ -585,7 +585,7 @@ public partial class MainView : UserControl
 
             GainsGrid.ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto");
             GainsGrid.RowDefinitions = RowDefinitions.Parse("Auto,Auto");
-            GainsGrid.RowSpacing = narrow ? 0 : 4;
+            GainsGrid.RowSpacing = narrow ? 4 : 6;
             Place(RxGainLabel, 0, 0, 1);
             Place(RxGainSlider, 0, 1, 1);
             Place(RxGainValue, 0, 2, 1);

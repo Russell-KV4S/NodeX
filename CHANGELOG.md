@@ -1,5 +1,9 @@
 # Change log
 
+## 2026-11-22: 1.33 / code 36
+
+- **Tighter RX/TX gain slider spacing inside `PttCard`:** overrode Avalonia FluentTheme's default slider pre/post margins (`SliderPreContentMargin` / `SliderPostContentMargin` = `0`, `SliderHorizontalHeight` = `26`) locally on `GainsGrid` and lowered `RxAutoLevelButton` `MinHeight` to `24` (with `20×20` thumbs preserved) so the docked PTT panel is noticeably shorter vertically (`GainsGrid` `<= 68 px` on portrait phone).
+
 ## 2026-11-22: 1.32 / code 35
 
 - **Compact PTT/Speaker + RX & TX gain sliders inside `PttCard`:**

@@ -637,8 +637,8 @@ public class NodeAudioEngineTests
 
         var decodedFrames = new List<short[]>();
         var meterPeaks = new List<double>();
-        engine.RxFrameDecoded += mem => decodedFrames.Add(mem.ToArray());
-        engine.OutputLevelChanged += l => { if (l.Peak > 0) meterPeaks.Add(l.Peak); };
+        engine.RxFrameDecoded += mem => { lock (decodedFrames) decodedFrames.Add(mem.ToArray()); };
+        engine.OutputLevelChanged += l => { if (l.Peak > 0) lock (meterPeaks) meterPeaks.Add(l.Peak); };
         engine.Start();
 
         short quietSample = G711Ulaw.DecodeSample(G711Ulaw.EncodeSample(1000));
@@ -651,8 +651,10 @@ public class NodeAudioEngineTests
         lock (dev.Played) firstPlayed = dev.Played[^1];
 
         // RxFrameDecoded stays at unity (~1000) for WAV recording while playback gets 2x (~2000).
-        Assert.NotEmpty(decodedFrames);
-        Assert.All(decodedFrames, f => Assert.InRange(f[0], (short)(quietSample - 1), (short)(quietSample + 1)));
+        short[][] decodedSnapshot;
+        lock (decodedFrames) decodedSnapshot = decodedFrames.ToArray();
+        Assert.NotEmpty(decodedSnapshot);
+        Assert.All(decodedSnapshot, f => Assert.InRange(f[0], (short)(quietSample - 1), (short)(quietSample + 1)));
         Assert.InRange(firstPlayed[^1], (short)(quietSample * 2 - 50), (short)(quietSample * 2 + 50));
 
         // Live mid-call boost update to 4.0x takes effect immediately on subsequent frames.
@@ -671,8 +673,10 @@ public class NodeAudioEngineTests
         lock (dev.Played) laterPlayed = dev.Played[^1];
         Assert.True(laterPlayed[^1] > firstPlayed[^1] * 1.5,
             $"expected live RX boost above {firstPlayed[^1] * 1.5:F0}, got {laterPlayed[^1]}");
-        Assert.NotEmpty(meterPeaks);
-        Assert.True(meterPeaks[^1] > (double)quietSample / 32768.0 * 2.0);
+        double[] meterSnapshot;
+        lock (meterPeaks) meterSnapshot = meterPeaks.ToArray();
+        Assert.NotEmpty(meterSnapshot);
+        Assert.True(meterSnapshot[^1] > (double)quietSample / 32768.0 * 2.0);
     }
 
     [Fact]

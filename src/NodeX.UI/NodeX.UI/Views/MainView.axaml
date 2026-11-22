@@ -194,7 +194,7 @@
             <Setter Property="MinHeight" Value="0" />
         </Style>
         <Style Selector="UserControl.narrow Button#RxAutoLevelButton">
-            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="MinHeight" Value="24" />
         </Style>
 
         <!-- Phone bottom navigation: the selected tab is bold with a cyan bar on top, not colour alone -->
@@ -428,7 +428,13 @@
                             </Grid>
 
                             <!-- LIVE RX / TX GAIN CONTROLS: directly between MIC/SPK indicators and PTT/Speaker -->
-                            <Grid x:Name="GainsGrid" ColumnDefinitions="Auto,*,Auto,Auto" RowDefinitions="Auto,Auto" RowSpacing="2">
+                            <Grid x:Name="GainsGrid" ColumnDefinitions="Auto,*,Auto,Auto" RowDefinitions="Auto,Auto" RowSpacing="4">
+                                <Grid.Resources>
+                                    <!-- FluentTheme adds 15 px above & below each Slider; trim it here so RX/TX sit compactly together while keeping the 20x20 thumb. -->
+                                    <GridLength x:Key="SliderPreContentMargin">0</GridLength>
+                                    <GridLength x:Key="SliderPostContentMargin">0</GridLength>
+                                    <x:Double x:Key="SliderHorizontalHeight">26</x:Double>
+                                </Grid.Resources>
                                 <TextBlock x:Name="RxGainLabel" Grid.Row="0" Grid.Column="0" Text="RX" FontWeight="Bold" FontSize="{DynamicResource FontSize11}"
                                            Foreground="{DynamicResource RxGreenBrush}" VerticalAlignment="Center" MinWidth="32" />
                                 <Slider x:Name="RxGainSlider" Grid.Row="0" Grid.Column="1"
@@ -444,7 +450,7 @@
                                         Command="{Binding ToggleRxAutoLevelCommand}"
                                         AutomationProperties.Name="Auto-level incoming voices"
                                         ToolTip.Tip="Automatically boost quiet stations and tame loud ones"
-                                        Content="Auto" Margin="6,0,0,0" Padding="8,2" MinWidth="44" MinHeight="28"
+                                        Content="Auto" Margin="6,0,0,0" Padding="8,2" MinWidth="44" MinHeight="24"
                                         FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold" VerticalAlignment="Center" />
 
                                 <TextBlock x:Name="TxGainLabel" Grid.Row="1" Grid.Column="0" Text="TX" FontWeight="Bold" FontSize="{DynamicResource FontSize11}"

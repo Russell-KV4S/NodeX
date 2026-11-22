@@ -1,9 +1,13 @@
-NodeX 1.32 makes the bottom `PUSH TO TALK` and `Speaker` panel more compact and places live **RX** and **TX** gain sliders directly between the `MIC`/`SPK` indicators and `PTT`/`Speaker`.
+NodeX 1.33 shrinks the vertical gap around and between the **RX** and **TX** gain sliders inside the pinned PTT panel so more linked node cards remain visible while keeping full-size slider thumbs.
 
-- **Live RX & TX gain inside the PTT panel:** Adjusted **RX** (`0.5×–4.0×` + **Auto** toggle) and **TX** (`0.5×–4.0×` microphone gain) sliders now sit together directly inside the pinned PTT panel between `MIC`/`SPK` and `PTT`/`Speaker`, saving vertical scroll room for linked node cards (and collapsing onto one row in landscape).
-- **Live TX mic gain updates:** Moving the **TX** slider applies immediately during active calls via `NodeAudioEngine.MicGain` / `NodeRuntime.SetLiveMicGain` without restarting capture and saves automatically alongside **RX** gain and **Auto**.
+- **Tighter PTT panel height:** Removed excess built-in vertical slider margins (`SliderPreContentMargin` / `SliderPostContentMargin`) on the **RX** and **TX** controls and made the **Auto** toggle slimmer without shrinking the `20×20` touch thumb.
 
 Automated builds, 867 Core tests, and 49 headless UI tests (with Skia layout checks) pass; physical Android phone verification remains pending.
+
+**From 1.32**
+
+- **Live RX & TX gain inside the PTT panel:** Shortened `PUSH TO TALK` / `Speaker` and moved the **RX** (`0.5×–4.0×` + **Auto** toggle) and **TX** (`0.5×–4.0×` microphone gain) sliders together directly inside the pinned PTT panel between `MIC`/`SPK` and `PTT`/`Speaker`, saving vertical scroll room for linked node cards (and collapsing onto one row in landscape).
+- **Live TX mic gain updates:** Moving the **TX** slider applies immediately during active calls via `NodeAudioEngine.MicGain` / `NodeRuntime.SetLiveMicGain` without restarting capture and saves automatically alongside **RX** gain and **Auto**.
 
 **From 1.31**
 
@@ -75,4 +79,4 @@ Downloads:
 
 **Switching from Google Play:** Play and sideload signatures differ. Export your settings before uninstalling the Play build; you may need to re-enter the node password.
 
-**Not yet verified:** in 1.32 and 1.31, the shortened PTT/Speaker layout, live RX/TX gain sliders inside the PTT panel, RX Auto-Level, Audio Replay playback gain, and Android `LoudnessEnhancer` speaker boost have not yet been verified on a physical phone. Earlier items also pending real-device/car verification: car-unplug PTT release, IPv6 network check, background-service restart, Windows Spacebar release on Alt+Tab, hub noise threshold and jitter-buffer fix on a phone, car radio mixing and mute behaviour in a car, bubble chart links tapped on a phone, private-node host-hiding UI checks and `nodex://add?...` share links on Android/Windows, IPv6 dialing (accepted only), macOS/Linux share-link registration, Android 1.29 playback stall recovery, clip combining, and GitHub update disconnect prompt on a phone.
+**Not yet verified:** in 1.33, 1.32, and 1.31, the compact PTT/Speaker layout, tighter live RX/TX gain sliders inside the PTT panel, RX Auto-Level, Audio Replay playback gain, and Android `LoudnessEnhancer` speaker boost have not yet been verified on a physical phone. Earlier items also pending real-device/car verification: car-unplug PTT release, IPv6 network check, background-service restart, Windows Spacebar release on Alt+Tab, hub noise threshold and jitter-buffer fix on a phone, car radio mixing and mute behaviour in a car, bubble chart links tapped on a phone, private-node host-hiding UI checks and `nodex://add?...` share links on Android/Windows, IPv6 dialing (accepted only), macOS/Linux share-link registration, Android 1.29 playback stall recovery, clip combining, and GitHub update disconnect prompt on a phone.
