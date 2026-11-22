@@ -257,6 +257,54 @@ public class JitterBufferTests
     }
 
     [Fact]
+    public void ALoneShortBurst_DoesNotSilenceTheNextOver()
+    {
+        // 2026-11-21 review: one 20 ms frame (below the 3-frame priming depth) anchored the buffer for good. 40 s
+        // later the next over's timestamps looked "older" in signed 16-bit terms, every frame was dropped as late and
+        // the buffer stayed silent.
+        var jb = new JitterBuffer(targetDepthFrames: 3);
+        var o = new short[160];
+        jb.Push(0, Frame(500));
+        for (int i = 0; i < 2000; i++) jb.Pop(o);            // 40 s of playout
+
+        const int start = 40_000;
+        int played = 0;
+        for (int i = 0; i < 50; i++)                          // the next over: one second of speech
+        {
+            jb.Push(unchecked((ushort)(start + i * 20)), Frame(1234));
+            if (jb.Pop(o) == JitterPopResult.Played && o[0] == 1234) played++;
+        }
+        Assert.True(played >= 45, $"only {played} of 50 frames of the next over were played");
+    }
+
+    [Fact]
+    public void ALoneShortBurst_IsPlayed_AfterThePrimingTimeout()
+    {
+        // A courtesy beep shorter than the priming depth is played (a little late) instead of held forever.
+        var jb = new JitterBuffer(targetDepthFrames: 3);
+        var o = new short[160];
+        jb.Push(0, Frame(500));
+        int popsUntilPlayed = 0;
+        JitterPopResult r;
+        do { r = jb.Pop(o); popsUntilPlayed++; } while (r != JitterPopResult.Played && popsUntilPlayed < 50);
+        Assert.Equal(JitterPopResult.Played, r);
+        Assert.Equal(500, o[0]);
+        Assert.Equal(JitterBuffer.PrimeTimeoutFrames + 1, popsUntilPlayed);   // 200 ms of silence, then it plays
+    }
+
+    [Fact]
+    public void FarPastFrame_ResyncsInsteadOfBeingDroppedAsLate()
+    {
+        // A stream that jumps back by more than the buffer (remote restarted, new over with an older clock) re-anchors.
+        var jb = Primed();
+        jb.Push(unchecked((ushort)(0 - 20_000)), Frame(7));
+        Assert.Equal(0, jb.Stats.Late);
+        Assert.Equal(1, jb.Stats.Overflow);
+        Assert.True(jb.IsPriming);
+        Assert.Equal(1, jb.Depth);
+    }
+
+    [Fact]
     public void ShortFrame_IsZeroPadded()
     {
         var jb = new JitterBuffer(targetDepthFrames: 1);

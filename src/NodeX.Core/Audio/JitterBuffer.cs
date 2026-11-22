@@ -36,6 +36,15 @@ public sealed class JitterBuffer
     private bool _priming = true;
     private int _consecutiveMisses;
     private int _depth;
+    private int _primingIdlePops;   // playout ticks spent priming with frames held and no new frame arriving
+
+    /// <summary>
+    /// Playout ticks (20 ms each) a priming buffer waits for more frames before playing what it holds. A burst
+    /// shorter than <see cref="TargetDepthFrames"/> (a courtesy beep, a key-up blip) used to stay buffered forever
+    /// and anchor the timeline, so the next over's frames were dropped as late (2026-11-21 review). Live streams
+    /// deliver a frame every tick and never reach this.
+    /// </summary>
+    public const int PrimeTimeoutFrames = 10;
 
     private long _received, _played, _concealed, _lost, _late, _duplicate, _overflow;
 
@@ -91,6 +100,7 @@ public sealed class JitterBuffer
         lock (_lock)
         {
             _received++;
+            _primingIdlePops = 0;
 
             if (_priming && _depth == 0)
             {
@@ -100,10 +110,21 @@ public sealed class JitterBuffer
             }
 
             int slot = SlotOffset(timestamp);
+            if (slot < 0 && slot > -_slots.Length)
+            {
+                _late++;                  // a few frames late: already played or concealed
+                return;
+            }
+
             if (slot < 0)
             {
-                _late++;
-                return;
+                // Further in the past than the whole buffer: not a late packet but a stream that jumped back (the
+                // sender restarted, or a new over whose clock is behind the old anchor). Resynchronize on it.
+                _overflow++;
+                ClearSlots();
+                _nextTs = timestamp;
+                _priming = true;
+                slot = 0;
             }
 
             if (slot >= _slots.Length)
@@ -153,8 +174,18 @@ public sealed class JitterBuffer
         {
             if (_priming)
             {
-                output.Clear();
-                return JitterPopResult.Silence;
+                if (_depth > 0 && ++_primingIdlePops > PrimeTimeoutFrames)
+                {
+                    // The burst ended before the buffer filled: play what arrived rather than hold it.
+                    _priming = false;
+                    _consecutiveMisses = 0;
+                    _primingIdlePops = 0;
+                }
+                else
+                {
+                    output.Clear();
+                    return JitterPopResult.Silence;
+                }
             }
 
             JitterPopResult result;
@@ -209,6 +240,7 @@ public sealed class JitterBuffer
             ClearSlots();
             _priming = true;
             _consecutiveMisses = 0;
+            _primingIdlePops = 0;
             Array.Clear(_lastFrame);
         }
     }
