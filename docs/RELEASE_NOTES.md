@@ -1,8 +1,13 @@
-NodeX 1.33 shrinks the vertical gap around and between the **RX** and **TX** gain sliders inside the pinned PTT panel so more linked node cards remain visible while keeping full-size slider thumbs.
+NodeX 1.34 keeps the green RX indicator steady across brief speech pauses and soft voices on hubs that do not send `KEY`, and marks Wi-Fi hardware as optional in the Android manifest.
+
+- **Smoother RX indicator across speech pauses:** Raised `RxActivity.VoiceHold` from `500 ms` to `2000 ms` so hubs that omit `KEY` (`43136`, `60108`, `53431`) keep the green RX indicator lit during brief pauses or soft speech, while still clearing immediately on `UNKEY` when the over ends (preserving the `-40 dBFS` noise gate).
+- **Wider Android device compatibility:** Declared `<uses-feature android:name="android.hardware.wifi" android:required="false" />` in `AndroidManifest.xml` so Android devices without Wi-Fi hardware can install NodeX and Google Play pre-review no longer flags an implied Wi-Fi requirement.
+
+Automated builds, 868 Core tests, and 49 headless UI tests pass (and compiled APK badging confirms `android.hardware.wifi` is optional); physical Android phone and Play Console re-upload verification remain pending.
+
+**From 1.33**
 
 - **Tighter PTT panel height:** Removed excess built-in vertical slider margins (`SliderPreContentMargin` / `SliderPostContentMargin`) on the **RX** and **TX** controls and made the **Auto** toggle slimmer without shrinking the `20×20` touch thumb.
-
-Automated builds, 867 Core tests, and 49 headless UI tests (with Skia layout checks) pass; physical Android phone verification remains pending.
 
 **From 1.32**
 
@@ -79,4 +84,4 @@ Downloads:
 
 **Switching from Google Play:** Play and sideload signatures differ. Export your settings before uninstalling the Play build; you may need to re-enter the node password.
 
-**Not yet verified:** in 1.33, 1.32, and 1.31, the compact PTT/Speaker layout, tighter live RX/TX gain sliders inside the PTT panel, RX Auto-Level, Audio Replay playback gain, and Android `LoudnessEnhancer` speaker boost have not yet been verified on a physical phone. Earlier items also pending real-device/car verification: car-unplug PTT release, IPv6 network check, background-service restart, Windows Spacebar release on Alt+Tab, hub noise threshold and jitter-buffer fix on a phone, car radio mixing and mute behaviour in a car, bubble chart links tapped on a phone, private-node host-hiding UI checks and `nodex://add?...` share links on Android/Windows, IPv6 dialing (accepted only), macOS/Linux share-link registration, Android 1.29 playback stall recovery, clip combining, and GitHub update disconnect prompt on a phone.
+**Not yet verified:** in 1.34, the 2000 ms RX voice hold / immediate UNKEY clear on a phone and Google Play pre-review verification of optional android.hardware.wifi; in 1.33, 1.32, and 1.31, the compact PTT/Speaker layout, tighter live RX/TX gain sliders inside the PTT panel, RX Auto-Level, Audio Replay playback gain, and Android `LoudnessEnhancer` speaker boost have not yet been verified on a physical phone. Earlier items also pending real-device/car verification: car-unplug PTT release, IPv6 network check, background-service restart, Windows Spacebar release on Alt+Tab, hub noise threshold and jitter-buffer fix on a phone, car radio mixing and mute behaviour in a car, bubble chart links tapped on a phone, private-node host-hiding UI checks and `nodex://add?...` share links on Android/Windows, IPv6 dialing (accepted only), macOS/Linux share-link registration, Android 1.29 playback stall recovery, clip combining, and GitHub update disconnect prompt on a phone.

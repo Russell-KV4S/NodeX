@@ -1,5 +1,10 @@
 # Change log
 
+## 2026-11-22: 1.34 / code 37
+
+- **RX indicator hold across speech pauses (`RxActivity`):** raised `RxActivity.VoiceHold` from `500 ms` to `2000 ms` (`2.0 s`) so hubs that do not send `KEY` (`43136`, `60108`, `53431`) keep the green RX indicator lit when an operator pauses briefly or speaks softly, while clearing `LastSoundTicks` immediately on `UNKEY` so the indicator still drops at once when the over ends (preserving the `-40 dBFS` noise gate). Updated `RxActivityTests` and `MainViewModel`.
+- **Android manifest Wi-Fi feature optional (`AndroidManifest.xml`):** declared `<uses-feature android:name="android.hardware.wifi" android:required="false" />` alongside microphone and BLE so requesting `ACCESS_WIFI_STATE` / `CHANGE_WIFI_STATE` no longer implies required Wi-Fi hardware in Google Play pre-review checks, widening Android device reach.
+
 ## 2026-11-22: 1.33 / code 36
 
 - **Tighter RX/TX gain slider spacing inside `PttCard`:** overrode Avalonia FluentTheme's default slider pre/post margins (`SliderPreContentMargin` / `SliderPostContentMargin` = `0`, `SliderHorizontalHeight` = `26`) locally on `GainsGrid` and lowered `RxAutoLevelButton` `MinHeight` to `24` (with `20×20` thumbs preserved) so the docked PTT panel is noticeably shorter vertically (`GainsGrid` `<= 68 px` on portrait phone).

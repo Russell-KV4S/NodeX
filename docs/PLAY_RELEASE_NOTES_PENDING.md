@@ -3,7 +3,7 @@
 Changes that have shipped on GitHub but **not yet on Google Play**. When the next Play release is made, paste the
 block below into Play Console's release notes, then move the entry under "Play releases" and empty "Pending".
 
-**Last Play release:** 1.25 (code 27), closed Alpha (sent for review), 2026-11-20.
+**Last Play release:** 1.33 (code 36), closed Alpha (sent for review), 2026-11-22.
 **Bundle to upload next** is `NodeX-android-play.aab` from the latest GitHub release.
 
 Rules:
@@ -14,7 +14,18 @@ Rules:
 
 ## Pending
 
-1.26 through 1.33 (code 36), pending Google Play upload (2026-11-22).
+1.34 (code 37), pending Google Play upload (2026-11-22).
+
+```
+<en-US>
+Kept the green RX indicator steady during brief speech pauses on hubs that do not send KEY, while clearing right away on UNKEY.
+Marked Wi-Fi hardware as optional in the Android manifest to widen device compatibility.
+</en-US>
+```
+
+## Play releases
+
+- 1.33 (code 36), 2026-11-22, closed Alpha only (sent for review; restarted the 1.25 review; android.hardware.wifi warning ignored again; covers 1.26-1.33). Notes sent:
 
 ```
 <en-US>
@@ -26,8 +37,6 @@ Follow the system theme or try four new themes; hide private hosts outside edit.
 Fewer false receiving lights and reconnect/IPv6 fixes.
 </en-US>
 ```
-
-## Play releases
 
 - 1.25 (code 27), 2026-11-20, closed Alpha only (sent for review with the switch to Google Group testers-nodex): private nodes and Private Nodes screen, bubble chart link, early-hangup message, fewer false receiving lights, no automatic mute, car radio option (covers 1.23-1.25).
 - 1.22 (code 24), 2026-11-19: retry until you disconnect; IAX2 retried after an HTTPS fallback; Send logs newest-first.

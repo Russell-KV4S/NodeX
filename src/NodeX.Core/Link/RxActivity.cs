@@ -10,7 +10,7 @@ namespace NodeX.Core;
 public sealed class RxActivity : IDisposable
 {
     /// <summary>How long after the last voice frame with sound a node with no KEY still counts as talking.</summary>
-    public static readonly TimeSpan VoiceHold = TimeSpan.FromMilliseconds(500);
+    public static readonly TimeSpan VoiceHold = TimeSpan.FromMilliseconds(2000);
 
     /// <summary>
     /// RMS level (dBFS) a voice frame must exceed to count as sound. Busy hubs stream low hiss/noise between overs
@@ -53,6 +53,10 @@ public sealed class RxActivity : IDisposable
             {
                 Interlocked.Exchange(ref watch.KeyedAtTicks, _clock());
                 lock (_gate) _keySenders.Add(node);
+            }
+            else
+            {
+                Interlocked.Exchange(ref watch.LastSoundTicks, 0);
             }
             watch.Keyed = keyed;
         }

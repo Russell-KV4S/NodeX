@@ -30,6 +30,7 @@
 	<!-- Not required: Listening works without a microphone, so mic-less devices can still install NodeX -->
 	<uses-feature android:name="android.hardware.microphone" android:required="false" />
 	<uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+	<uses-feature android:name="android.hardware.wifi" android:required="false" />
 
 	<!-- Lets NodeX ask Android Auto whether a car is connected (package visibility, Android 11+) -->
 	<queries>

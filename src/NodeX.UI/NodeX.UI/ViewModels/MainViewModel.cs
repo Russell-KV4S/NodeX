@@ -1745,17 +1745,21 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             RefreshLinks();
         });
 
-        void OnKeyed(bool keyed) => OnUi(() =>
+        void OnKeyed(bool keyed)
         {
-            var item = LinkItems.FirstOrDefault(l => l.Node == node);
-            watch.Keyed = keyed;
-            if (keyed) { watch.KeyedAtTicks = Environment.TickCount64; _keySenders.Add(node); }
-            if (item != null) { item.IsReceiving = IsHeard(watch); item.NoteHeard(); }
-            IsRemoteKeyed = LinkItems.Any(l => l.IsReceiving);
-            LogActivity(_runtime.Connections.Count > 1
-                ? keyed ? $"<<< Node {node} keyed (RX active)" : $"<<< Node {node} unkeyed"
-                : keyed ? "<<< Remote Node Keyed (RX Active)" : "<<< Remote Node Unkeyed");
-        });
+            if (!keyed) System.Threading.Interlocked.Exchange(ref watch.LastSoundTicks, 0);
+            OnUi(() =>
+            {
+                var item = LinkItems.FirstOrDefault(l => l.Node == node);
+                watch.Keyed = keyed;
+                if (keyed) { watch.KeyedAtTicks = Environment.TickCount64; _keySenders.Add(node); }
+                if (item != null) { item.IsReceiving = IsHeard(watch); item.NoteHeard(); }
+                IsRemoteKeyed = LinkItems.Any(l => l.IsReceiving);
+                LogActivity(_runtime.Connections.Count > 1
+                    ? keyed ? $"<<< Node {node} keyed (RX active)" : $"<<< Node {node} unkeyed"
+                    : keyed ? "<<< Remote Node Keyed (RX Active)" : "<<< Remote Node Unkeyed");
+            });
+        }
 
         void OnMessage(string msg)
         {
@@ -1894,7 +1898,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
         MicAudioLevel = _micMeter;
 
-        // Per-node RX highlight: keyed by control frame OR voice frames in the last 500 ms.
+        // Per-node RX highlight: keyed by control frame OR voice frames within RxActivity.VoiceHold.
         bool anyRx = false;
         foreach (var w in _watches.Values)
         {

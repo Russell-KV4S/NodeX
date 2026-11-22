@@ -30,7 +30,8 @@ public class RxActivityTests
     public void Node_that_never_sends_KEY_is_heard_by_voice_alone()
     {
         Assert.True(RxActivity.IsHeard(false, 0, 4900, 4900, 5000));
-        Assert.False(RxActivity.IsHeard(false, 0, 4000, 4000, 5000));
+        Assert.True(RxActivity.IsHeard(false, 0, 4900, 3500, 5000));    // 1.5 s mid-speech pause stays lit
+        Assert.False(RxActivity.IsHeard(false, 0, 4900, 2999, 5000));   // past 2000 ms VoiceHold drops
     }
 
     [Fact]
@@ -136,7 +137,7 @@ public class RxActivityTests
         Assert.Empty(rx.Talking());
         Assert.False(rx.IsReceiving("2000"));
 
-        // Send a voice frame from the remote node: heard for VoiceHold (500 ms).
+        // Send a voice frame from the remote node: heard for VoiceHold (2000 ms).
         await remote.SendAsync(Iax2Protocol.FrameType.Voice, 0x04, 20, new byte[160]);
         for (int i = 0; i < 40 && !rx.IsReceiving("2000"); i++)
             await Task.Delay(10);
@@ -144,13 +145,46 @@ public class RxActivityTests
         Assert.True(rx.IsReceiving("2000"));
         Assert.Equal(["2000"], rx.Talking());
 
-        // Advance simulated clock past VoiceHold (500 ms): no longer talking.
-        Interlocked.Exchange(ref clock, 1600);
+        // 1.5 s pause stays lit within VoiceHold.
+        Interlocked.Exchange(ref clock, 2500);
+        Assert.True(rx.IsReceiving("2000"));
+
+        // Advance simulated clock past VoiceHold (2000 ms): no longer talking.
+        Interlocked.Exchange(ref clock, 3100);
         Assert.False(rx.IsReceiving("2000"));
         Assert.Empty(rx.Talking());
 
         // Detach removes the node from tracking.
         rx.Detach("2000");
+        Assert.False(rx.IsReceiving("2000"));
+    }
+
+    [Fact]
+    public async Task Unkey_without_prior_KEY_clears_voice_hold_immediately()
+    {
+        long clock = 1000;
+        using var rx = new RxActivity(() => Volatile.Read(ref clock));
+        using var remote = new FakeIaxRemote();
+
+        var settings = new NodeSettings { NodeNumber = "68498" };
+        var target = new NodeInfo("2000", "Hub", remote.EndPoint, "Hub", DateTime.UtcNow);
+        await using var link = new NodeLink(settings, target, new NullAudioDeviceService());
+        rx.Attach(link);
+
+        var connectTask = link.ConnectAsync();
+        await remote.AcceptCallAsync();
+        await connectTask;
+
+        // Audible frame lights the node without a prior KEY.
+        await remote.SendAsync(Iax2Protocol.FrameType.Voice, 0x04, 20, new byte[160]);
+        for (int i = 0; i < 40 && !rx.IsReceiving("2000"); i++)
+            await Task.Delay(10);
+        Assert.True(rx.IsReceiving("2000"));
+
+        // An UNKEY control frame clears VoiceHold at once even without advancing the clock.
+        await remote.SendAsync(Iax2Protocol.FrameType.Control, (byte)Iax2Protocol.ControlSubclass.AstControlUnkey, 40);
+        for (int i = 0; i < 40 && rx.IsReceiving("2000"); i++)
+            await Task.Delay(10);
         Assert.False(rx.IsReceiving("2000"));
     }
 }
