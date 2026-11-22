@@ -165,4 +165,44 @@ public sealed class AudioHistoryTests : IDisposable
         Assert.True(File.Exists(store.GetFilePath(b)));
         Assert.True(File.Exists(store.GetFilePath(d)));
     }
+
+    [Fact]
+    public async Task AudioClipPlayer_AppliesLiveRxGainDuringReplay_WithoutModifyingSavedWav()
+    {
+        var store = new AudioHistoryStore(_dir, maxClips: 10);
+        short[] samples = Enumerable.Repeat((short)1000, AudioFormat.SamplesPerFrame * 4).ToArray();
+        var clip = store.SaveClip("523800", "KV4S Cloud", AudioClipDirection.Rx, samples);
+        string wavPath = store.GetFilePath(clip);
+
+        var played = new List<short>();
+        var device = new CapturingAudioDevice(played);
+        float liveGain = 3.0f;
+        await using var player = new AudioClipPlayer(() => device, () => liveGain, () => false);
+        await player.PlayAsync(clip, wavPath);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        while (player.IsPlaying && !cts.IsCancellationRequested)
+            await Task.Delay(20);
+
+        Assert.False(player.IsPlaying);
+        Assert.Equal(samples.Length, played.Count);
+        // After the 1-frame smooth ramp, samples play at 3x (~3000) while disk WAV stays at 1000.
+        Assert.InRange(played[^1], (short)2900, (short)3100);
+        short[] onDisk = WavCodec.DecodePcm16(File.ReadAllBytes(wavPath), out _);
+        Assert.All(onDisk, s => Assert.Equal((short)1000, s));
+    }
+
+    private sealed class CapturingAudioDevice(List<short> played) : IAudioDeviceService
+    {
+        public bool IsCapturing => false;
+        public bool IsPlaying { get; private set; }
+        public TimeSpan BufferedPlayback => TimeSpan.Zero;
+        public event Action<string>? ErrorOccurred { add { } remove { } }
+        public void StartCapture(Action<ReadOnlyMemory<short>> onPcmSampleBlock) { }
+        public void StopCapture() { }
+        public void StartPlayback() => IsPlaying = true;
+        public void StopPlayback() => IsPlaying = false;
+        public void EnqueuePlaybackPcm(ReadOnlyMemory<short> pcm) => played.AddRange(pcm.ToArray());
+        public ValueTask DisposeAsync() { StopPlayback(); return ValueTask.CompletedTask; }
+    }
 }

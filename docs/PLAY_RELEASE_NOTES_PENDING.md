@@ -14,15 +14,16 @@ Rules:
 
 ## Pending
 
-1.26 through 1.30 (code 33), pending Google Play upload (2026-11-22).
+1.26 through 1.31 (code 34), pending Google Play upload (2026-11-22).
 
 ```
 <en-US>
-Fixed IAX2 registration on cellular carrier NAT so calls and registration share one public IP.
-Replay local audio and combine clips into one shareable WAV. Turn clip saving off in Settings.
-Auto-connect to up to eight nodes. Fixed Android startup auto-connect and audio stalls.
-Follow the system theme or try four new themes. Private node hosts stay out of the main screen and Android Auto browse.
-Fewer false receiving lights and fixes for reconnects and IPv6 mobile data.
+Added live RX gain, auto-level, and Android speaker boost in Settings and on the main screen.
+Fixed IAX2 registration on cellular carrier NAT so calls and registration share one IP.
+Replay local audio and combine clips into one shareable WAV.
+Auto-connect to up to eight nodes; fixed Android startup auto-connect and audio stalls.
+Follow the system theme or try four new themes; hide private hosts outside edit.
+Fewer false receiving lights and reconnect/IPv6 fixes.
 </en-US>
 ```
 

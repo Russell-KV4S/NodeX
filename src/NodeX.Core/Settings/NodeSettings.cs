@@ -88,6 +88,15 @@ public sealed record NodeSettings
     /// </summary>
     public bool MicProcessing { get; init; } = true;
 
+    /// <summary>Receive (speaker) audio gain, 1.0 = unity.</summary>
+    public float RxGain { get; init; } = 1.0f;
+
+    /// <summary>Automatically level incoming voices (boost quiet stations and tame loud ones) before playback.</summary>
+    public bool RxAutoLevel { get; init; }
+
+    /// <summary>Android: apply extra native speaker boost (<c>LoudnessEnhancer</c>) on active playback tracks.</summary>
+    public bool RxLoudnessBoost { get; init; }
+
     /// <summary>Transmit time-out timer in seconds.</summary>
     public int TimeOutTimerSeconds { get; init; } = 180;
 

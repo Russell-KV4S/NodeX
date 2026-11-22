@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Android.Media;
+using Android.Media.Audiofx;
 using NodeX.Core.Audio;
 using NodeX.Core.Diagnostics;
 using AudioFormat = NodeX.Core.Audio.AudioFormat; // Android.Media also defines AudioFormat
@@ -19,6 +20,20 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
     private const int IdleReleaseMs = 15_000;
     private const int IdleCheckPeriodMs = 5_000;
 
+    private static int _loudnessTargetMb;
+    private static event Action? LoudnessBoostChanged;
+
+    /// <summary>
+    /// Updates Android's native <see cref="LoudnessEnhancer"/> target boost for active and future tracks.
+    /// Safe to call from any thread.
+    /// </summary>
+    public static void SetLoudnessBoost(float rxGain, bool enabled)
+    {
+        int targetMb = RxAudioProcessor.ComputeAndroidLoudnessMillibels(rxGain, enabled);
+        if (Interlocked.Exchange(ref _loudnessTargetMb, targetMb) != targetMb)
+            LoudnessBoostChanged?.Invoke();
+    }
+
     // Lock ordering invariant: ALWAYS acquire _gate before _trackLock; never acquire _gate while holding _trackLock.
     private readonly object _gate = new();
     private readonly object _trackLock = new();
@@ -26,6 +41,7 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
 
     private AudioRecord? _record;
     private AudioTrack? _track;
+    private LoudnessEnhancer? _loudnessEnhancer;
     private Timer? _idleTimer;
     private Thread? _captureThread;
     private volatile bool _captureRunning;
@@ -140,6 +156,7 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
             AndroidAudioRoute.RouteChanged += OnRouteChanged;
             CarSession.Changed += OnRouteChanged;
             CarSession.CarAudioChanged += OnRouteChanged;
+            LoudnessBoostChanged += OnLoudnessBoostChanged;
             IsPlaying = true;
         }
     }
@@ -200,6 +217,7 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
             _stallDetector.Reset();
             _track = track;
             Volatile.Write(ref _lastWriteTicks, Environment.TickCount64);
+            ApplyLoudnessEnhancerLocked(track);
         }
 
         _idleTimer ??= new Timer(OnIdleTick, null, IdleCheckPeriodMs, IdleCheckPeriodMs);
@@ -279,6 +297,7 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
         AudioTrack? old;
         lock (_trackLock)
         {
+            ReleaseLoudnessEnhancerLocked();
             old = _track;
             _track = null;
             Interlocked.Exchange(ref _samplesWritten, 0);
@@ -290,6 +309,49 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
         return true;
     }
 
+    private void OnLoudnessBoostChanged()
+    {
+        lock (_trackLock)
+        {
+            if (_track != null) ApplyLoudnessEnhancerLocked(_track);
+        }
+    }
+
+    private void ApplyLoudnessEnhancerLocked(AudioTrack track)
+    {
+        int targetMb = Volatile.Read(ref _loudnessTargetMb);
+        if (targetMb <= 0)
+        {
+            ReleaseLoudnessEnhancerLocked();
+            return;
+        }
+
+        try
+        {
+            int sessionId = track.AudioSessionId;
+            if (sessionId <= 0) return;
+
+            _loudnessEnhancer ??= new LoudnessEnhancer(sessionId);
+            _loudnessEnhancer.SetTargetGain(targetMb);
+            _loudnessEnhancer.SetEnabled(true);
+            DiagnosticLog.Default.Detail("audio", $"LoudnessEnhancer active: +{targetMb} mB (session={sessionId})");
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Default.Detail("audio", $"LoudnessEnhancer unavailable: {ex.Message}");
+            ReleaseLoudnessEnhancerLocked();
+        }
+    }
+
+    private void ReleaseLoudnessEnhancerLocked()
+    {
+        var enhancer = _loudnessEnhancer;
+        _loudnessEnhancer = null;
+        if (enhancer == null) return;
+        try { enhancer.SetEnabled(false); } catch (Exception) { /* best effort */ }
+        try { enhancer.Release(); } catch (Exception) { /* best effort */ }
+    }
+
     public void StopPlayback()
     {
         lock (_gate)
@@ -298,6 +360,7 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
             AndroidAudioRoute.RouteChanged -= OnRouteChanged;
             CarSession.Changed -= OnRouteChanged;
             CarSession.CarAudioChanged -= OnRouteChanged;
+            LoudnessBoostChanged -= OnLoudnessBoostChanged;
             _idleTimer?.Dispose();
             _idleTimer = null;
             ReleaseTrackLocked();

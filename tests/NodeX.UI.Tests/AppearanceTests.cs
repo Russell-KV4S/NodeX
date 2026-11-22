@@ -276,4 +276,35 @@ public class AppearanceTests
             window.Close();
         }
     }
+
+    [AvaloniaTheory]
+    [InlineData(420, 860)]
+    [InlineData(1050, 760)]
+    public void RxGainCard_RendersInPhoneAndDesktopLayouts(int width, int height)
+    {
+        Appearance.Apply(Application.Current!, new() { Theme = "Dark", TextScale = 1.0 });
+        using var vm = new MainViewModel { RxGain = 2.0, RxAutoLevel = true };
+        var view = new MainView { DataContext = vm };
+        var window = new Window { Content = view, Width = width, Height = height };
+        window.Show();
+        try
+        {
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick(3);
+
+            var card = view.FindControl<Border>("RxGainCard")!;
+            var slider = view.FindControl<Slider>("RxGainSlider")!;
+            var autoBtn = view.FindControl<Button>("RxAutoLevelButton")!;
+
+            Assert.True(card.IsEffectivelyVisible);
+            Assert.True(slider.IsEffectivelyVisible);
+            Assert.True(autoBtn.IsEffectivelyVisible);
+            Assert.Contains("active", autoBtn.Classes);
+
+            var cardOrigin = card.TranslatePoint(default, window)!.Value;
+            Assert.True(cardOrigin.X >= 0 && cardOrigin.X + card.Bounds.Width <= width + 1);
+            Assert.True(cardOrigin.Y >= 0 && cardOrigin.Y + card.Bounds.Height <= height + 1);
+        }
+        finally { window.Close(); }
+    }
 }

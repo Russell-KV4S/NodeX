@@ -36,6 +36,9 @@ public static class AppServices
         }
     }
 
+    /// <summary>True on platforms that provide native extra speaker boost (Android LoudnessEnhancer).</summary>
+    public static bool RxLoudnessBoostSupported { get; set; }
+
     /// <summary>Local speaker-only clip replay engine (never keys PTT or touches IAX2).</summary>
     public static AudioClipPlayer AudioPlayer
     {
@@ -238,7 +241,7 @@ public static class AppServices
             _runtime = Create(settings ?? new JsonFileSettingsStore(), secrets, audioFactory, audioOptions, networkMonitor);
             _audioHistory = new AudioHistoryStore(Path.Combine(JsonFileSettingsStore.DefaultDirectory, "history"));
             _audioHistory.Load();
-            _audioPlayer = new AudioClipPlayer(audioFactory);
+            _audioPlayer = new AudioClipPlayer(audioFactory, () => _runtime.LiveRxGain, () => _runtime.LiveRxAutoLevel);
             _audioRecorder = new AudioClipRecorder(
                 _audioHistory,
                 () => _runtime.Config.Settings.SaveAudioHistory,

@@ -75,6 +75,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _disposed = true;
         _timer?.Stop();
         _ageTimer?.Stop();
+        _rxGainSaveCts?.Cancel();
+        _rxGainSaveCts?.Dispose();
+        _rxGainSaveCts = null;
         _idReminder.Dispose();
         History.Dispose();
         _runtime.RegistrationChanged -= OnRegistrationChanged;
@@ -1335,6 +1338,83 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         IsBleConnected = ble.IsConnected;
     }
 
+    private bool _applyingConfig;
+    private System.Threading.CancellationTokenSource? _rxGainSaveCts;
+    private int _pendingRxSaveCount;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RxGainDisplay))]
+    public partial double RxGain { get; set; } = 1.0;
+
+    public string RxGainDisplay => string.Create(
+        System.Globalization.CultureInfo.InvariantCulture,
+        $"{RxAudioProcessor.SanitizeGain((float)RxGain):0.0}×");
+
+    [ObservableProperty]
+    public partial bool RxAutoLevel { get; set; }
+
+    partial void OnRxGainChanged(double value)
+    {
+        if (_applyingConfig || _disposed) return;
+        float gain = RxAudioProcessor.SanitizeGain((float)value);
+        _runtime.SetLiveRxAudio(gain, RxAutoLevel);
+        ScheduleSaveRxAudio(debounceMs: 350);
+    }
+
+    [RelayCommand]
+    public void ToggleRxAutoLevel()
+    {
+        RxAutoLevel = !RxAutoLevel;
+        float gain = RxAudioProcessor.SanitizeGain((float)RxGain);
+        _runtime.SetLiveRxAudio(gain, RxAutoLevel);
+        ScheduleSaveRxAudio(debounceMs: 0);
+    }
+
+    private void ScheduleSaveRxAudio(int debounceMs)
+    {
+        _rxGainSaveCts?.Cancel();
+        _rxGainSaveCts?.Dispose();
+        var cts = _rxGainSaveCts = new System.Threading.CancellationTokenSource();
+
+        var cfg = _runtime.Config;
+        if (!cfg.IsComplete || cfg.Password == null) return;
+
+        int ticket = System.Threading.Interlocked.Increment(ref _pendingRxSaveCount);
+        _ = SaveRxAudioAsync(debounceMs, ticket, cts.Token);
+    }
+
+    private async Task SaveRxAudioAsync(int debounceMs, int ticket, System.Threading.CancellationToken ct)
+    {
+        try
+        {
+            if (debounceMs > 0) await Task.Delay(debounceMs, ct);
+            if (ct.IsCancellationRequested || _disposed) return;
+
+            var cfg = _runtime.Config;
+            if (!cfg.IsComplete || cfg.Password == null) return;
+
+            float gain = _runtime.LiveRxGain;
+            bool auto = _runtime.LiveRxAutoLevel;
+            if (Math.Abs(cfg.Settings.RxGain - gain) < 0.001f && cfg.Settings.RxAutoLevel == auto)
+                return;
+
+            await _runtime.ConfigService.SaveAsync(
+                cfg.Settings with { RxGain = gain, RxAutoLevel = auto },
+                cfg.Password,
+                ct);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException) { }
+        catch (Exception ex)
+        {
+            LogActivity($"[ERROR] Could not save RX gain: {ex.Message}");
+        }
+        finally
+        {
+            if (System.Threading.Volatile.Read(ref _pendingRxSaveCount) == ticket)
+                System.Threading.Volatile.Write(ref _pendingRxSaveCount, 0);
+        }
+    }
+
     [RelayCommand]
     public void TogglePttMode()
     {
@@ -1454,6 +1534,20 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         {
             IsToggleMode = s.TogglePtt;
             PttModeLabel = IsToggleMode ? "Toggle (Click)" : "Momentary (Hold)";
+        }
+
+        if (System.Threading.Volatile.Read(ref _pendingRxSaveCount) == 0)
+        {
+            _applyingConfig = true;
+            try
+            {
+                RxGain = RxAudioProcessor.SanitizeGain(s.RxGain);
+                RxAutoLevel = s.RxAutoLevel;
+            }
+            finally
+            {
+                _applyingConfig = false;
+            }
         }
 
         RefreshLinks();   // favourite names appear in the link rows

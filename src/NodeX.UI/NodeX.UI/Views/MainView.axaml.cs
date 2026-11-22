@@ -475,7 +475,7 @@ public partial class MainView : UserControl
     private void ApplyBodyLayout(bool narrow, bool dock)
     {
         // Take every card out of whatever currently holds it, then place it for the new layout.
-        foreach (var card in new Control[] { HeroCard, LinksCard, PttCard, ConnectCard, DtmfCard, LogCard, IdReminderCard, CompactLinksCard })
+        foreach (var card in new Control[] { HeroCard, LinksCard, PttCard, ConnectCard, DtmfCard, LogCard, IdReminderCard, CompactLinksCard, RxGainCard })
         {
             Detach(card);
         }
@@ -496,7 +496,7 @@ public partial class MainView : UserControl
                 Tab.Nodes => [ConnectCard, LinksCard],
                 Tab.Keypad => [DtmfCard],
                 Tab.Log => [LogCard],
-                _ => [IdReminderCard, CompactLinksCard],
+                _ => [IdReminderCard, CompactLinksCard, RxGainCard],
             };
             foreach (var card in cards)
             {
@@ -517,8 +517,8 @@ public partial class MainView : UserControl
 
             // Two columns. PTT + MIC/SPK meters stay in the left column on tall screens; on short ones they dock below.
             foreach (var card in dock
-                         ? new Control[] { HeroCard }
-                         : new Control[] { HeroCard, PttCard })
+                         ? new Control[] { HeroCard, RxGainCard }
+                         : new Control[] { HeroCard, RxGainCard, PttCard })
             {
                 LeftColumn.Children.Add(card);
             }

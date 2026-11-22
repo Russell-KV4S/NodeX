@@ -38,4 +38,6 @@ These are owner observations, not instrumented traces: Android screen-off backgr
 
 **2026-11-22 (`LiveCheck register --iax`, node 523802):** VERIFIED full live IAX2 `REGREQ → REGAUTH → REGREQ(MD5) → REGACK` against `register.allstarlink.org:4569` (`registered=True`, status `'Registered (IAX2) as <dev-PC-public-IP>:<port>'`, `APPARENT_ADDR` matching `<dev-PC-public-IP>:<port>`, `refresh=60 s`), followed by STUN network check from the same UDP socket returning `verdict=Consistent` (both Google and Cloudflare STUN servers and the IAX2 registry agreed on `<dev-PC-public-IP>`).
 
+- **2026-11-22 (AT&T cellular field confirmation, v1.30 / code 33, node 41603):** Tom's v1.30 phone log confirmed first-try IAX2 registration (`Registered (IAX2)`), `verdict=Consistent` across STUN and the registry, preserved settings across the in-app GitHub update, and working live node links on AT&T cellular.
+
 The current backlog is in `PROJECT_SPEC.md` §13. Older observations above are retained with their original dates; features such as desktop device pickers and ASL text parsing have since been implemented.

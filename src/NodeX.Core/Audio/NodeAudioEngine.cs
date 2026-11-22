@@ -39,6 +39,12 @@ public sealed record NodeAudioEngineOptions
     /// <see cref="MicGain"/> and before encoding. Off by default here; the app turns it on from settings.
     /// </summary>
     public bool MicProcessing { get; init; }
+
+    /// <summary>Software gain applied to received audio before playback (1.0 = unity).</summary>
+    public float RxGain { get; init; } = 1.0f;
+
+    /// <summary>Automatically level incoming voices (boost quiet stations, tame loud ones) before playback.</summary>
+    public bool RxAutoLevel { get; init; }
 }
 
 /// <summary>
@@ -53,6 +59,7 @@ public sealed class NodeAudioEngine : IAsyncDisposable
     private readonly NodeAudioEngineOptions _options;
     private readonly PcmFramer _framer = new();
     private readonly MicProcessor? _micProcessor;
+    private readonly RxAudioProcessor _rxProcessor;
     private readonly AudioLevelMeter _inputMeter = new();
     private readonly AudioLevelMeter _outputMeter = new();
     private readonly Channel<byte[]> _sendQueue;
@@ -78,6 +85,11 @@ public sealed class NodeAudioEngine : IAsyncDisposable
         _device = device ?? throw new ArgumentNullException(nameof(device));
         _options = options ?? new NodeAudioEngineOptions();
         if (_options.MicProcessing) _micProcessor = new MicProcessor();
+        _rxProcessor = new RxAudioProcessor
+        {
+            Gain = _options.RxGain,
+            AutoLevel = _options.RxAutoLevel
+        };
         JitterBuffer = new JitterBuffer(_options.JitterTargetDepthFrames, _options.JitterCapacityFrames);
 
         // Small bounded queue between the audio thread and the network; drop oldest under backpressure
@@ -92,6 +104,20 @@ public sealed class NodeAudioEngine : IAsyncDisposable
 
     public JitterBuffer JitterBuffer { get; }
     public bool IsRunning => _cts != null;
+
+    /// <summary>Manual receive gain multiplier (can be updated live while playing).</summary>
+    public float RxGain
+    {
+        get => _rxProcessor.Gain;
+        set => _rxProcessor.Gain = value;
+    }
+
+    /// <summary>Whether automatic receive leveling is enabled (can be updated live while playing).</summary>
+    public bool RxAutoLevel
+    {
+        get => _rxProcessor.AutoLevel;
+        set => _rxProcessor.AutoLevel = value;
+    }
 
     /// <summary>
     /// When true, received audio is still decoded, metered and reported (<see cref="RemoteAudioActiveChanged"/>) but
@@ -140,6 +166,7 @@ public sealed class NodeAudioEngine : IAsyncDisposable
 
             _framer.Reset();
             _micProcessor?.Reset();
+            _rxProcessor.Reset();
             JitterBuffer.Reset();
             _inputMeter.Reset();
             _outputMeter.Reset();
@@ -377,12 +404,15 @@ public sealed class NodeAudioEngine : IAsyncDisposable
         if (hasAudio) SetRemoteAudioActive(true);
         else if (JitterBuffer.IsPriming) SetRemoteAudioActive(false);
 
+        if (!Muted && RxFrameDecoded is { } rxHandler)
+            rxHandler(frame);
+
+        if (hasAudio) _rxProcessor.Process(frame);
+        else _rxProcessor.ObserveSilence();
+
         // A Silence result is all zeros already (JitterBuffer clears it): feed the known level instead of scanning 160
         // samples 50 times a second on every idle link. Same smoothing, same callbacks (battery review 2026-11-21).
         OutputLevelChanged?.Invoke(hasAudio ? _outputMeter.Process(frame) : _outputMeter.Update(AudioLevels.Silent));
-
-        if (!Muted && RxFrameDecoded is { } rxHandler)
-            rxHandler(frame);
 
         if (Muted)
         {

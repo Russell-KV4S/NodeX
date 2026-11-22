@@ -1,5 +1,14 @@
 # Change log
 
+## 2026-11-22: 1.31 / code 34
+
+- **Receive gain (RX), RX Auto-Level & Android Extra Speaker Boost:**
+  - Added `RxAudioProcessor` (`0.5×–4.0×` slider, `0.25–8.0` validated) with smooth frame-ramped gain and a `tanh` soft limiter (`LimiterCeiling = 0.94`), plus optional **RX Auto-Level** (gated AGC targeting `-15 dBFS` RMS with `-44 dBFS` noise gate so quiet stations rise without boosting squelch/hiss or letting loud hubs clip). Unity `1.0×` without auto-level passes frames through bit-exactly.
+  - Applied receive gain/auto-level to live calls (`NodeAudioEngine.PlayOneFrame` after `RxFrameDecoded`, keeping recorded Audio Replay WAVs clean at unity gain while driving the `SPK` meter and playback) and to **Audio Replay** (`AudioClipPlayer` using live `NodeRuntime.LiveRxGain` / `LiveRxAutoLevel`).
+  - Added **Receive gain (RX)**, **Auto-level incoming voices**, and Android-only **Extra speaker boost (Android LoudnessEnhancer)** (`+600` to `+1200 mB` attached safely to active `AudioTrack`s in `AndroidAudioDeviceService`) in **Settings → Audio & PTT**, plus a compact live **RX** gain slider + **Auto** toggle (`RxGainCard`) right on the main Radio screen that updates all active links immediately and debounces saving.
+  - Added tests across `RxAudioProcessorTests`, `AudioTests`, `AudioHistoryTests`, `SettingsTests`, `SettingsTransferTests`, `SettingsViewModelTests`, `AppearanceTests`, and `MainViewModelTests` (`dotnet build NodeX.sln` 0 warnings/errors; **866 Core** and **48 headless UI** tests pass); physical phone listening checks for RX boost and `LoudnessEnhancer` remain pending.
+- **AT&T field confirmation for v1.30 (2026-11-22):** Tom's v1.30 (code 33) phone log confirmed first-try IAX2 registration (`Registered (IAX2)`), `verdict=Consistent` across STUN and the registry, preserved settings across the in-app GitHub update, and working live node links on AT&T cellular.
+
 ## 2026-11-22: 1.30 / code 33
 
 - **Fix IAX2 registration Step 1 against `register.allstarlink.org` (from v1.29 AT&T phone log):** Tom's v1.29 log showed AT&T CGNAT giving his UDP call socket one consistent public IP across both STUN servers (`74.254.84.65`), while IAX2 registration got `REGAUTH` on Step 0, timed out on Step 1 (`4 request(s)`), and fell back to HTTPS (`74.254.78.54`), causing `RegistryMismatch` and immediate remote hangups. Live probes against all three `register.allstarlink.org` IPs revealed why:

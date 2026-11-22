@@ -83,6 +83,18 @@ public class NodeSettingsValidatorTests
     public void MicGain_Range(float gain, bool valid) =>
         Assert.Equal(valid, NodeSettingsValidator.Validate(Good with { MicGain = gain }, "pw").Count == 0);
 
+    [Theory]
+    [InlineData(0.1f, false)]
+    [InlineData(0.25f, true)]
+    [InlineData(1.0f, true)]
+    [InlineData(4.0f, true)]
+    [InlineData(8.0f, true)]
+    [InlineData(9.0f, false)]
+    [InlineData(float.NaN, false)]
+    [InlineData(float.PositiveInfinity, false)]
+    public void RxGain_Range(float gain, bool valid) =>
+        Assert.Equal(valid, NodeSettingsValidator.Validate(Good with { RxGain = gain }, "pw").Count == 0);
+
     [Fact]
     public void Normalize_TrimsUppercasesAndDedupes()
     {
@@ -147,6 +159,7 @@ public class SettingsStoreTests : IDisposable
             NodeNumber = "55553", DefaultTargetNode = "27339",
             FavoriteNodes = ["1999", "27339"], IaxPort = 4570, RegisterOnStartup = false,
             InputDeviceId = "mic-1", OutputDeviceId = "spk-2", MicGain = 2.5f,
+            RxGain = 2.5f, RxAutoLevel = true, RxLoudnessBoost = true,
             TimeOutTimerSeconds = 90, TogglePtt = true
         };
 

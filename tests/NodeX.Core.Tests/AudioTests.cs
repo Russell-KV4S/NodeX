@@ -627,6 +627,53 @@ public class NodeAudioEngineTests
         dev.RaiseError("mic unplugged");
         Assert.Equal("mic unplugged", msg);
     }
+
+    [Fact]
+    public async Task RxGain_BoostsPlaybackAndOutputMeter_KeepsRxFrameDecodedAtUnity_AndAppliesLiveUpdates()
+    {
+        var ch = new FakeChannel();
+        var dev = new FakeDevice();
+        await using var engine = new NodeAudioEngine(ch, dev, new NodeAudioEngineOptions { RxGain = 2.0f });
+
+        var decodedFrames = new List<short[]>();
+        var meterPeaks = new List<double>();
+        engine.RxFrameDecoded += mem => decodedFrames.Add(mem.ToArray());
+        engine.OutputLevelChanged += l => { if (l.Peak > 0) meterPeaks.Add(l.Peak); };
+        engine.Start();
+
+        short quietSample = G711Ulaw.DecodeSample(G711Ulaw.EncodeSample(1000));
+        byte code = G711Ulaw.EncodeSample(quietSample);
+        for (int i = 0; i < 6; i++)
+            ch.Receive((ushort)(i * 20), Enumerable.Repeat(code, AudioFormat.SamplesPerFrame).ToArray());
+
+        await WaitUntil(() => { lock (dev.Played) return dev.Played.Count >= 3; });
+        short[] firstPlayed;
+        lock (dev.Played) firstPlayed = dev.Played[^1];
+
+        // RxFrameDecoded stays at unity (~1000) for WAV recording while playback gets 2x (~2000).
+        Assert.NotEmpty(decodedFrames);
+        Assert.All(decodedFrames, f => Assert.InRange(f[0], (short)(quietSample - 1), (short)(quietSample + 1)));
+        Assert.InRange(firstPlayed[^1], (short)(quietSample * 2 - 50), (short)(quietSample * 2 + 50));
+
+        // Live mid-call boost update to 4.0x takes effect immediately on subsequent frames.
+        engine.RxGain = 4.0f;
+        engine.RxAutoLevel = true;
+        Assert.Equal(4.0f, engine.RxGain);
+        Assert.True(engine.RxAutoLevel);
+
+        int countBefore;
+        lock (dev.Played) countBefore = dev.Played.Count;
+        for (int i = 6; i < 12; i++)
+            ch.Receive((ushort)(i * 20), Enumerable.Repeat(code, AudioFormat.SamplesPerFrame).ToArray());
+
+        await WaitUntil(() => { lock (dev.Played) return dev.Played.Count >= countBefore + 4; });
+        short[] laterPlayed;
+        lock (dev.Played) laterPlayed = dev.Played[^1];
+        Assert.True(laterPlayed[^1] > firstPlayed[^1] * 1.5,
+            $"expected live RX boost above {firstPlayed[^1] * 1.5:F0}, got {laterPlayed[^1]}");
+        Assert.NotEmpty(meterPeaks);
+        Assert.True(meterPeaks[^1] > (double)quietSample / 32768.0 * 2.0);
+    }
 }
 
 public class PlaybackRingBufferTests

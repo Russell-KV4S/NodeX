@@ -65,6 +65,13 @@ namespace NodeX.UI.Android
                 networkMonitor: new AndroidNetworkMonitor(this),
                 appVersion: AndroidVersionName());
 
+            AppServices.RxLoudnessBoostSupported = true;
+            AppServices.Runtime.RxAudioChanged += (gain, _, boost) =>
+                AndroidAudioDeviceService.SetLoudnessBoost(gain, boost);
+            AndroidAudioDeviceService.SetLoudnessBoost(
+                AppServices.Runtime.LiveRxGain,
+                AppServices.Runtime.LiveRxLoudnessBoost);
+
 #if !PLAY_STORE
             AndroidAppUpdater.Configure(this);
 #endif

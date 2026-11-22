@@ -95,6 +95,37 @@ public sealed class NodeRuntime : IAsyncDisposable
     /// <summary>Latest loaded or saved configuration (including the password, in memory only).</summary>
     public NodeConfig Config { get; private set; }
 
+    /// <summary>Active manual receive gain multiplier (updated immediately for live sliders).</summary>
+    public float LiveRxGain { get; private set; } = 1.0f;
+
+    /// <summary>Active receive auto-level toggle (updated immediately for live switches).</summary>
+    public bool LiveRxAutoLevel { get; private set; }
+
+    /// <summary>Active Android extra speaker boost toggle.</summary>
+    public bool LiveRxLoudnessBoost { get; private set; }
+
+    /// <summary>Raised when live receive gain, auto-level, or Android loudness boost changes.</summary>
+    public event Action<float, bool, bool>? RxAudioChanged;
+
+    /// <summary>
+    /// Applies receive audio settings immediately to every active link and notifies platform audio backends
+    /// without waiting for settings persistence or interrupting calls.
+    /// </summary>
+    public void SetLiveRxAudio(float rxGain, bool rxAutoLevel, bool? rxLoudnessBoost = null)
+    {
+        float gain = RxAudioProcessor.SanitizeGain(rxGain);
+        bool boost = rxLoudnessBoost ?? LiveRxLoudnessBoost;
+        LiveRxGain = gain;
+        LiveRxAutoLevel = rxAutoLevel;
+        LiveRxLoudnessBoost = boost;
+        foreach (var link in Links)
+        {
+            link.Audio.RxGain = gain;
+            link.Audio.RxAutoLevel = rxAutoLevel;
+        }
+        RxAudioChanged?.Invoke(gain, rxAutoLevel, boost);
+    }
+
     // ----- registration state -----
 
     private bool _registered;
@@ -351,6 +382,7 @@ public sealed class NodeRuntime : IAsyncDisposable
             var previous = Config;
             Config = cfg;
             Log.Detailed = cfg.Settings.DetailedLogging;
+            SetLiveRxAudio(cfg.Settings.RxGain, cfg.Settings.RxAutoLevel, cfg.Settings.RxLoudnessBoost);
             if (previous.Settings.AutoReconnect && !cfg.Settings.AutoReconnect)
                 _ = Task.Run(StopRetriesAfterAutoReconnectOffAsync);   // outside the gate: a dial may need it
 
@@ -908,8 +940,9 @@ public sealed class NodeRuntime : IAsyncDisposable
         }
 
         // On the shared call socket, so the far node sees the address the registry recorded.
-        var link = new NodeLink(Config.Settings, info, _audioFactory(), _audioOptions, _configureSession, Transmit,
-            EnsureEndpoint());
+        var link = new NodeLink(
+            Config.Settings with { RxGain = LiveRxGain, RxAutoLevel = LiveRxAutoLevel },
+            info, _audioFactory(), _audioOptions, _configureSession, Transmit, EnsureEndpoint());
         link.Ptt.ListenOnlyReason = $"Node {c.Node} is listen-only. Choose it as the transmit node to talk on it.";
         link.Audio.Muted = c.Muted;
         link.Error += m => ErrorOccurred?.Invoke(ForNode(c, m));

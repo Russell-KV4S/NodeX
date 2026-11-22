@@ -803,13 +803,20 @@ public sealed class AudioClipRecorder : IDisposable
 public sealed class AudioClipPlayer : IAsyncDisposable
 {
     private readonly Func<IAudioDeviceService> _audioFactory;
+    private readonly Func<float>? _rxGainProvider;
+    private readonly Func<bool>? _rxAutoLevelProvider;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private CancellationTokenSource? _playCts;
     private Task? _playTask;
 
-    public AudioClipPlayer(Func<IAudioDeviceService> audioFactory)
+    public AudioClipPlayer(
+        Func<IAudioDeviceService> audioFactory,
+        Func<float>? rxGainProvider = null,
+        Func<bool>? rxAutoLevelProvider = null)
     {
         _audioFactory = audioFactory ?? throw new ArgumentNullException(nameof(audioFactory));
+        _rxGainProvider = rxGainProvider;
+        _rxAutoLevelProvider = rxAutoLevelProvider;
     }
 
     public bool IsPlaying { get; private set; }
@@ -912,6 +919,8 @@ public sealed class AudioClipPlayer : IAsyncDisposable
             device.StartPlayback();
 
             int samplesPerFrame = Math.Max(1, sampleRate * AudioFormat.FrameMilliseconds / 1000);
+            var rxProcessor = new RxAudioProcessor();
+            short[] frameBuf = new short[samplesPerFrame];
             int offset = 0;
             var sw = Stopwatch.StartNew();
             using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(AudioFormat.FrameMilliseconds));
@@ -919,7 +928,11 @@ public sealed class AudioClipPlayer : IAsyncDisposable
             while (!ct.IsCancellationRequested && offset < samples.Length)
             {
                 int count = Math.Min(samplesPerFrame, samples.Length - offset);
-                device.EnqueuePlaybackPcm(samples.AsMemory(offset, count));
+                samples.AsSpan(offset, count).CopyTo(frameBuf);
+                if (_rxGainProvider != null) rxProcessor.Gain = _rxGainProvider();
+                if (_rxAutoLevelProvider != null) rxProcessor.AutoLevel = _rxAutoLevelProvider();
+                rxProcessor.Process(frameBuf.AsSpan(0, count));
+                device.EnqueuePlaybackPcm(frameBuf.AsMemory(0, count));
                 offset += count;
                 PositionSeconds = Math.Min(DurationSeconds, (double)offset / sampleRate);
                 StateChanged?.Invoke();

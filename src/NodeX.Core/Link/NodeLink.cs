@@ -56,7 +56,9 @@ public sealed class NodeLink : IAsyncDisposable
         Audio = new NodeAudioEngine(Session, device, (baseAudioOptions ?? new NodeAudioEngineOptions()) with
         {
             MicGain = settings.MicGain,
-            MicProcessing = settings.MicProcessing
+            MicProcessing = settings.MicProcessing,
+            RxGain = settings.RxGain,
+            RxAutoLevel = settings.RxAutoLevel
         });
 
         Session.StateChanged += OnSessionStateChanged;

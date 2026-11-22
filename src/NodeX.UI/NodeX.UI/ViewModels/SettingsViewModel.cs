@@ -282,6 +282,21 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool MicProcessing { get; set; } = true;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RxGainLabel))]
+    public partial double RxGain { get; set; } = 1.0;
+
+    public string RxGainLabel => RxAudioProcessor.FormatGainWithDb((float)RxGain);
+
+    [ObservableProperty]
+    public partial bool RxAutoLevel { get; set; }
+
+    [ObservableProperty]
+    public partial bool RxLoudnessBoost { get; set; }
+
+    /// <summary>True on Android where native extra speaker boost (<c>LoudnessEnhancer</c>) is available.</summary>
+    public bool RxLoudnessBoostSupported => AppServices.RxLoudnessBoostSupported;
+
     // ----- microphone / speaker choice (desktop) -----
 
     /// <summary>Pickers exist only where the head can enumerate devices (desktop).</summary>
@@ -478,6 +493,9 @@ public partial class SettingsViewModel : ViewModelBase
         TimeOutSecondsText = s.TimeOutTimerSeconds.ToString(CultureInfo.InvariantCulture);
         MicGain = s.MicGain;
         MicProcessing = s.MicProcessing;
+        RxGain = s.RxGain;
+        RxAutoLevel = s.RxAutoLevel;
+        RxLoudnessBoost = s.RxLoudnessBoost;
         FillAudioDevices(s.InputDeviceId, s.OutputDeviceId);
         IdReminderEnabled = s.IdReminderEnabled;
         IdReminderMinutesText = s.IdReminderMinutes.ToString(CultureInfo.InvariantCulture);
@@ -684,6 +702,9 @@ public partial class SettingsViewModel : ViewModelBase
             AutoReconnect = AutoReconnect,
             MicGain = (float)MicGain,
             MicProcessing = MicProcessing,
+            RxGain = (float)RxGain,
+            RxAutoLevel = RxAutoLevel,
+            RxLoudnessBoost = RxLoudnessBoost,
             InputDeviceId = SelectedInputDevice?.Id,
             OutputDeviceId = SelectedOutputDevice?.Id,
             TimeOutTimerSeconds = timeout,

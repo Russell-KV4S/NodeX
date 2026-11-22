@@ -270,4 +270,36 @@ public class SettingsViewModelTests : IDisposable
             ["523800", "1999@ysf.alert-alabama.org", "1993@ysf.alert-alabama.org:4570", "1992@ysf.alert-alabama.org"],
             reloaded.Settings.AutoConnectNodes);
     }
+
+    [Fact]
+    public async Task RxAudioSettings_LoadAndSaveRoundTrip()
+    {
+        await _config.SaveAsync(new NodeSettings
+        {
+            NodeNumber = "523802",
+            RxGain = 2.0f,
+            RxAutoLevel = true,
+            RxLoudnessBoost = true
+        }, "pw");
+
+        var vm = Create();
+        await vm.LoadAsync();
+
+        Assert.Equal(2.0, vm.RxGain);
+        Assert.Equal("2.0× (+6 dB)", vm.RxGainLabel);
+        Assert.True(vm.RxAutoLevel);
+        Assert.True(vm.RxLoudnessBoost);
+
+        vm.RxGain = 3.5;
+        Assert.Equal("3.5× (+11 dB)", vm.RxGainLabel);
+        vm.RxAutoLevel = false;
+        vm.RxLoudnessBoost = false;
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.False(vm.HasError);
+
+        var reloaded = await _config.LoadAsync();
+        Assert.Equal(3.5f, reloaded.Settings.RxGain);
+        Assert.False(reloaded.Settings.RxAutoLevel);
+        Assert.False(reloaded.Settings.RxLoudnessBoost);
+    }
 }

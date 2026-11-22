@@ -19,6 +19,7 @@ public static partial class NodeSettingsValidator
         public const string RegistrationUrl = nameof(NodeSettings.RegistrationUrl);
         public const string IaxPort = nameof(NodeSettings.IaxPort);
         public const string MicGain = nameof(NodeSettings.MicGain);
+        public const string RxGain = nameof(NodeSettings.RxGain);
         public const string TimeOutTimerSeconds = nameof(NodeSettings.TimeOutTimerSeconds);
         public const string IdReminderMinutes = nameof(NodeSettings.IdReminderMinutes);
     }
@@ -164,6 +165,9 @@ public static partial class NodeSettingsValidator
 
         if (float.IsNaN(s.MicGain) || s.MicGain is < 0.1f or > 8f)
             issues.Add(new(Fields.MicGain, "Microphone gain must be between 0.1 and 8."));
+
+        if (!float.IsFinite(s.RxGain) || s.RxGain is < 0.25f or > 8f)
+            issues.Add(new(Fields.RxGain, "Receive gain must be between 0.25 and 8."));
 
         if (s.TimeOutTimerSeconds is < 10 or > 600)
             issues.Add(new(Fields.TimeOutTimerSeconds, "Time-out timer must be between 10 and 600 seconds."));

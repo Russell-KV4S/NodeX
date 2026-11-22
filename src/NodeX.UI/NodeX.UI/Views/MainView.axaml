@@ -396,6 +396,29 @@
                         </Grid>
                     </Border>
 
+                    <!-- RECEIVE GAIN (RX): live speaker boost & auto-level on the Radio screen -->
+                    <Border x:Name="RxGainCard" Classes="card" Padding="12,8">
+                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Text="RX" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
+                                       Foreground="{DynamicResource CyanAccentBrush}" VerticalAlignment="Center" />
+                            <Slider x:Name="RxGainSlider" Grid.Column="1"
+                                    AutomationProperties.Name="Receive gain"
+                                    Minimum="0.5" Maximum="4" TickFrequency="0.1"
+                                    Value="{Binding RxGain}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="{Binding RxGainDisplay}"
+                                       FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       VerticalAlignment="Center" MinWidth="36" TextAlignment="Right" />
+                            <Button x:Name="RxAutoLevelButton" Grid.Column="3"
+                                    Classes="autoToggle" Classes.active="{Binding RxAutoLevel}"
+                                    Command="{Binding ToggleRxAutoLevelCommand}"
+                                    AutomationProperties.Name="Auto-level incoming voices"
+                                    ToolTip.Tip="Automatically boost quiet stations and tame loud ones"
+                                    Content="Auto" Padding="10,4" MinWidth="48" MinHeight="32"
+                                    FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold" />
+                        </Grid>
+                    </Border>
+
                     <!-- PUSH-TO-TALK & AUDIO METERS: sits in the left column on wide screens, docks to the bottom on phones
                          so the MIC/SPK bars stay on screen alongside PTT and Speaker while scrolling -->
                     <Border x:Name="PttCard" Classes="card" CornerRadius="16" Padding="24">

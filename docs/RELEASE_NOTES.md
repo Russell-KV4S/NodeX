@@ -1,10 +1,16 @@
-NodeX 1.30 fixes IAX2 registration on cellular and carrier-NAT networks so registration and calls use the same public IP instead of falling back to HTTPS on a different address.
+NodeX 1.31 adds live receive gain adjustment, optional RX Auto-Level, and an Android extra speaker boost so incoming stations can be heard more clearly on noisy or quiet mobile speakers.
 
-- **IAX2 registration fix:** Fixed the Step 1 handshake with `register.allstarlink.org` (removed a premature `ACK` after `REGAUTH` and fixed sequence numbering), so IAX2 registration succeeds directly from the shared UDP call socket instead of timing out and falling back to HTTPS.
+- **Receive gain (RX) & soft limiter:** Adjust receive gain from `0.5×` to `4.0×` right on the main Radio screen or in **Settings → Audio & PTT**. Changes apply immediately to all active links and **Audio Replay** playback with soft limiting, while saved Audio Replay WAV files remain clean at unity gain.
+- **RX Auto-Level (optional):** Turn on **Auto** on the main screen (or **Auto-level incoming voices** in Settings) for gated AGC that lifts quiet stations and tames loud hubs without amplifying background hiss or squelch.
+- **Android extra speaker boost (optional):** Enable **Extra speaker boost (Android LoudnessEnhancer)** in **Settings → Audio & PTT** (`+600` to `+1200 mB`) on supported Android devices.
+
+Automated builds, 866 Core unit tests, and 48 headless UI tests pass; physical phone listening checks for RX gain, RX Auto-Level, and Android `LoudnessEnhancer` remain pending.
+
+**From 1.30**
+
+- **IAX2 registration fix:** Fixed the Step 1 handshake with `register.allstarlink.org` (removed a premature `ACK` after `REGAUTH` and fixed sequence numbering), so IAX2 registration succeeds directly from the shared UDP call socket instead of timing out and falling back to HTTPS. Confirmed working live on AT&T cellular in v1.30 (`Registered (IAX2)`, `verdict=Consistent`, working live links).
 - **Clearer diagnostics:** Reports numeric IAX2 rejection codes (such as `code 29`) and which step/server timed out.
 - **Audio Replay:** Hardened saving the local replay index on Windows against brief file-lock interruptions.
-
-Live IAX2 registration (`REGACK` + consistent STUN match) is verified on PC; physical phone retesting on AT&T cellular remains pending.
 
 **From 1.29**
 
@@ -64,4 +70,4 @@ Downloads:
 
 **Switching from Google Play:** Play and sideload signatures differ. Export your settings before uninstalling the Play build; you may need to re-enter the node password.
 
-**Not yet verified:** nothing in 1.26 has been tried on a phone or in a car yet: the car-unplug release, the IPv6 network check, the background-service restart, the Spacebar release on Windows, the new RX noise threshold on the busy hubs and the jitter-buffer change are build- and unit-tested only. The car radio option and the mute change haven't been tried in a car; the radio option assumes the car tells the phone it has switched to the radio, and how it sounds depends on the car. The false-RX change hasn't been checked on a phone. The bubble chart link is build- and unit-tested only and hasn't been tapped on a phone yet. Private nodes are build- and unit-tested only. They haven't yet been dialled against a live private server, and share links, the phone screens and Android Auto haven't been tried on a device or in a car. IPv6 addresses are accepted but can't be dialled yet. macOS/Linux share-link registration is not built.
+**Not yet verified:** in 1.31, the live RX gain slider, RX Auto-Level, Audio Replay playback gain, and Android `LoudnessEnhancer` speaker boost have not yet been listened to on a physical phone. Earlier items also pending real-device/car verification: car-unplug PTT release, IPv6 network check, background-service restart, Windows Spacebar release on Alt+Tab, hub noise threshold and jitter-buffer fix on a phone, car radio mixing and mute behaviour in a car, bubble chart links tapped on a phone, private-node host-hiding UI checks and `nodex://add?...` share links on Android/Windows, IPv6 dialing (accepted only), macOS/Linux share-link registration, Android 1.29 playback stall recovery, clip combining, and GitHub update disconnect prompt on a phone.

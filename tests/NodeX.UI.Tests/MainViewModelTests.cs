@@ -171,4 +171,24 @@ public class MainViewModelTests
         await f.Vm.HandleSpacebarPttAsync(true);
         Assert.False(f.Runtime.Link.Ptt.IsPttActive);
     }
+
+    [AvaloniaFact]
+    public async Task LiveRxGainAndAutoLevel_UpdateActiveLinkAndPersist()
+    {
+        await using var f = new Fixture();
+        await f.Vm.InitializeAsync();
+        await f.Connect("2000");
+
+        f.Vm.RxGain = 2.5;
+        Assert.Equal("2.5×", f.Vm.RxGainDisplay);
+        Assert.Equal(2.5f, f.Runtime.LiveRxGain);
+        Assert.Equal(2.5f, f.Runtime.Link!.Audio.RxGain);
+
+        f.Vm.ToggleRxAutoLevelCommand.Execute(null);
+        Assert.True(f.Vm.RxAutoLevel);
+        Assert.True(f.Runtime.LiveRxAutoLevel);
+        Assert.True(f.Runtime.Link.Audio.RxAutoLevel);
+
+        await Until(() => Math.Abs(f.Runtime.Config.Settings.RxGain - 2.5f) < 0.01f && f.Runtime.Config.Settings.RxAutoLevel);
+    }
 }

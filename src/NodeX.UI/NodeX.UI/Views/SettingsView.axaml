@@ -323,6 +323,22 @@
                         </Grid>
                         <Slider AutomationProperties.Name="Microphone gain" Minimum="0.5" Maximum="4" Value="{Binding MicGain}" />
                     </StackPanel>
+
+                    <StackPanel>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Classes="label" Text="Receive gain (RX)" />
+                            <TextBlock Grid.Column="1" Classes="label" Text="{Binding RxGainLabel}" />
+                        </Grid>
+                        <Slider AutomationProperties.Name="Receive gain" Minimum="0.5" Maximum="4" TickFrequency="0.1" Value="{Binding RxGain}" />
+                        <TextBlock Classes="hint" Text="Boosts incoming speaker audio and Audio Replay with a soft limiter to avoid clipping." />
+                    </StackPanel>
+
+                    <CheckBox Content="Auto-level incoming voices (boost quiet stations, tame loud ones)" IsChecked="{Binding RxAutoLevel}" />
+
+                    <StackPanel IsVisible="{Binding RxLoudnessBoostSupported}" Spacing="4">
+                        <CheckBox Content="Extra speaker boost (Android LoudnessEnhancer)" IsChecked="{Binding RxLoudnessBoost}" />
+                        <TextBlock Classes="hint" Text="Adds extra native volume boost on Android when the phone speaker is still too quiet at full volume." />
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

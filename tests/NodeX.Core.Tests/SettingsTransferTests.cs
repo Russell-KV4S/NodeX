@@ -12,6 +12,9 @@ public class SettingsTransferTests
         FavoriteNodes = ["27339", "2000"],
         FavoriteLabels = new() { ["27339"] = "East Coast Reflector" },
         MicGain = 2.5f,
+        RxGain = 3.0f,
+        RxAutoLevel = true,
+        RxLoudnessBoost = true,
         TogglePtt = true,
         InputDeviceId = "mic-on-this-phone",
         OutputDeviceId = "speaker-on-this-phone"
@@ -30,6 +33,9 @@ public class SettingsTransferTests
         Assert.Equal(["27339", "2000"], s.FavoriteNodes);
         Assert.Equal("East Coast Reflector", s.FavoriteLabels["27339"]);
         Assert.Equal(2.5f, s.MicGain);
+        Assert.Equal(3.0f, s.RxGain);
+        Assert.True(s.RxAutoLevel);
+        Assert.True(s.RxLoudnessBoost);
         Assert.True(s.TogglePtt);
         Assert.Null(s.InputDeviceId);
         Assert.Null(s.OutputDeviceId);
