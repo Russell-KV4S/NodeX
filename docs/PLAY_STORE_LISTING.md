@@ -58,7 +58,7 @@ A short screen recording (link a node, lock the screen, audio keeps playing, not
 | Question | Answer |
 |---|---|
 | Collects or shares required data types? | Yes (see rows) |
-| Data encrypted in transit? | Registration: yes (HTTPS). Voice/IAX2 to nodes: **no** (the AllStarLink protocol is unencrypted UDP). Say so honestly; answer "No" to "all data encrypted in transit" |
+| Data encrypted in transit? | Registration: by default over IAX2/UDP (password proven by MD5 challenge, not sent), HTTPS as fallback; a STUN address check goes to Google/Cloudflare (sees only the public IP/port). Voice/IAX2 to nodes: **no** (the AllStarLink protocol is unencrypted UDP). Say so honestly; answer "No" to "all data encrypted in transit" |
 | Users can request deletion? | No data is held by the developer. State that in the policy (done) |
 | Audio: voice or sound recordings | Collected: yes, not stored; sent to the linked node at the user's request; purpose App functionality; optional (you can listen without it) |
 | Personal info: name/user IDs | Node number: shared with AllStarLink and the linked node; App functionality. NodeX does not collect a callsign |

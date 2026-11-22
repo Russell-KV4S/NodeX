@@ -369,6 +369,10 @@ public partial class SettingsViewModel : ViewModelBase
     private Dictionary<string, string> _favoriteLabels = [];
     private List<PrivateNodeEntry> _privateNodes = [];
 
+    // The settings the form was filled from. Saving starts from these, so a setting the form does not show (such as
+    // IaxRegistration) keeps its value instead of silently reverting to its default (2026-11-21 review).
+    private NodeSettings _loadedSettings = new();
+
     public string PrivateNodesSummaryText => _privateNodes.Count switch
     {
         0 => "No private nodes saved yet.",
@@ -400,6 +404,7 @@ public partial class SettingsViewModel : ViewModelBase
 
     private void FillForm(NodeSettings s, string password)
     {
+        _loadedSettings = s;
         ThemeIndex = s.Theme == "Light" ? 1 : s.Theme == "HighContrast" ? 2 : 0;
         TextScale = s.TextScale;
         NodeNumber = s.NodeNumber;
@@ -592,7 +597,7 @@ public partial class SettingsViewModel : ViewModelBase
         if (!int.TryParse(IaxPortText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out port))
             issues.Add(new(NodeSettingsValidator.Fields.IaxPort, "IAX port must be a whole number."));
 
-        settings = new NodeSettings
+        settings = _loadedSettings with
         {
             Theme = ThemeIndex == 1 ? "Light" : ThemeIndex == 2 ? "HighContrast" : "Dark",
             TextScale = TextScale,

@@ -242,10 +242,19 @@ public sealed class Iax2Registrar : INodeRegistration, IDisposable
                         await SendAckAsync(server, local, remote, f, oseq, iseq, ct);
 
                         string challenge = "";
+                        int? authMethods = null;
                         foreach (var ie in Iax2Protocol.ParseInformationElements(f.Payload))
+                        {
                             if (ie.Id == Iax2Protocol.InformationElementId.Challenge)
                                 challenge = Encoding.ASCII.GetString(ie.Data);
-                        md5 = Encoding.ASCII.GetBytes(Convert.ToHexString(
+                            else if (ie.Id == Iax2Protocol.InformationElementId.AuthMethods && ie.Data.Length >= 2)
+                                authMethods = (ie.Data[0] << 8) | ie.Data[1];
+                        }
+                        // Never answer without a challenge or when MD5 is not offered: MD5("" + password) is an
+                        // unsalted hash of the password, sendable by anyone who spoofs one REGAUTH (2026-11-21 review).
+                        if (challenge.Length == 0 || authMethods is { } m && (m & 0x0002) == 0)
+                            return NoReply("The registry's IAX2 challenge was unusable (no MD5 challenge); nothing was sent");
+                        md5 =Encoding.ASCII.GetBytes(Convert.ToHexString(
                             MD5.HashData(Encoding.UTF8.GetBytes(challenge + _password))).ToLowerInvariant());
                         break;
                     }

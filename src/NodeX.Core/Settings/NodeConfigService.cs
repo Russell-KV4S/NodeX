@@ -60,9 +60,25 @@ public sealed class NodeConfigService
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            // Password first: if the secret store fails we have not claimed a configuration was saved.
+            // Password first: if the secret store fails we have not claimed a configuration was saved. If the settings
+            // file then fails, put the old password back, so a reload never pairs the old node number with the new
+            // password (2026-11-21 review). A process kill between the two writes can still leave that pair.
+            string? previousPassword = await _secrets.GetAsync(SecretKeys.NodePassword, cancellationToken);
             await _secrets.SetAsync(SecretKeys.NodePassword, password, cancellationToken);
-            await _settings.SaveAsync(normalized, cancellationToken);
+            try
+            {
+                await _settings.SaveAsync(normalized, cancellationToken);
+            }
+            catch
+            {
+                try
+                {
+                    if (previousPassword == null) await _secrets.DeleteAsync(SecretKeys.NodePassword, CancellationToken.None);
+                    else await _secrets.SetAsync(SecretKeys.NodePassword, previousPassword, CancellationToken.None);
+                }
+                catch (Exception) { /* best effort; the original failure is what the caller needs to see */ }
+                throw;
+            }
         }
         finally
         {

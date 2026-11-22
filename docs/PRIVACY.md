@@ -1,6 +1,6 @@
 # NodeX privacy policy
 
-*Last updated: 2026-11-12. Applies to NodeX on Android, Windows, Linux and macOS.*
+*Last updated: 2026-11-21. Applies to NodeX on Android, Windows, Linux and macOS.*
 
 NodeX is a free, open-source AllStarLink node app. It has no accounts, no advertising, no analytics and no telemetry. The developer runs no server that receives your data.
 
@@ -12,7 +12,8 @@ NodeX is a free, open-source AllStarLink node app. It has no accounts, no advert
 - Android Auto Backup may copy the settings file (not the password) to your own Google account backup, as for any app. You can switch that off in Android settings.
 
 **Sent over the network, only because you asked NodeX to connect**
-- **AllStarLink registration** (`register.allstarlink.org`, HTTPS): your node number, node password and the public IP address your connection comes from. This is how an AllStarLink node tells the network where it is. It is governed by AllStarLink's own policies.
+- **AllStarLink registration** (`register.allstarlink.org`): your node number and the public IP address and port your connection comes from. By default NodeX registers over IAX2 (UDP), which proves the password with a one-time MD5 challenge instead of sending it; if that does not work on your network it registers over HTTPS, which sends the node password inside the encrypted connection. This is how an AllStarLink node tells the network where it is. It is governed by AllStarLink's own policies.
+- **Network address checks (STUN)**: once after registering on a network, and then every 25 seconds while registered over IAX2, NodeX sends a tiny STUN request from its call socket to `stun.l.google.com` (Google) and, for the one-time check, also `stun.cloudflare.com` (Cloudflare). They see your public IP address and port, nothing else. This keeps the mobile carrier's address mapping alive and spots an address change, so other nodes keep accepting your links.
 - **Looking up and linking nodes** (`stats.allstarlink.org`, DNS, and IAX2 over UDP to the node you link): the node numbers you search for or connect to, your node number (the IAX caller identity is `NodeX-<node number>`) and your public IP address. NodeX does not ask for your callsign. Other nodes on the network can see these, as with any AllStarLink node. To find which port a node listens on, NodeX asks your device's DNS servers and, when it cannot use them, the public resolvers 1.1.1.1 (Cloudflare) and 8.8.8.8 (Google), which then see the number of the node being looked up.
 - **Find a node**: the text you type in the search box is sent to `stats.allstarlink.org`.
 - **Bubble chart links**: tapping "Bubble chart" opens that node's page on `stats.allstarlink.org` in your web browser. Nothing is sent unless you tap it.
@@ -23,7 +24,7 @@ NodeX is a free, open-source AllStarLink node app. It has no accounts, no advert
 **GitHub updates (full sideload Android edition only)**
 - Opening the phone app checks the project's latest stable GitHub release at most once per day while the process stays running; Settings also has a manual check. GitHub receives your public IP address and a generic NodeX updater user-agent, but no node password, node number or GitHub credentials.
 - An APK downloads only when you choose Download and install. It is kept in the app's private cache and shared temporarily with Android's package installer after verification. Android asks you to approve installation. The Play edition does not use this updater or request installation permission.
-- Releases are currently private. The app contains no GitHub token and reports the update feed as unavailable until anonymous access is enabled. Authorized users can download releases directly through GitHub.
+- The repository and its releases are public. The app contains no GitHub token and reads release information anonymously.
 
 ## Diagnostic log
 

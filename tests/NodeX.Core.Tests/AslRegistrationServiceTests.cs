@@ -91,6 +91,18 @@ public class AslRegistrationServiceTests
         Assert.DoesNotContain("s3cret", svc.LastStatusMessage); // the password must never reach the UI
     }
 
+    [Fact]
+    public async Task ARegistryReplyThatEchoesThePassword_NeverShowsIt()
+    {
+        // 2026-11-21 review: the registry's free-form text was shown and logged as received.
+        var h = new StubHandler((_, _) => Json("""{"data":"bad credentials node=55553 s3cret"}"""));
+        using var svc = Create(h);
+
+        Assert.False(await svc.SendHeartbeatAsync());
+        Assert.Contains("bad credentials", svc.LastStatusMessage);
+        Assert.DoesNotContain("s3cret", svc.LastStatusMessage);
+    }
+
     [Theory]
     [InlineData("not json")]
     [InlineData("[1,2,3]")]

@@ -76,6 +76,30 @@ public class Iax2RegistrarTests
     }
 
     [Fact]
+    public async Task ARegAuthWithoutChallenge_SendsNoPasswordHash()
+    {
+        // 2026-11-21 review: an empty challenge made NodeX send MD5("" + password), an unsalted hash of the password.
+        using var registry = new FakeRegistry();
+        using var reg = new Iax2Registrar("523802", "s3cret", registry.EndPoint) { ReplyTimeout = TimeSpan.FromMilliseconds(300) };
+        var task = reg.RegisterOnceAsync();
+
+        var (req1, from) = await registry.ReceiveAsync();
+        await registry.SendAsync(from, req1.SourceCallNumber, (byte)IaxControlSubclass.RegAuth, 0, 1,
+            Iax2InformationElement.UInt16(InformationElementId.AuthMethods, 2));
+
+        Assert.False(await task.WaitAsync(TimeSpan.FromSeconds(5)));
+        // Nothing carrying an MD5 result followed.
+        await Assert.ThrowsAnyAsync<Exception>(async () =>
+        {
+            while (true)
+            {
+                var (f, _) = await registry.ReceiveAsync();
+                if (ParseInformationElements(f.Payload).Any(i => i.Id == InformationElementId.Md5Result)) return;
+            }
+        });
+    }
+
+    [Fact]
     public async Task EchoesCallToken_ThenRegisters()
     {
         using var registry = new FakeRegistry();

@@ -94,7 +94,7 @@ Build output is redirected to `%LOCALAPPDATA%\NodeX\build` by `Directory.Build.p
 ## Known limitations
 
 - Outbound links only. Cellular carriers block inbound IAX2, so NodeX ignores inbound links.
-- A hub can refuse your link for some minutes after you register or change network, until it has learned your node's address. NodeX keeps retrying (up to about 28 minutes).
+- A hub can refuse your link for some minutes after you register or change network, until it has learned your node's address. NodeX keeps retrying until you disconnect the node.
 - Moving between Wi-Fi and cellular drops and re-dials the link (an IAX2 call cannot change address). It works in day-to-day use, with a delay while the new address registers; the delay has not been measured.
 - IPv4 only.
 - Linux and macOS use the OS keyring (`secret-tool` / `libsecret` on Linux, Keychain on macOS) when available, falling back to a `0600` key file beside the ciphertext on minimal/headless systems without a keyring daemon.

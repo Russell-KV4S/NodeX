@@ -216,7 +216,9 @@ public sealed class DiagnosticLog
 
     // Belt and braces: callers never log secrets, but anything shaped like one is scrubbed anyway.
     private static readonly Regex SecretPattern = new(
-        @"(?i)\b(pass(?:word|wd)?|secret|token|authorization|apikey|api[_-]key)\b(\s*[=:]\s*)(""[^""]*""|\S+)",
+        // A closing quote may sit between the key and the colon ({"passwd":"..."}), and an auth scheme word may sit
+        // before the value ("Authorization: Bearer ..."); both used to leave the secret in the log (2026-11-21 review).
+        @"(?i)\b(pass(?:word|wd)?|secret|token|authorization|apikey|api[_-]key)\b(['""]?\s*[=:]\s*)((?:(?:Bearer|Basic|Digest)\s+)?(?:""[^""]*""|'[^']*'|\S+))",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>Replaces the value in <c>password=...</c>, <c>token: ...</c> and the like with <c>***</c>, and flattens control characters.</summary>

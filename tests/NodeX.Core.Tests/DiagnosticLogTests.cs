@@ -79,6 +79,9 @@ public sealed class DiagnosticLogTests : IDisposable
     [InlineData("Password: hunter2", "hunter2")]
     [InlineData("token=abc123def", "abc123def")]
     [InlineData("secret = \"topsecretvalue\"", "topsecretvalue")]
+    [InlineData("{\"passwd\":\"mysecret123\",\"node\":\"55553\"}", "mysecret123")]
+    [InlineData("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload", "eyJhbGciOiJIUzI1NiJ9")]
+    [InlineData("password='single quoted secret'", "single quoted secret")]
     public void Secrets_are_redacted(string message, string leaked)
     {
         string redacted = DiagnosticLog.Redact(message);

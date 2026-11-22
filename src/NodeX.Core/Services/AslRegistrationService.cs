@@ -229,6 +229,10 @@ public sealed class AslRegistrationService : INodeRegistration, IDisposable
                 return true;
             }
 
+            // The registry's free-form text is shown in Settings and logged: if it ever echoes what was sent, the
+            // password must not appear (truncation is no protection, and the log filter only knows labelled values).
+            if (_config.NodePassword is { Length: >= 3 } secret)
+                status = status.Replace(secret, "***", StringComparison.Ordinal);
             string shown = status.Length > 120 ? status[..120] + "..." : status;
             return Fail(
                 string.IsNullOrWhiteSpace(shown) ? "Registration not accepted" : $"Registration not accepted: {shown}",
