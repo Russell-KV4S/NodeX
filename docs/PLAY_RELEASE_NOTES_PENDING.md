@@ -14,15 +14,15 @@ Rules:
 
 ## Pending
 
-1.26 through 1.28 (code 31), pending Google Play upload (2026-11-21).
+1.26 through 1.29 (code 32), pending Google Play upload (2026-11-21).
 
 ```
 <en-US>
-Replay received and transmitted audio saved on your device. Turn clip saving off in Settings.
-Auto-connect to up to eight public or private nodes at startup.
-Follow your system theme or try AMOLED black, Nord, Terminal green, or Sepia.
-New Exit and Replay icons, plus MIC and SPK meters in the PTT frame.
-Fewer false receiving lights on busy hubs. Reconnect, IPv6 mobile data, background service, and registration settings fixes.
+Replay local audio and combine selected clips into one shareable WAV. Turn clip saving off in Settings.
+Auto-connect to up to eight public or private nodes. Fixed Android startup auto-connect and audio stalls.
+Private node hosts stay out of the main screen and Android Auto browse.
+Follow the system theme or try four new themes. MIC and SPK meters sit in the PTT frame.
+Fewer false receiving lights and fixes for reconnects, IPv6 mobile data, and the background service.
 </en-US>
 ```
 

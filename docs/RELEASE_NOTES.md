@@ -1,4 +1,14 @@
-NodeX 1.28 adds local Audio Replay, startup auto-connect for up to eight nodes, and more appearance options.
+NodeX 1.29 fixes Android playback and startup auto-connect problems reported in 1.28 and lets you combine replay clips into one shareable WAV.
+
+- **Android playback:** NodeX now rebuilds stalled audio tracks and releases idle tracks so playback can recover without toggling Phone/Speaker.
+- **Startup auto-connect on Android:** Fixed a background-thread error that could stop startup links from connecting.
+- **Audio Replay:** Select several clips, optionally enter a title, and combine them in chronological order into one WAV. Your original clips are preserved.
+- **Private nodes:** Saved hostnames stay out of the main screen, startup settings, and Android Auto browse. Edit the private node to see or change its host.
+- **GitHub Android updates:** If links are active, choose **Disconnect & update** or **Cancel** in Settings. Leave Android Auto before installing an update.
+
+Automated tests cover the changes. Physical phone retesting remains pending.
+
+**From 1.28**
 
 - **Audio Replay** saves received and transmitted clips on your device by default. Open the new replay button to hear the last received clip, browse, delete, or share clips. Replay plays through your local speaker and stops when you key PTT. You can turn clip saving off or change the clip limit in Settings.
 - **Startup auto-connect** links to up to eight public or private nodes after the first successful registration each launch. Use the lightning bolt beside the favourite star to choose startup nodes. Your previous default node carries over.

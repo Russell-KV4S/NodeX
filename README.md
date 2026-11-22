@@ -53,6 +53,7 @@ Take your AllStarLink node on the road as a native Android Auto media app:
 
 - **Listen again:** tap **Audio Replay** in the header to play the last received clip or browse received and transmitted clips. Playback uses your device's speaker and stops when you key PTT.
 - **Share a WAV:** select **Share** on a clip to open Android's share sheet in either Android edition. On desktop, this opens the clip's location in your file manager so you can share the file yourself.
+- **Combine clips:** use **Select** to choose recordings and **Combine** to create one WAV in chronological order. You can give it a title and share the combined file. Your original clips are preserved.
 - **Manage local history:** saving is on by default and keeps the 50 most recent clips. Change the limit or turn saving off in **Settings**. Delete individual clips or clear the history from Audio Replay. Clips stay on your device until you choose to share them.
 
 ## Platforms and status
