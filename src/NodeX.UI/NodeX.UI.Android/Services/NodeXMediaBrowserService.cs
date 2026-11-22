@@ -61,6 +61,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
 
     private Action? _carChanged;
     private Action? _carDisconnected;
+    private Action<ReconnectStatus>? _reconnectChanged;   // kept so OnDestroy can unsubscribe (it pinned old instances)
     private System.Threading.CancellationTokenSource? _carKeyLimit;  // ends a car transmission that runs too long
     private readonly RxActivity _rx = new();
     private System.Threading.Timer? _rxTimer;
@@ -86,7 +87,8 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         _changed = () => OnRuntimeChanged();
         var rt = AppServices.Runtime;
         rt.ConnectionsChanged += _changed;
-        rt.ReconnectChanged += _ => _changed?.Invoke();
+        _reconnectChanged = _ => _changed?.Invoke();
+        rt.ReconnectChanged += _reconnectChanged;
 
         // Follow keying on every link so the car shows it and beeps, whoever keyed (a time-out unkey beeps too).
         _linkAdded = Hook;
@@ -134,6 +136,8 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         var rt = AppServices.Runtime;
         if (_changed != null) rt.ConnectionsChanged -= _changed;
         _changed = null;
+        if (_reconnectChanged != null) rt.ReconnectChanged -= _reconnectChanged;
+        _reconnectChanged = null;
         if (_linkAdded != null) rt.LinkAdded -= _linkAdded;
         if (_linkRemoved != null) rt.LinkRemoved -= _linkRemoved;
         foreach (var link in _hooks.Keys.ToArray()) Unhook(link);
@@ -278,6 +282,26 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
                 return;
             }
 
+            // An Active Links row only brings that live connection to Now Playing: no dial, no "last played" change.
+            if (CarBrowse.TryParseActiveMediaId(mediaId, out string activeNode))
+            {
+                if (!rt.Connections.Any(c => c.Node == activeNode))
+                {
+                    ShowNotice($"Node {activeNode} is no longer linked.");
+                    NotifyChanges();
+                    return;
+                }
+                lock (_gate)
+                {
+                    _error = null;
+                    _nowPlaying = activeNode;
+                }
+                BeginCarSession();
+                PublishState();
+                NotifyChanges();
+                return;
+            }
+
             ManualNodeAddress? privAddr = null;
             string? privName = null;
             string node = mediaId;
@@ -318,7 +342,9 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
                     var info = privAddr != null
                         ? await rt.ConnectAsync(privAddr, privName)
                         : await rt.ConnectAsync(node);
-                    if (info == null)
+                    // A node that cannot be found yet is kept and retried while auto-reconnect is on (it stays listed):
+                    // that is not a failure to beep about.
+                    if (info == null && !rt.Connections.Any(c => c.Node == node))
                         FailConnect(privAddr != null ? $"Cannot find host {privAddr.Host}." : $"Could not find node {node}.", previous);
                 }
                 catch (System.OperationCanceledException)
@@ -806,6 +832,8 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
             .Build()!;
         var granted = am.RequestAudioFocus(_focus);
         CarSession.HasCarAudio = granted == AudioFocusRequest.Granted;
+        // A refused request is not held: keep it null so the next Play asks again (it used to skip forever).
+        if (granted != AudioFocusRequest.Granted) _focus = null;
     }
 
     private void EndCarSession()

@@ -49,6 +49,21 @@ public class CarBrowseTests
         Assert.Equal("27339", CarBrowse.FindFavorite(s, "reflector"));
         Assert.Null(CarBrowse.FindFavorite(s, "nonsense"));
         Assert.Null(CarBrowse.FindFavorite(s, ""));
+    }
+
+    [Fact]
+    public void An_exact_spoken_label_wins_over_digits_inside_it()
+    {
+        // 2026-11-21 review: favourite 2000 labelled "Club 1999" next to favourite 1999. Saying the label must dial
+        // 2000; saying the number alone still dials 1999.
+        var s = new NodeSettings
+        {
+            FavoriteNodes = ["1999", "2000"],
+            FavoriteLabels = new() { ["2000"] = "Club 1999" }
+        };
+        Assert.Equal("2000", CarBrowse.FindFavorite(s, "Club 1999"));
+        Assert.Equal("2000", CarBrowse.FindFavorite(s, "club 1999"));
+        Assert.Equal("1999", CarBrowse.FindFavorite(s, "1999"));
         Assert.Null(CarBrowse.FindFavorite(s, "99999"));
     }
 
@@ -136,12 +151,12 @@ public class CarBrowseTests
         var items = CarBrowse.BuildActiveItems(s, [conn1, conn2], transmitNode: "27339", talkingNodes: new HashSet<string> { "27339" });
         Assert.Equal(3, items.Count);
 
-        Assert.Equal("27339", items[0].MediaId);
+        Assert.Equal(CarBrowse.ActivePrefix + "27339", items[0].MediaId);
         Assert.Equal("27339 · East Coast Reflector", items[0].Title);
         Assert.Equal("TRANSMIT HERE · Connecting…", items[0].Subtitle);
         Assert.Equal(CarIcon.Transmit, items[0].Icon);
 
-        Assert.Equal("2000", items[1].MediaId);
+        Assert.Equal(CarBrowse.ActivePrefix + "2000", items[1].MediaId);
         Assert.Equal("2000", items[1].Title);
         Assert.Equal("Listen only · Connecting…", items[1].Subtitle);
         Assert.Equal(CarIcon.Listen, items[1].Icon);
@@ -158,7 +173,10 @@ public class CarBrowseTests
     {
         var items = CarBrowse.BuildActiveItems(Settings("2000"), [new NodeConnection("2000")], transmitNode: null);
         var only = Assert.Single(items);
-        Assert.Equal("2000", only.MediaId);
+        Assert.Equal(CarBrowse.ActivePrefix + "2000", only.MediaId);
+        Assert.True(CarBrowse.TryParseActiveMediaId(only.MediaId, out var node));
+        Assert.Equal("2000", node);
+        Assert.False(CarBrowse.TryParseActiveMediaId("2000", out _));   // a favourite id is not an active row
         Assert.Equal(CarIcon.Listen, only.Icon);
     }
 

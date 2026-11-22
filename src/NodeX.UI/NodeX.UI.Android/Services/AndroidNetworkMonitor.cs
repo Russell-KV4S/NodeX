@@ -10,7 +10,8 @@ namespace NodeX.UI.Android;
 /// <see cref="INetworkMonitor"/> backed by <see cref="ConnectivityManager"/>'s default-network callback.
 /// Event-driven (no polling, no wake-ups of its own), and it works on recent Android where
 /// <c>NetworkInterface</c> enumeration is restricted. The signature is the default network plus its IPv4
-/// addresses, so a Wi-Fi/cellular switch or a new address is reported but a DHCP renewal is not.
+/// addresses (or just the network on IPv6-only mobile data), so a Wi-Fi/cellular switch or a new address is reported but a
+/// DHCP renewal is not.
 /// </summary>
 public sealed class AndroidNetworkMonitor : INetworkMonitor
 {
@@ -48,14 +49,29 @@ public sealed class AndroidNetworkMonitor : INetworkMonitor
 
         if (network != null && _cm?.GetLinkProperties(network) is { } props)
         {
-            var v4 = props.LinkAddresses
+            var usable = props.LinkAddresses
                 .Select(a => a.Address)
-                .Where(a => a is Java.Net.Inet4Address && !a.IsLinkLocalAddress && !a.IsLoopbackAddress)
+                .Where(a => a != null && !a.IsLinkLocalAddress && !a.IsLoopbackAddress)
+                .ToArray();
+            var v4 = usable
+                .Where(a => a is Java.Net.Inet4Address)
                 .Select(a => a!.HostAddress)
                 .Order(StringComparer.Ordinal)
                 .ToArray();
-            available = v4.Length > 0;
-            if (available) signature = $"{network.NetworkHandle}={string.Join(',', v4)}";
+            if (v4.Length > 0)
+            {
+                available = true;
+                signature = $"{network.NetworkHandle}={string.Join(',', v4)}";
+            }
+            else if (usable.Any(a => a is Java.Net.Inet6Address))
+            {
+                // IPv6-only mobile data (T-Mobile US and others): IPv4 reaches the internet through 464XLAT on a
+                // stacked interface that LinkAddresses does not list, so "no IPv4 address" is not "offline"
+                // (2026-11-21 review: such phones sat at "Waiting for a network connection"). The signature is the
+                // network alone: IPv6 privacy addresses rotate on their own and must not look like a handoff.
+                available = true;
+                signature = $"{network.NetworkHandle}=ipv6";
+            }
         }
 
         bool changed;

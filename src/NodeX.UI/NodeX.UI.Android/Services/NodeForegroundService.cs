@@ -53,6 +53,11 @@ public sealed class NodeForegroundService : Service
     private bool _carMode;        // the audio route was last set up for a car
     private static NodeForegroundService? _current;
 
+    // Apply/Shutdown/Teardown run on the main thread (service starts) and on pool threads (runtime, settings and car
+    // events). Unserialized, two of them could create or dispose the keeper, headset or ducker at once (2026-11-21
+    // review). Monitor is re-entrant, so Apply calling Shutdown is fine.
+    private readonly object _applyLock = new();
+
     public static bool IsRunning { get; private set; }
 
     /// <summary>
@@ -140,15 +145,60 @@ public sealed class NodeForegroundService : Service
                 break;
         }
 
-        if (!Apply(AppServices.Runtime.Background)) return StartCommandResult.NotSticky;
+        if (intent == null)
+        {
+            // Sticky restart after Android killed the process: nothing has loaded the settings yet, so the runtime
+            // looks idle and Apply would stop at once. Show the notification now (the start must become foreground
+            // promptly), start the runtime, then apply the real state (2026-11-21 review).
+            ForegroundPlaceholder();
+            _ = System.Threading.Tasks.Task.Run(async () =>
+            {
+                try { await AppServices.Runtime.StartAsync(); }
+                catch (Exception ex) { global::Android.Util.Log.Warn("NodeX", $"Restart: runtime start failed: {ex.Message}"); }
+                Apply(AppServices.Runtime.Background);
+            });
+            return StartCommandResult.Sticky;
+        }
+
+        if (!Apply(AppServices.Runtime.Background, startedForeground: intent.Action == ActionStart))
+            return StartCommandResult.NotSticky;
         return StartCommandResult.Sticky;
     }
 
+    /// <summary>
+    /// A minimal foreground start, so a start that is about to stop (or is still loading) never breaks Android's rule
+    /// that a service started with StartForegroundService must call StartForeground in time.
+    /// </summary>
+    private void ForegroundPlaceholder()
+    {
+        try
+        {
+            EnsureChannel();
+            var notification = BuildNotification(AppServices.Runtime.Background);
+            if (OperatingSystem.IsAndroidVersionAtLeast(30))
+                StartForeground(NotificationId, notification, TypesFor(AppServices.Runtime.Background, false));
+            else
+                StartForeground(NotificationId, notification);
+        }
+        catch (Exception ex)
+        {
+            global::Android.Util.Log.Warn("NodeX", $"Placeholder foreground start refused: {ex.Message}");
+        }
+    }
+
     /// <summary>Shows the right notification and holds the right resources for <paramref name="state"/>. False if the service stopped.</summary>
-    private bool Apply(BackgroundState state)
+    private bool Apply(BackgroundState state, bool startedForeground = false)
+    {
+        lock (_applyLock) return ApplyCore(state, startedForeground);
+    }
+
+    private bool ApplyCore(BackgroundState state, bool startedForeground)
     {
         if (!state.Needed)
         {
+            // Started with StartForegroundService but no longer needed by the time it ran: become foreground once
+            // before stopping, or Android 12+ crashes the app (ForegroundServiceDidNotStartInTimeException).
+            if (startedForeground && !IsRunning) ForegroundPlaceholder();
             Shutdown();
             return false;
         }
@@ -310,12 +360,20 @@ public sealed class NodeForegroundService : Service
 
     private void Shutdown()
     {
-        Teardown();
-        StopForeground(StopForegroundFlags.Remove);
-        StopSelf();
+        lock (_applyLock)
+        {
+            Teardown();
+            StopForeground(StopForegroundFlags.Remove);
+            StopSelf();
+        }
     }
 
     private void Teardown()
+    {
+        lock (_applyLock) TeardownCore();
+    }
+
+    private void TeardownCore()
     {
         RegistrationAlarm.Cancel(this);
         _headset?.Dispose();

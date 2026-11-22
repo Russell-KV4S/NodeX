@@ -73,6 +73,7 @@ public sealed class AndroidBackgroundKeeper : IDisposable
                 {
                     am.Mode = Mode.InCommunication;
                     _scoActive = am.SetCommunicationDevice(device);
+                    if (!_scoActive) am.Mode = Mode.Normal;   // refused: do not leave the phone in call mode
                     return _scoActive;
                 }
             }
@@ -80,7 +81,13 @@ public sealed class AndroidBackgroundKeeper : IDisposable
         }
 
 #pragma warning disable CA1422 // legacy SCO API for API < 31
+        // IsBluetoothScoAvailableOffCall only says the phone supports SCO; it is true with no headset at all, which
+        // put every link on Android 8 to 11 into call mode (2026-11-21 review). Require a connected SCO headset.
         if (!am.IsBluetoothScoAvailableOffCall) return false;
+        bool headset = false;
+        foreach (var d in am.GetDevices(GetDevicesTargets.Outputs) ?? [])
+            if (d.Type == AudioDeviceType.BluetoothSco) { headset = true; break; }
+        if (!headset) return false;
         am.Mode = Mode.InCommunication;
         am.StartBluetoothSco();
         am.BluetoothScoOn = true;

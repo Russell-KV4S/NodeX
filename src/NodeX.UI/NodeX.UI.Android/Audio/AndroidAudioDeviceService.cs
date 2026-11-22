@@ -16,6 +16,11 @@ namespace NodeX.UI.Android.Audio;
 public sealed class AndroidAudioDeviceService : IAudioDeviceService
 {
     private readonly object _gate = new();
+
+    // Guards _track and _samplesWritten between the playout thread (Write, head position) and a route change or
+    // stop (Stop/Release): a released AudioTrack throws IllegalStateException, and a late Interlocked.Add after a
+    // rebuild corrupted the new track's backlog (2026-11-21 review). Order: _gate, then _trackLock.
+    private readonly object _trackLock = new();
     private AudioRecord? _record;
     private AudioTrack? _track;
     private Thread? _captureThread;
@@ -31,12 +36,15 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
     {
         get
         {
-            var track = _track;
-            if (track == null) return TimeSpan.Zero;
-            // The head position is a 32-bit frame counter that wraps; the helper compares modulo 2^32.
-            int pending = AudioFormat.PendingPlaybackSamples(
-                Interlocked.Read(ref _samplesWritten), track.PlaybackHeadPosition);
-            return AudioFormat.SamplesToDuration(pending);
+            lock (_trackLock)
+            {
+                var track = _track;
+                if (track == null) return TimeSpan.Zero;
+                // The head position is a 32-bit frame counter that wraps; the helper compares modulo 2^32.
+                int pending = AudioFormat.PendingPlaybackSamples(
+                    Interlocked.Read(ref _samplesWritten), track.PlaybackHeadPosition);
+                return AudioFormat.SamplesToDuration(pending);
+            }
         }
     }
 
@@ -156,9 +164,12 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
             .SetTransferMode(AudioTrackMode.Stream)
             .Build();
 
-        Interlocked.Exchange(ref _samplesWritten, 0);
         track.Play();
-        _track = track;
+        lock (_trackLock)
+        {
+            Interlocked.Exchange(ref _samplesWritten, 0);
+            _track = track;
+        }
     }
 
     private void OnRouteChanged()
@@ -166,12 +177,15 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
         lock (_gate)
         {
             if (!IsPlaying || _trackUsage == WantUsage) return;
-            var old = _track;
-            _track = null; // EnqueuePlaybackPcm drops frames for the instant the stream is swapped
-            if (old != null)
+            lock (_trackLock)
             {
-                try { old.Stop(); } catch (Exception) { /* already stopped */ }
-                old.Release();
+                var old = _track;
+                _track = null; // EnqueuePlaybackPcm drops frames for the instant the stream is swapped
+                if (old != null)
+                {
+                    try { old.Stop(); } catch (Exception) { /* already stopped */ }
+                    old.Release();
+                }
             }
             BuildTrack();
         }
@@ -184,31 +198,38 @@ public sealed class AndroidAudioDeviceService : IAudioDeviceService
             AndroidAudioRoute.RouteChanged -= OnRouteChanged;
             CarSession.Changed -= OnRouteChanged;
             CarSession.CarAudioChanged -= OnRouteChanged;
-            if (_track == null) return;
-            try { _track.Stop(); } catch (Exception) { /* already stopped */ }
-            _track.Release();
-            _track = null;
+            lock (_trackLock)
+            {
+                if (_track == null) return;
+                try { _track.Stop(); } catch (Exception) { /* already stopped */ }
+                _track.Release();
+                _track = null;
+            }
             IsPlaying = false;
         }
     }
 
     public void EnqueuePlaybackPcm(ReadOnlyMemory<short> pcm)
     {
-        var track = _track;
-        if (track == null || pcm.IsEmpty) return;
+        if (pcm.IsEmpty) return;
 
         int written;
-        if (System.Runtime.InteropServices.MemoryMarshal.TryGetArray(pcm, out var segment) && segment.Array != null)
+        lock (_trackLock)   // non-blocking write: held only for the copy into the track's buffer
         {
-            written = track.Write(segment.Array, segment.Offset, segment.Count, WriteMode.NonBlocking);
+            var track = _track;
+            if (track == null) return;
+            if (System.Runtime.InteropServices.MemoryMarshal.TryGetArray(pcm, out var segment) && segment.Array != null)
+            {
+                written = track.Write(segment.Array, segment.Offset, segment.Count, WriteMode.NonBlocking);
+            }
+            else
+            {
+                short[] data = pcm.ToArray();
+                written = track.Write(data, 0, data.Length, WriteMode.NonBlocking);
+            }
+            if (written > 0) Interlocked.Add(ref _samplesWritten, written);
         }
-        else
-        {
-            short[] data = pcm.ToArray();
-            written = track.Write(data, 0, data.Length, WriteMode.NonBlocking);
-        }
-        if (written > 0) Interlocked.Add(ref _samplesWritten, written);
-        else if (written < 0) ErrorOccurred?.Invoke($"AudioTrack.Write failed ({written}).");
+        if (written < 0) ErrorOccurred?.Invoke($"AudioTrack.Write failed ({written}).");
     }
 
     public ValueTask DisposeAsync()

@@ -49,6 +49,22 @@ public static class CarBrowse
     /// <summary>Media ID for disconnecting all nodes from the car screen.</summary>
     public const string DisconnectAllId = "nodex:disconnect:all";
 
+    /// <summary>
+    /// Media id prefix of an Active Links row: selecting it only focuses that live connection, never dials. A bare
+    /// node number was read as a public favourite, so an active private 1999 took the public-dial path and hit the
+    /// same-number conflict (2026-11-21 review).
+    /// </summary>
+    public const string ActivePrefix = "nodex:active:";
+
+    /// <summary>The node number of an Active Links row id, or false when <paramref name="mediaId"/> is not one.</summary>
+    public static bool TryParseActiveMediaId(string? mediaId, out string node)
+    {
+        node = "";
+        if (string.IsNullOrEmpty(mediaId) || !mediaId.StartsWith(ActivePrefix, StringComparison.Ordinal)) return false;
+        node = mediaId[ActivePrefix.Length..];
+        return node.Length > 0;
+    }
+
     /// <summary>Returns the car media ID for a saved private node.</summary>
     public static string PrivateMediaId(PrivateNodeEntry entry) =>
         // FormatCanonical brackets IPv6 literals, so the id parses back (an unbracketed "2001:db8::5:4569" does not).
@@ -199,7 +215,7 @@ public static class CarBrowse
                     ? $"{conn.DisplayNode} · {conn.PrivateName} (Private)"
                     : $"{conn.DisplayNode} (Private)")
                 : CardTitle(settings, node);
-            items.Add(new CarBrowseItem(node, title, true, status, isTx ? CarIcon.Transmit : CarIcon.Listen));
+            items.Add(new CarBrowseItem(ActivePrefix + node, title, true, status, isTx ? CarIcon.Transmit : CarIcon.Listen));
         }
 
         if (items.Count == 0)
@@ -276,6 +292,11 @@ public static class CarBrowse
         if (string.IsNullOrEmpty(query)) return null;
 
         var favorites = FavoriteMediaIds(settings).ToList();
+
+        // An exact label wins over digits inside it: "Club 1999" as the label of favourite 2000 must dial 2000, not
+        // favourite 1999 (2026-11-21 review).
+        var exactLabel = favorites.Where(f => string.Equals(TitleFor(settings, f), query, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (exactLabel.Count == 1) return exactLabel[0];
 
         string digits = new(query.Where(char.IsDigit).ToArray());
         if (digits.Length > 0)

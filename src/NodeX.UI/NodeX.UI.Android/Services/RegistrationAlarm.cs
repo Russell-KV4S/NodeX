@@ -97,6 +97,9 @@ public sealed class RegistrationAlarm : BroadcastReceiver
             try
             {
                 var runtime = AppServices.Runtime;
+                // After Android killed the process, this alarm can be the first thing to run: nothing has loaded the
+                // settings, so the runtime looked idle and the alarm chain ended (2026-11-21 review). Idempotent.
+                await runtime.StartAsync().WaitAsync(TimeSpan.FromSeconds(15));
                 var state = runtime.Background;
                 if (state.Needed && !state.IsLinked && !runtime.HasExited)
                 {
