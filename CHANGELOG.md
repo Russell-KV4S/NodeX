@@ -1,5 +1,10 @@
 # Change log
 
+## 2026-11-21: 1.27 / code 30
+
+- The MIC and SPK level meters now sit inside the shared PTT and Speaker frame.
+- GitHub Releases include the signed Google Play App Bundle alongside the full-edition Android APK.
+
 ## 2026-11-21: 1.26 / code 28: review fixes, hub-noise false-RX fix
 
 - **False RX on busy hubs:** hubs that send UNKEY but never KEY were lit by inaudible background noise. A voice frame now needs RMS above -40 dBFS to count as sound; the `[rx]` voice-only log line is always written and includes the level. Not verified on a phone.

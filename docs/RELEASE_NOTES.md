@@ -1,6 +1,6 @@
-NodeX 1.26 is a safety and reliability release: fixes from a full code review, and busy hubs no longer show RX when you hear nothing.
+NodeX 1.27 moves the MIC and SPK level meters into the PTT and Speaker frame. This release also includes a signed Google Play App Bundle.
 
-**What changed in 1.26**
+**From 1.26**
 - **Fewer false RX lights:** hubs that never announce their transmissions (53431, 60108, 43136 on a busy day) were lit by inaudible background noise. A node now has to be clearly louder than that noise to count as talking.
 - **Transmit safety:** a node whose lookup or dial fails no longer quietly becomes your transmit node; unplugging Android Auto releases car push-to-talk and ends car mode; the key signal always goes out before any of your voice; a learned phone button can no longer have its release swallowed; Windows Spacebar push-to-talk lets go when you Alt+Tab away; a key that fails to send is no longer shown as "on air".
 - **Connecting and reconnecting:** double-tapping Connect (or phone and car together) makes one call; Disconnect always removes the node; a network change no longer tears down a link that was set up during it; a node that rejects a reconnect is not retried forever; turning auto-reconnect off stops retries already running; a node that cannot be found yet is kept and retried until you disconnect it.
@@ -28,6 +28,7 @@ Includes all 1.22 changes (retry until you disconnect).
 
 Downloads:
 - **Android:** `NodeX-android.apk` is the full sideload edition, including optional Android Auto Talk and steering-wheel PTT.
+- **Google Play:** `NodeX-android-play.aab` is the signed Play Console upload bundle. Use the APK above for direct installation.
 - **Windows:** extract the x64 or ARM64 ZIP and run `NodeX.UI.Desktop.exe`.
 - **Linux:** extract the x64 or ARM64 tarball and run `./NodeX.UI.Desktop`. Install the distribution's PortAudio/JACK, font, X11 and secret-service dependencies as needed.
 - **macOS:** extract the Apple Silicon or Intel ZIP and move `NodeX.app` to Applications. Ad-hoc signed, not notarized; macOS may need approval in Privacy & Security.

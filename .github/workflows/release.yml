@@ -96,7 +96,7 @@ jobs:
           java-version: '21'
       - name: Install Android workload
         run: dotnet workload install android
-      - name: Build signed full-edition APK
+      - name: Build signed Android APK and Play bundle
         shell: pwsh
         env:
           NODEX_BUILD_ROOT: ${{ runner.temp }}/nodex-build
@@ -110,6 +110,8 @@ jobs:
             if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Missing Android signing secret: $name" }
           }
           $key = Join-Path $env:RUNNER_TEMP 'nodex-release.keystore'
+          $storePass = Join-Path $env:RUNNER_TEMP 'nodex-store-password.txt'
+          $keyPass = Join-Path $env:RUNNER_TEMP 'nodex-key-password.txt'
           try {
             [IO.File]::WriteAllBytes($key, [Convert]::FromBase64String($env:NODEX_KEYSTORE_BASE64))
             dotnet publish src/NodeX.UI/NodeX.UI.Android -c Release -p:PlayStore=false -p:AndroidPackageFormat=apk -p:AndroidKeyStore=true "-p:AndroidSigningKeyStore=$key" "-p:AndroidSigningKeyAlias=$env:NODEX_KEY_ALIAS" -p:AndroidSigningStorePass=env:NODEX_STORE_PASS -p:AndroidSigningKeyPass=env:NODEX_KEY_PASS -o "$env:RUNNER_TEMP/android-publish" --nologo
@@ -118,13 +120,30 @@ jobs:
             if ($apks.Count -ne 1) { throw 'Expected exactly one signed universal APK.' }
             New-Item -ItemType Directory "$env:RUNNER_TEMP/release-assets" -Force | Out-Null
             Copy-Item -LiteralPath $apks[0].FullName -Destination "$env:RUNNER_TEMP/release-assets/NodeX-android.apk"
+
+            # App bundles use jarsigner, which requires file: references for these passwords.
+            [IO.File]::WriteAllText($storePass, $env:NODEX_STORE_PASS)
+            [IO.File]::WriteAllText($keyPass, $env:NODEX_KEY_PASS)
+            $env:NODEX_BUILD_ROOT = Join-Path $env:RUNNER_TEMP 'nodex-play-build'
+            dotnet publish src/NodeX.UI/NodeX.UI.Android -c Release -p:PlayStore=true -p:AndroidPackageFormat=aab -p:AndroidKeyStore=true "-p:AndroidSigningKeyStore=$key" "-p:AndroidSigningKeyAlias=$env:NODEX_KEY_ALIAS" "-p:AndroidSigningStorePass=file:$storePass" "-p:AndroidSigningKeyPass=file:$keyPass" -o "$env:RUNNER_TEMP/play-publish" --nologo
+            if ($LASTEXITCODE -ne 0) { throw 'Play bundle publish failed.' }
+            $bundles = @(Get-ChildItem "$env:RUNNER_TEMP/play-publish" -Filter '*-Signed.aab')
+            if ($bundles.Count -ne 1) { throw 'Expected exactly one signed Play App Bundle.' }
+            $verification = & "$env:JAVA_HOME/bin/jarsigner.exe" '-J-Duser.language=en' '-J-Duser.country=US' -verify $bundles[0].FullName
+            $verification | Write-Output
+            if ($LASTEXITCODE -ne 0 -or $verification -notcontains 'jar verified.') { throw 'Play bundle signature verification failed.' }
+            Copy-Item -LiteralPath $bundles[0].FullName -Destination "$env:RUNNER_TEMP/release-assets/NodeX-android-play.aab"
           } finally {
-            if (Test-Path -LiteralPath $key) { Remove-Item -LiteralPath $key -Force }
+            foreach ($file in @($key, $storePass, $keyPass)) {
+              if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force }
+            }
           }
       - uses: actions/upload-artifact@v4
         with:
           name: release-android
-          path: ${{ runner.temp }}/release-assets/NodeX-android.apk
+          path: |
+            ${{ runner.temp }}/release-assets/NodeX-android.apk
+            ${{ runner.temp }}/release-assets/NodeX-android-play.aab
           if-no-files-found: error
           retention-days: 7
 
@@ -145,7 +164,7 @@ jobs:
       - name: Validate assets and write update manifest
         shell: pwsh
         run: |
-          $expected = @('NodeX-android.apk', 'NodeX-win-x64.zip', 'NodeX-win-arm64.zip', 'NodeX-linux-x64.tar.gz', 'NodeX-linux-arm64.tar.gz', 'NodeX-osx-arm64.zip', 'NodeX-osx-x64.zip')
+          $expected = @('NodeX-android.apk', 'NodeX-android-play.aab', 'NodeX-win-x64.zip', 'NodeX-win-arm64.zip', 'NodeX-linux-x64.tar.gz', 'NodeX-linux-arm64.tar.gz', 'NodeX-osx-arm64.zip', 'NodeX-osx-x64.zip')
           foreach ($name in $expected) {
             if (-not (Test-Path -LiteralPath "release-assets/$name") -or (Get-Item "release-assets/$name").Length -eq 0) { throw "Missing or empty release asset: $name" }
           }

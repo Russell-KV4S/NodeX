@@ -4,7 +4,7 @@ Changes that have shipped on GitHub but **not yet on Google Play**. When the nex
 block below into Play Console's release notes, then move the entry under "Play releases" and empty "Pending".
 
 **Last Play release:** 1.25 (code 27), closed Alpha (sent for review), 2026-11-20.
-**Bundle to upload next:** the newest `keystore/nodex-<ver>-code<N>-play.aab` (1.25 is already on Play; next is whatever is newer).
+**Bundle to upload next** is `NodeX-android-play.aab` from the latest GitHub release.
 
 Rules:
 - Play limit is **500 characters per language**; Re-count after every edit (`wc -m`).
@@ -14,10 +14,11 @@ Rules:
 
 ## Pending
 
-1.26 (code 28), GitHub only so far (2026-11-21). Play-wording block, re-count with `wc -m` before pasting:
+1.26 and 1.27 (code 30), pending Google Play upload (2026-11-21).
 
 ```
 <en-US>
+MIC and SPK meters now fit inside the PTT and Speaker frame.
 Fewer false "receiving" lights on busy hubs.
 Safety: a failed dial never becomes your transmit node; car push-to-talk state ends when Android Auto unplugs.
 Reconnect fixes: one call per node, rejected nodes aren't retried, auto-reconnect off stops retries.
