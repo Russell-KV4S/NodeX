@@ -387,4 +387,76 @@ public class AppearanceTests
         }
         finally { window.Close(); }
     }
+
+    [AvaloniaTheory]
+    [InlineData("Dark", 1.0, 420, 860)]
+    [InlineData("HighContrast", 1.5, 420, 860)]
+    [InlineData("Dark", 1.0, 860, 420)]
+    [InlineData("Dark", 1.0, 1050, 760)]
+    [InlineData("Light", 1.5, 1050, 760)]
+    public async Task StationBadge_RendersCleanlyWithoutOverlap_AcrossPhoneDesktopAndLargeText(
+        string theme, double textScale, int width, int height)
+    {
+        Appearance.Apply(Application.Current!, new() { Theme = theme, TextScale = textScale });
+        using var vm = new MainViewModel
+        {
+            LocalNodeNumber = "523802",
+            StationDisplayText = "KV4S · 523802 · NodeX Portable",
+            IsAslRegistered = true,
+            AslStatusText = "ASL Registered · 1 h 50 min",
+            BleStatusText = "BLE PTT: not available"
+        };
+        var view = new MainView { DataContext = vm };
+        var window = new Window { Content = view, Width = width, Height = height };
+        window.Show();
+        try
+        {
+            await Task.Delay(100);
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick(3);
+
+            Rect BoundsInWindow(Control c) => new(c.TranslatePoint(default, window)!.Value, c.Bounds.Size);
+            static bool Overlaps(Rect a, Rect b) =>
+                a.Right > b.Left + 1 && b.Right > a.Left + 1 && a.Bottom > b.Top + 1 && b.Bottom > a.Top + 1;
+
+            var header = view.FindControl<Border>("HeaderBorder")!;
+            var brand = view.FindControl<Control>("BrandPanel")!;
+            var stationBadge = view.FindControl<Border>("StationBadge")!;
+            var stationText = view.FindControl<TextBlock>("StationDisplayTextBlock")!;
+            var badges = view.FindControl<Control>("BadgesPanel")!;
+            var actions = view.FindControl<Control>("HeaderActions")!;
+
+            Assert.True(stationBadge.IsEffectivelyVisible);
+            Assert.True(stationText.IsEffectivelyVisible);
+            Assert.Equal("KV4S · 523802 · NodeX Portable", stationText.Text);
+
+            var stationRect = BoundsInWindow(stationBadge);
+            var headerRect = BoundsInWindow(header);
+
+            Assert.True(stationRect.Left >= 0 && stationRect.Right <= width + 1,
+                $"{width}x{height}@{textScale}: StationBadge horizontal bounds {stationRect.Left:F1}..{stationRect.Right:F1} exceeded {width}");
+            Assert.True(stationRect.Top >= 0 && stationRect.Bottom <= headerRect.Bottom + 1,
+                $"{width}x{height}@{textScale}: StationBadge vertical bounds {stationRect.Top:F1}..{stationRect.Bottom:F1} exceeded HeaderBorder {headerRect.Bottom:F1}");
+
+            Assert.False(Overlaps(stationRect, BoundsInWindow(brand)), $"{width}x{height}@{textScale}: StationBadge overlaps BrandPanel");
+            Assert.False(Overlaps(stationRect, BoundsInWindow(badges)), $"{width}x{height}@{textScale}: StationBadge overlaps BadgesPanel");
+            Assert.False(Overlaps(stationRect, BoundsInWindow(actions)), $"{width}x{height}@{textScale}: StationBadge overlaps HeaderActions");
+
+            if (textScale <= 1.01)
+            {
+                Assert.True(stationRect.Height <= 40,
+                    $"{width}x{height}@{textScale}: expected single-line compact StationBadge (<= 40 px), got {stationRect.Height:F1}");
+            }
+
+            var output = Environment.GetEnvironmentVariable("NODEX_SCREENSHOT_DIR");
+            if (!string.IsNullOrWhiteSpace(output))
+            {
+                Directory.CreateDirectory(output);
+                using var bitmap = window.CaptureRenderedFrame();
+                using var file = File.Create(Path.Combine(output, $"StationHeader-{theme}-{textScale:F1}-{width}x{height}.png"));
+                bitmap!.Save(file, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+            }
+        }
+        finally { window.Close(); }
+    }
 }

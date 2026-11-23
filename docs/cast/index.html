@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NodeX — AllStarLink TV Dashboard</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface-alt: #1e2631;
+      --border: #30363d;
+      --text: #f0f6fc;
+      --muted: #9ca3af;
+      --cyan: #38bdf8;
+      --green: #22c55e;
+      --green-bg: rgba(34, 197, 94, 0.14);
+      --red: #ef4444;
+      --red-bg: rgba(239, 68, 68, 0.16);
+      --amber: #f59e0b;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at top right, #132030 0%, var(--bg) 55%);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+      overflow: hidden;
+    }
+
+    .frame {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 4.5vh 5vw;
+      gap: 2.2vh;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 16px 24px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-shrink: 0;
+    }
+
+    .brand img {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+    }
+
+    .brand-title {
+      font-size: 1.7rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-sub {
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    .station-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 10px 22px;
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+
+    .station-label {
+      font-size: 0.85rem;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .station-value {
+      color: var(--cyan);
+    }
+
+    .top-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .status-chip {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 8px 16px;
+      border-radius: 999px;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--amber);
+    }
+    .dot.ok { background: var(--green); box-shadow: 0 0 10px var(--green); }
+
+    .clock {
+      font-variant-numeric: tabular-nums;
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .activity-bar {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr 1fr;
+      gap: 18px;
+      align-items: center;
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: 18px;
+      padding: 16px 24px;
+      transition: border-color 140ms ease, background 140ms ease;
+    }
+
+    .activity-bar.rx {
+      border-color: var(--green);
+      background: linear-gradient(90deg, var(--green-bg), var(--surface));
+    }
+
+    .activity-bar.tx {
+      border-color: var(--red);
+      background: linear-gradient(90deg, var(--red-bg), var(--surface));
+    }
+
+    .activity-headline {
+      font-size: 1.45rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+
+    .activity-sub {
+      font-size: 1rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .meter-box {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .meter-head {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .meter-track {
+      height: 12px;
+      background: #090d13;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .meter-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      transition: width 90ms linear;
+    }
+    .meter-fill.spk { background: var(--green); }
+    .meter-fill.mic { background: var(--cyan); }
+
+    .links-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 18px;
+      align-content: start;
+      overflow: hidden;
+    }
+
+    .empty-state {
+      grid-column: 1 / -1;
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: 18px;
+      padding: 48px 32px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 1.3rem;
+    }
+
+    .link-card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: 18px;
+      padding: 18px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+    }
+
+    .link-card.tx {
+      border-color: var(--red);
+      border-width: 3px;
+    }
+
+    .link-card.rx {
+      border-color: var(--green);
+      background: linear-gradient(160deg, var(--green-bg), var(--surface) 65%);
+      box-shadow: 0 0 28px rgba(34, 197, 94, 0.18);
+    }
+
+    .link-card.muted {
+      opacity: 0.65;
+    }
+
+    .card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .card-title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .card-title {
+      font-size: 1.45rem;
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .pill {
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .pill.private { color: var(--cyan); border-color: var(--cyan); }
+    .pill.tx { color: #fff; background: var(--red); border-color: var(--red); }
+    .pill.rx { color: #052e16; background: var(--green); border-color: var(--green); }
+    .pill.muted { color: var(--amber); border-color: var(--amber); }
+
+    .card-meta {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 0.98rem;
+      color: var(--muted);
+    }
+
+    .card-also {
+      font-size: 0.92rem;
+      color: var(--cyan);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <header class="topbar">
+      <div class="brand">
+        <img src="nodex-mark.png" alt="NodeX logo" />
+        <div>
+          <div class="brand-title">NodeX</div>
+          <div class="brand-sub">AllStarLink TV Console</div>
+        </div>
+      </div>
+
+      <div class="station-pill">
+        <span class="station-label">STATION:</span>
+        <span id="stationText" class="station-value">Waiting for NodeX…</span>
+      </div>
+
+      <div class="top-right">
+        <div class="status-chip">
+          <span id="regDot" class="dot"></span>
+          <span id="regText">Standby</span>
+        </div>
+        <div id="clock" class="clock">--:--</div>
+      </div>
+    </header>
+
+    <section id="activityBar" class="activity-bar">
+      <div>
+        <div id="activityHeadline" class="activity-headline">STANDBY</div>
+        <div id="activitySub" class="activity-sub">Waiting for node activity</div>
+      </div>
+      <div class="meter-box">
+        <div class="meter-head"><span>SPK (RX)</span><span id="spkPct">0%</span></div>
+        <div class="meter-track"><div id="spkFill" class="meter-fill spk"></div></div>
+      </div>
+      <div class="meter-box">
+        <div class="meter-head"><span>MIC (TX)</span><span id="micPct">0%</span></div>
+        <div class="meter-track"><div id="micFill" class="meter-fill mic"></div></div>
+      </div>
+    </section>
+
+    <main id="linksGrid" class="links-grid">
+      <div class="empty-state">No nodes linked yet. Connect a node in NodeX to see live links and hear audio on this TV.</div>
+    </main>
+  </div>
+
+  <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+  <script>
+    (() => {
+      const NAMESPACE = 'urn:x-cast:com.kv4s.nodex';
+
+      // ITU-T G.711 u-law 8-bit -> float32 [-1, 1] lookup table
+      const ULAW_LUT = new Float32Array(256);
+      for (let i = 0; i < 256; i++) {
+        let u = (~i) & 0xff;
+        let sign = (u & 0x80) ? -1 : 1;
+        let exp = (u >> 4) & 0x07;
+        let mantissa = u & 0x0f;
+        let magnitude = (((mantissa << 3) + 0x84) << exp) - 0x84;
+        ULAW_LUT[i] = (sign * magnitude) / 32768.0;
+      }
+
+      let audioCtx = null;
+      let nextPlayTime = 0;
+
+      function ensureAudio() {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return null;
+        if (!audioCtx) audioCtx = new Ctx();
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => {});
+        }
+        return audioCtx;
+      }
+
+      function playUlawBase64(b64, sampleRate) {
+        const ctx = ensureAudio();
+        if (!ctx || !b64) return;
+
+        const raw = atob(b64);
+        const len = raw.length;
+        if (len === 0) return;
+
+        const buf = ctx.createBuffer(1, len, sampleRate || 8000);
+        const ch = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) {
+          ch[i] = ULAW_LUT[raw.charCodeAt(i) & 0xff];
+        }
+
+        const now = ctx.currentTime;
+        if (nextPlayTime < now + 0.02 || nextPlayTime - now > 0.45) {
+          nextPlayTime = now + 0.08;
+        }
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(ctx.destination);
+        src.start(nextPlayTime);
+        nextPlayTime += buf.duration;
+      }
+
+      function updateClock() {
+        const el = document.getElementById('clock');
+        const now = new Date();
+        el.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+      updateClock();
+      setInterval(updateClock, 10000);
+
+      function renderState(s) {
+        if (!s) return;
+
+        document.getElementById('stationText').textContent = s.station || 'Node not set';
+        const dot = document.getElementById('regDot');
+        dot.classList.toggle('ok', !!s.registered);
+        document.getElementById('regText').textContent = s.registrationText || (s.registered ? 'ASL Registered' : 'Not registered');
+
+        const spk = Math.max(0, Math.min(1, Number(s.spkLevel) || 0));
+        const mic = Math.max(0, Math.min(1, Number(s.micLevel) || 0));
+        document.getElementById('spkFill').style.width = `${Math.round(spk * 100)}%`;
+        document.getElementById('spkPct').textContent = `${Math.round(spk * 100)}%`;
+        document.getElementById('micFill').style.width = `${Math.round(mic * 100)}%`;
+        document.getElementById('micPct').textContent = `${Math.round(mic * 100)}%`;
+
+        const links = Array.isArray(s.links) ? s.links : [];
+        const rxNodes = links.filter(l => l.isReceiving && !l.muted);
+        const bar = document.getElementById('activityBar');
+        const headline = document.getElementById('activityHeadline');
+        const sub = document.getElementById('activitySub');
+
+        bar.classList.remove('rx', 'tx');
+        if (s.transmitting) {
+          bar.classList.add('tx');
+          headline.textContent = 'ON AIR — TRANSMITTING';
+          sub.textContent = s.txNode ? `Keyed on Node ${s.txNode}` : 'Push-to-talk active';
+        } else if (rxNodes.length > 0) {
+          bar.classList.add('rx');
+          headline.textContent = 'RECEIVING';
+          sub.textContent = rxNodes
+            .map(l => (l.label ? `${l.node} · ${l.label}` : `Node ${l.node}`))
+            .join('  |  ');
+        } else if (links.length > 0) {
+          headline.textContent = `${links.length} NODE${links.length === 1 ? '' : 'S'} LINKED`;
+          sub.textContent = s.sortRecent ? 'Sorted by most recent activity' : 'Fixed connect order';
+        } else {
+          headline.textContent = 'STANDBY';
+          sub.textContent = 'No nodes linked yet';
+        }
+
+        const grid = document.getElementById('linksGrid');
+        grid.replaceChildren();
+        if (links.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'empty-state';
+          empty.textContent = 'No nodes linked yet. Connect a node in NodeX to see live links and hear audio on this TV.';
+          grid.appendChild(empty);
+          return;
+        }
+
+        for (const l of links) {
+          const card = document.createElement('article');
+          card.className = 'link-card';
+          if (l.isTx) card.classList.add('tx');
+          if (l.isReceiving && !l.muted) card.classList.add('rx');
+          if (l.muted) card.classList.add('muted');
+
+          const top = document.createElement('div');
+          top.className = 'card-top';
+
+          const titleRow = document.createElement('div');
+          titleRow.className = 'card-title-row';
+          const title = document.createElement('div');
+          title.className = 'card-title';
+          title.textContent = l.label ? `${l.node} · ${l.label}` : `Node ${l.node}`;
+          titleRow.appendChild(title);
+
+          if (l.private) {
+            const p = document.createElement('span');
+            p.className = 'pill private';
+            p.textContent = 'PRIVATE';
+            titleRow.appendChild(p);
+          }
+
+          const badges = document.createElement('div');
+          badges.style.display = 'flex';
+          badges.style.gap = '8px';
+          badges.style.alignItems = 'center';
+
+          if (l.isReceiving && !l.muted) {
+            const rxb = document.createElement('span');
+            rxb.className = 'pill rx';
+            rxb.textContent = 'RX ACTIVE';
+            badges.appendChild(rxb);
+          }
+          if (l.muted) {
+            const mb = document.createElement('span');
+            mb.className = 'pill muted';
+            mb.textContent = 'MUTED';
+            badges.appendChild(mb);
+          }
+          const role = document.createElement('span');
+          role.className = `pill${l.isTx ? ' tx' : ''}`;
+          role.textContent = l.isTx ? 'TRANSMIT' : 'LISTEN ONLY';
+          badges.appendChild(role);
+
+          top.appendChild(titleRow);
+          top.appendChild(badges);
+          card.appendChild(top);
+
+          const meta = document.createElement('div');
+          meta.className = 'card-meta';
+          const stateSpan = document.createElement('span');
+          stateSpan.textContent = l.state || 'CONNECTED';
+          meta.appendChild(stateSpan);
+          if (typeof l.rttMs === 'number') {
+            const rttSpan = document.createElement('span');
+            rttSpan.textContent = `RTT ${l.rttMs} ms`;
+            meta.appendChild(rttSpan);
+          }
+          card.appendChild(meta);
+
+          if (l.alsoLinked) {
+            const also = document.createElement('div');
+            also.className = 'card-also';
+            also.textContent = `Also linked: ${l.alsoLinked}`;
+            card.appendChild(also);
+          }
+
+          grid.appendChild(card);
+        }
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('demo') === '1') {
+        renderState({
+          station: 'KV4S · 523802 · NodeX Portable',
+          registered: true,
+          registrationText: 'ASL Registered · 1 h 50 min',
+          transmitting: false,
+          txNode: '523800',
+          spkLevel: 0.42,
+          micLevel: 0.0,
+          sortRecent: true,
+          links: [
+            { node: '43136', label: 'Ham Radio 2.0 Hub', private: false, isTx: false, isReceiving: true, muted: false, state: 'CONNECTED', rttMs: 55, alsoLinked: '47791, 627032, 45337, 41087 (+63 more)' },
+            { node: '523800', label: 'KV4S Cloud', private: false, isTx: true, isReceiving: false, muted: false, state: 'CONNECTED', rttMs: 28, alsoLinked: '47923, 523801' },
+            { node: '1999', label: 'ALERT', private: true, isTx: false, isReceiving: false, muted: false, state: 'CONNECTED', rttMs: 69, alsoLinked: '' }
+          ]
+        });
+        return;
+      }
+
+      if (window.cast && cast.framework && cast.framework.CastReceiverContext) {
+        const context = cast.framework.CastReceiverContext.getInstance();
+        const options = new cast.framework.CastReceiverOptions();
+        options.disableIdleTimeout = true;
+        options.maxInactivity = 30;
+        options.customNamespaces = { [NAMESPACE]: cast.framework.system.MessageType.JSON };
+
+        context.addCustomMessageListener(NAMESPACE, event => {
+          ensureAudio();
+          const msg = event && event.data;
+          if (!msg || !msg.type) return;
+          if (msg.type === 'state') {
+            renderState(msg);
+          } else if (msg.type === 'audio') {
+            playUlawBase64(msg.data, msg.sr);
+          }
+        });
+
+        context.start(options);
+      }
+    })();
+  </script>
+</body>
+</html>

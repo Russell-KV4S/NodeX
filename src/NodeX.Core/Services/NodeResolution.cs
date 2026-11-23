@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.Text.Json;
 
@@ -8,6 +9,45 @@ namespace NodeX.Core;
 
 /// <summary>Result of an informational IAX POKE reachability check on a private node.</summary>
 public sealed record PrivateProbeResult(bool Resolved, bool Reachable, int? RoundTripMs, string Message);
+
+/// <summary>
+/// Public directory display metadata for a node (<c>callsign</c> and <c>node_frequency</c> from AllStarLink's stats API).
+/// </summary>
+public sealed record StationMetadata(string NodeNumber, string Callsign, string Description)
+{
+    /// <summary>
+    /// Formats a station label for display chrome (e.g. <c>KV4S · 523802 · NodeX Portable</c>),
+    /// falling back to <c>Node &lt;number&gt;</c> when offline, unlisted, or blank.
+    /// </summary>
+    public static string FormatDisplay(string? nodeNumber, StationMetadata? metadata, string emptyText = "Node not set")
+    {
+        string node = (nodeNumber ?? "").Trim();
+        if (node.Length == 0 || string.Equals(node, "not set", StringComparison.OrdinalIgnoreCase))
+            return emptyText;
+
+        if (metadata == null || !string.Equals((metadata.NodeNumber ?? "").Trim(), node, StringComparison.Ordinal))
+            return $"Node {node}";
+
+        string callsign = (metadata.Callsign ?? "").Trim();
+        string description = (metadata.Description ?? "").Trim();
+
+        if (string.Equals(callsign, node, StringComparison.OrdinalIgnoreCase))
+            callsign = "";
+        if (string.Equals(description, node, StringComparison.OrdinalIgnoreCase)
+            || (callsign.Length > 0 && string.Equals(description, callsign, StringComparison.OrdinalIgnoreCase)))
+            description = "";
+
+        if (callsign.Length == 0 && description.Length == 0)
+            return $"Node {node}";
+
+        if (callsign.Length > 0 && description.Length > 0)
+            return $"{callsign} · {node} · {description}";
+
+        return callsign.Length > 0
+            ? $"{callsign} · {node}"
+            : $"{node} · {description}";
+    }
+}
 
 /// <summary>
 /// Resolved AllStarLink node connection information.
@@ -28,6 +68,7 @@ public sealed class NodeResolution
 {
     private readonly HttpClient _httpClient;
     private readonly ConcurrentDictionary<string, (NodeInfo Info, DateTime ExpiresAt)> _cache = new();
+    private readonly ConcurrentDictionary<string, (StationMetadata Info, DateTime ExpiresAt)> _metadataCache = new();
 
     /// <summary>The most recent successful lookup per node, kept past the cache so a failed lookup has something to fall back on.</summary>
     private readonly ConcurrentDictionary<string, NodeInfo> _lastKnown = new();
@@ -102,6 +143,7 @@ public sealed class NodeResolution
     public void ClearCache()
     {
         _cache.Clear();
+        _metadataCache.Clear();
         _lastKnown.Clear();
     }
 
@@ -113,7 +155,10 @@ public sealed class NodeResolution
     /// </summary>
     public void Invalidate(string nodeNumber)
     {
-        if (!string.IsNullOrWhiteSpace(nodeNumber)) _cache.TryRemove(nodeNumber.Trim(), out _);
+        if (string.IsNullOrWhiteSpace(nodeNumber)) return;
+        string trimmed = nodeNumber.Trim();
+        _cache.TryRemove(trimmed, out _);
+        _metadataCache.TryRemove(trimmed, out _);
     }
 
     /// <summary>
@@ -175,14 +220,11 @@ public sealed class NodeResolution
                 if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("node", out var data)
                     && data.ValueKind == JsonValueKind.Object)
                 {
-                    string ipStr = data.TryGetProperty("ipaddr", out var ipEl) && ipEl.ValueKind == JsonValueKind.String
-                        ? ipEl.GetString() ?? "" : "";
+                    string ipStr = ReadString(data, "ipaddr");
                     int port = data.TryGetProperty("port", out var portEl) && portEl.TryGetInt32(out int p) && p is > 0 and <= 65535
                         ? p : Iax2Protocol.DefaultPort;
-                    string callsign = data.TryGetProperty("callsign", out var callEl) && callEl.ValueKind == JsonValueKind.String
-                        ? callEl.GetString() ?? "" : "";
-                    string desc = data.TryGetProperty("node_frequency", out var descEl) && descEl.ValueKind == JsonValueKind.String
-                        ? descEl.GetString() ?? "" : "";
+                    string callsign = ReadString(data, "callsign");
+                    string desc = ReadString(data, "node_frequency");
 
                     if (IPAddress.TryParse(ipStr, out var ip))
                     {
@@ -258,6 +300,87 @@ public sealed class NodeResolution
         //    address that worked earlier is a better guess than giving up, so a reconnect can still be tried.
         return _lastKnown.TryGetValue(nodeNumber, out var lastKnown) ? lastKnown : null;
     }
+
+    /// <summary>
+    /// Fetches a node's display metadata (<c>callsign</c> and <c>node_frequency</c>) from the public AllStarLink
+    /// stats API without triggering DNS lookups, UDP port probes, or requiring a valid <c>ipaddr</c>.
+    /// Returns <see langword="null"/> when offline, unlisted (404), or both fields are blank.
+    /// </summary>
+    public async Task<StationMetadata?> LookupStationMetadataAsync(string nodeNumber, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(nodeNumber)) return null;
+        nodeNumber = nodeNumber.Trim();
+
+        if (_metadataCache.TryGetValue(nodeNumber, out var cachedMeta))
+        {
+            if (_utcNow() < cachedMeta.ExpiresAt)
+                return cachedMeta.Info;
+            _metadataCache.TryRemove(nodeNumber, out _);
+        }
+
+        if (_cache.TryGetValue(nodeNumber, out var cachedInfo))
+        {
+            if (_utcNow() < cachedInfo.ExpiresAt)
+            {
+                string cachedCall = (cachedInfo.Info.Callsign ?? "").Trim();
+                string cachedDesc = (cachedInfo.Info.Description ?? "").Trim();
+                if (!string.Equals(cachedCall, "STATIC", StringComparison.Ordinal)
+                    && !string.Equals(cachedDesc, "DNS Fallback", StringComparison.Ordinal)
+                    && (cachedCall.Length > 0 || cachedDesc.Length > 0))
+                {
+                    var fromCache = new StationMetadata(nodeNumber, cachedCall, cachedDesc);
+                    _metadataCache[nodeNumber] = (fromCache, cachedInfo.ExpiresAt);
+                    return fromCache;
+                }
+            }
+            else
+            {
+                _cache.TryRemove(nodeNumber, out _);
+            }
+        }
+
+        try
+        {
+            string url = DirectoryBaseUrl + Uri.EscapeDataString(nodeNumber);
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.UserAgent.Add(new ProductInfoHeaderValue("NodeX", "1.0"));
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return null;
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            using var jsonDoc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            var root = jsonDoc.RootElement;
+            if (root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("node", out var data)
+                && data.ValueKind == JsonValueKind.Object)
+            {
+                string callsign = ReadString(data, "callsign").Trim();
+                string desc = ReadString(data, "node_frequency").Trim();
+                if (callsign.Length == 0 && desc.Length == 0)
+                    return null;
+
+                var meta = new StationMetadata(nodeNumber, callsign, desc);
+                _metadataCache[nodeNumber] = (meta, _utcNow().Add(CacheTtl));
+                return meta;
+            }
+            return null;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string ReadString(JsonElement obj, string property) =>
+        obj.TryGetProperty(property, out var el) && el.ValueKind == JsonValueKind.String
+            ? el.GetString() ?? ""
+            : "";
 
     /// <summary>
     /// Resolves a manually addressed (private) node directly by its host and exact port (§4.9):

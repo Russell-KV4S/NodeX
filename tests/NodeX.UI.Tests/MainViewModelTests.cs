@@ -291,4 +291,79 @@ public class MainViewModelTests
         await Until(() => f.Vm.LinkItems.Single(l => l.Node == "3000").IsReceiving);
         Assert.Equal(["2000", "3000"], f.Vm.LinkItems.Select(l => l.Node).ToArray());
     }
+
+    private sealed class StationStatsHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/523802"))
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"node":{"callsign":"KV4S","node_frequency":"NodeX Portable"}}""",
+                        System.Text.Encoding.UTF8, "application/json")
+                });
+            }
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task LocalStationMetadata_UpdatesHeaderTitleIdReminderAndSettingsSummary()
+    {
+        var store = new Store(new() { NodeNumber = "55553", RegisterOnStartup = false, AutoReconnect = false });
+        var secrets = new InMemorySecretStore();
+        await secrets.SetAsync(SecretKeys.NodePassword, "test-password");
+        var resolver = new NodeResolution(new HttpClient(new StationStatsHandler())) { PortProbe = null, DnsPort = null };
+        using var regHttp = new HttpClient(new Registry());
+
+        await using var rt = new NodeRuntime(
+            new NodeConfigService(store, secrets),
+            () => new NullAudioDeviceService(),
+            resolver: resolver,
+            registrationFactory: cfg => new(cfg, regHttp),
+            networkMonitor: new Network());
+        var vm = new MainViewModel(rt);
+        try
+        {
+            await vm.InitializeAsync();
+            await vm.Settings.LoadAsync();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("Node 55553", vm.StationDisplayText);
+            Assert.Equal("Station: Node 55553", vm.StationAutomationName);
+            Assert.Equal("NodeX — Station: Node 55553", vm.WindowTitle);
+            Assert.Equal("Time to identify (say your callsign).", vm.IdReminderText);
+            Assert.False(vm.Settings.HasLocalStationSummary);
+
+            await rt.ConfigService.SaveAsync(rt.Config.Settings with { NodeNumber = "523802" }, "test-password");
+            await rt.RefreshLocalStationAsync();
+            await Until(() => vm.StationDisplayText == "KV4S · 523802 · NodeX Portable");
+
+            Assert.Equal("Station: KV4S · 523802 · NodeX Portable", vm.StationAutomationName);
+            Assert.Equal("NodeX — Station: KV4S · 523802 · NodeX Portable", vm.WindowTitle);
+            Assert.Equal("Time to identify (say KV4S).", vm.IdReminderText);
+
+            await vm.Settings.LoadAsync();
+            Assert.True(vm.Settings.HasLocalStationSummary);
+            Assert.Equal("Station: KV4S · 523802 · NodeX Portable", vm.Settings.LocalStationSummary);
+
+            // Editing the NodeNumber box hides stale summary until matching node is saved.
+            vm.Settings.NodeNumber = "523803";
+            Assert.False(vm.Settings.HasLocalStationSummary);
+            vm.Settings.NodeNumber = "523802";
+            Assert.True(vm.Settings.HasLocalStationSummary);
+
+            // Disposed VM stops following LocalStationChanged.
+            vm.Dispose();
+            await rt.ConfigService.SaveAsync(rt.Config.Settings with { NodeNumber = "55553" }, "test-password");
+            await rt.RefreshLocalStationAsync();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("KV4S · 523802 · NodeX Portable", vm.StationDisplayText);
+        }
+        finally
+        {
+            vm.Dispose();
+        }
+    }
 }

@@ -1,0 +1,199 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:NodeX.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="820"
+             x:Class="NodeX.UI.Views.CastView"
+             x:DataType="vm:CastViewModel"
+             Background="{DynamicResource ConsoleBackgroundBrush}">
+
+    <UserControl.Styles>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+        <Style Selector="Border.deviceRow">
+            <Setter Property="Background" Value="{DynamicResource ConsoleBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="12" />
+        </Style>
+        <Style Selector="Button">
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.iconbtn">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="MinWidth" Value="44" />
+            <Setter Property="MinHeight" Value="44" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- HEADER -->
+        <Border Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}"
+                BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,0,0,1" Padding="8,6">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Button Grid.Column="0" Classes="iconbtn" Command="{Binding BackCommand}"
+                        AutomationProperties.Name="Back" Content="←" FontSize="{DynamicResource FontSize20}" />
+                <TextBlock Grid.Column="1" Text="Chromecast" FontSize="{DynamicResource FontSize18}" FontWeight="Bold"
+                           Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="4,0,0,0" />
+                <Button Grid.Column="2" Content="Scan" Command="{Binding ScanCommand}" IsEnabled="{Binding !IsScanning}"
+                        Background="Transparent" BorderThickness="0"
+                        Foreground="{DynamicResource CyanAccentBrush}" FontWeight="Bold"
+                        FontSize="{DynamicResource FontSize13}" Padding="12,6" MinHeight="40"
+                        AutomationProperties.Name="Scan for Chromecast devices" />
+            </Grid>
+        </Border>
+
+        <!-- BODY -->
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="16" Spacing="14" MaxWidth="620" HorizontalAlignment="Stretch">
+
+                <!-- ERROR -->
+                <Border IsVisible="{Binding HasError}"
+                        Background="{DynamicResource WarningBackgroundBrush}"
+                        BorderBrush="{DynamicResource TxRedBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+                    <TextBlock Text="{Binding ErrorText}" FontSize="{DynamicResource FontSize12}"
+                               Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                </Border>
+
+                <!-- ACTIVE CAST SESSION -->
+                <Border Classes="card" IsVisible="{Binding IsCasting}"
+                        BorderBrush="{DynamicResource CyanAccentBrush}" BorderThickness="2">
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <StackPanel Grid.Column="0" Spacing="2">
+                                <TextBlock Text="{Binding ActiveDeviceName}" FontSize="{DynamicResource FontSize18}" FontWeight="Bold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding ActiveDeviceSubtitle}" FontSize="{DynamicResource FontSize12}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Border Grid.Column="1" Background="{DynamicResource SelectedBackgroundBrush}"
+                                    BorderBrush="{DynamicResource CyanAccentBrush}" BorderThickness="1"
+                                    CornerRadius="12" Padding="10,4" VerticalAlignment="Top">
+                                <TextBlock Text="{Binding ModeBadgeText}" FontSize="{DynamicResource FontSize11}" FontWeight="Bold"
+                                           Foreground="{DynamicResource CyanAccentBrush}" />
+                            </Border>
+                        </Grid>
+
+                        <TextBlock Text="{Binding StatusText}" FontSize="{DynamicResource FontSize12}"
+                                   Foreground="{DynamicResource RxGreenBrush}" TextWrapping="Wrap" />
+
+                        <StackPanel Spacing="4">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="TV / Speaker volume" FontSize="{DynamicResource FontSize12}"
+                                           FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="{Binding MuteTvButtonText}" Command="{Binding ToggleTvMuteCommand}"
+                                        Padding="12,6" MinHeight="32" CornerRadius="6" FontSize="{DynamicResource FontSize11}"
+                                        Background="{DynamicResource SelectedBackgroundBrush}" />
+                            </Grid>
+                            <Slider AutomationProperties.Name="Chromecast volume" Minimum="0" Maximum="1"
+                                    TickFrequency="0.05" Value="{Binding TvVolume}" />
+                        </StackPanel>
+
+                        <CheckBox Content="Mute this device's speaker while casting" IsChecked="{Binding MuteLocalSpeaker}" />
+
+                        <Button x:Name="StopCastButton" Content="Stop casting" Command="{Binding StopCastCommand}"
+                                Background="{DynamicResource TxRedBrush}" Foreground="{DynamicResource OnRedBrush}"
+                                FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                MinHeight="44" CornerRadius="8" />
+                    </StackPanel>
+                </Border>
+
+                <!-- CONNECTING INDICATOR -->
+                <Border Classes="card" IsVisible="{Binding IsConnecting}">
+                    <TextBlock Text="{Binding StatusText}" FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
+                               Foreground="{DynamicResource CyanAccentBrush}" TextWrapping="Wrap" />
+                </Border>
+
+                <!-- RECEIVER MODE INFO -->
+                <Border Classes="card">
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Text="Receiver mode" FontSize="{DynamicResource FontSize13}" FontWeight="Bold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding CustomAppIdDisplay}" FontSize="{DynamicResource FontSize12}"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource CyanAccentBrush}" VerticalAlignment="Center" />
+                        </Grid>
+                        <TextBlock IsVisible="{Binding !HasCustomAppId}" TextWrapping="Wrap" FontSize="{DynamicResource FontSize12}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Text="Casting now uses Chromecast's built-in Default Media Receiver (live audio + Now Playing card). To show the full NodeX TV dashboard on screen too, enter your Cast App ID in Settings." />
+                        <Button IsVisible="{Binding !HasCustomAppId}" Content="Configure Cast App ID in Settings…"
+                                Command="{Binding OpenSettingsCommand}" HorizontalAlignment="Left"
+                                Padding="12,8" CornerRadius="8" />
+                    </StackPanel>
+                </Border>
+
+                <!-- DISCOVERED DEVICES -->
+                <Border Classes="card">
+                    <StackPanel Spacing="10">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="NEARBY CHROMECASTS" FontSize="{DynamicResource FontSize12}"
+                                       FontWeight="Bold" Foreground="{DynamicResource CyanAccentBrush}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="Scanning LAN…" IsVisible="{Binding IsScanning}"
+                                       FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Grid>
+
+                        <ItemsControl x:Name="CastDevicesList" ItemsSource="{Binding Devices}" IsVisible="{Binding HasDevices}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:CastDeviceItem">
+                                    <Border Classes="deviceRow" Margin="0,0,0,8">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                            <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <TextBlock Text="{Binding FriendlyName}" FontWeight="Bold"
+                                                               FontSize="{DynamicResource FontSize14}" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                    <Border Background="{DynamicResource SelectedBackgroundBrush}" CornerRadius="6" Padding="6,2">
+                                                        <TextBlock Text="{Binding KindBadge}" FontSize="{DynamicResource FontSize10}"
+                                                                   FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding Subtitle}" FontSize="{DynamicResource FontSize12}"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Content="Cast" Click="OnCastDeviceClick"
+                                                    Background="{DynamicResource CyanAccentBrush}" Foreground="{DynamicResource ConsoleBackgroundBrush}"
+                                                    FontWeight="Bold" CornerRadius="8" Padding="14,8" MinHeight="40"
+                                                    VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock IsVisible="{Binding ShowEmptyDevices}" TextWrapping="Wrap"
+                                   FontSize="{DynamicResource FontSize12}" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Text="No Chromecast devices found via mDNS. Make sure both devices are on the same Wi-Fi/LAN, tap Scan to retry, or enter the Chromecast's IP address below." />
+                    </StackPanel>
+                </Border>
+
+                <!-- MANUAL IP -->
+                <Border Classes="card">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="CONNECT BY IP ADDRESS" FontSize="{DynamicResource FontSize12}"
+                                   FontWeight="Bold" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBox Grid.Column="0" AutomationProperties.Name="Chromecast IP address"
+                                     Text="{Binding ManualAddressInput}" PlaceholderText="e.g. 192.168.1.50" />
+                            <Button Grid.Column="1" Content="Cast" Command="{Binding ConnectManualCommand}"
+                                    Background="{DynamicResource SelectedBackgroundBrush}"
+                                    BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1"
+                                    FontWeight="Bold" CornerRadius="8" Padding="14,8" MinHeight="40" />
+                        </Grid>
+                        <TextBlock Text="Useful on guest or segmented networks that block local mDNS discovery."
+                                   FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

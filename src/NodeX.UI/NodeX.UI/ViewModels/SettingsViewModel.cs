@@ -36,8 +36,27 @@ public partial class SettingsViewModel : ViewModelBase
 
     // ----- station -----
 
+    private StationMetadata? _localStation;
+
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLocalStationSummary), nameof(LocalStationSummary))]
     public partial string NodeNumber { get; set; } = "";
+
+    public bool HasLocalStationSummary =>
+        _localStation != null
+        && string.Equals((_localStation.NodeNumber ?? "").Trim(), (NodeNumber ?? "").Trim(), StringComparison.Ordinal)
+        && (!string.IsNullOrWhiteSpace(_localStation.Callsign) || !string.IsNullOrWhiteSpace(_localStation.Description));
+
+    public string LocalStationSummary =>
+        HasLocalStationSummary ? $"Station: {StationMetadata.FormatDisplay(NodeNumber, _localStation)}" : "";
+
+    public void SetLocalStation(StationMetadata? station)
+    {
+        if (Equals(_localStation, station)) return;
+        _localStation = station;
+        OnPropertyChanged(nameof(HasLocalStationSummary));
+        OnPropertyChanged(nameof(LocalStationSummary));
+    }
 
     [ObservableProperty]
     public partial string Password { get; set; } = "";
@@ -108,6 +127,12 @@ public partial class SettingsViewModel : ViewModelBase
     /// <summary>Android Auto: a Talk button on the car screen (off by default).</summary>
     [ObservableProperty]
     public partial bool CarPtt { get; set; }
+
+    [ObservableProperty]
+    public partial string CastAppId { get; set; } = "";
+
+    [ObservableProperty]
+    public partial bool CastMuteLocalSpeaker { get; set; } = true;
 
     /// <summary>Android Auto: which steering-wheel button talks. 0 = none (default), 1 = Next, 2 = Back. A ComboBox index.</summary>
     [ObservableProperty]
@@ -500,6 +525,8 @@ public partial class SettingsViewModel : ViewModelBase
         IdReminderEnabled = s.IdReminderEnabled;
         IdReminderMinutesText = s.IdReminderMinutes.ToString(CultureInfo.InvariantCulture);
         DetailedLogging = s.DetailedLogging;
+        CastAppId = s.CastAppId;
+        CastMuteLocalSpeaker = s.CastMuteLocalSpeaker;
         RegistrationUrl = s.RegistrationUrl;
         IaxPortText = s.IaxPort.ToString(CultureInfo.InvariantCulture);
     }
@@ -722,6 +749,8 @@ public partial class SettingsViewModel : ViewModelBase
             BlePttRelease = _blePttProfile?.ReleaseHex ?? "",
             IdReminderEnabled = IdReminderEnabled,
             IdReminderMinutes = idMinutes,
+            CastAppId = CastAppId,
+            CastMuteLocalSpeaker = CastMuteLocalSpeaker,
             DetailedLogging = DetailedLogging
         };
 

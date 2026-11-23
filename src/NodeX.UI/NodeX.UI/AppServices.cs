@@ -21,7 +21,43 @@ public static class AppServices
     private static AudioHistoryStore? _audioHistory;
     private static AudioClipRecorder? _audioRecorder;
     private static AudioClipPlayer? _audioPlayer;
+    private static NodeX.Core.Cast.CastSessionManager? _cast;
     private static readonly object Gate = new();
+
+    /// <summary>Set by Android head so Chromecast mDNS discovery can hold a Wi-Fi multicast lock while scanning.</summary>
+    public static Func<IDisposable?>? MulticastLockAcquirer { get; set; }
+
+    /// <summary>Shared Chromecast screen &amp; sound session manager (works on Desktop and Android).</summary>
+    public static NodeX.Core.Cast.CastSessionManager Cast
+    {
+        get
+        {
+            lock (Gate)
+            {
+                return _cast ??= new NodeX.Core.Cast.CastSessionManager(
+                    Runtime,
+                    iconProvider: LoadCastIcon,
+                    multicastLockAcquirer: () => MulticastLockAcquirer?.Invoke());
+            }
+        }
+    }
+
+    private static byte[]? LoadCastIcon()
+    {
+        try
+        {
+            var uri = new Uri("avares://NodeX.UI/Assets/nodex-mark.png");
+            if (!Avalonia.Platform.AssetLoader.Exists(uri)) return null;
+            using var stream = Avalonia.Platform.AssetLoader.Open(uri);
+            using var ms = new MemoryStream();
+            stream.CopyTo(ms);
+            return ms.ToArray();
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     /// <summary>Local Zello-style audio clip history store (WAV files under app data).</summary>
     public static AudioHistoryStore AudioHistory
@@ -302,19 +338,22 @@ public static class AppServices
         NodeRuntime? runtime;
         AudioClipRecorder? recorder;
         AudioClipPlayer? player;
+        NodeX.Core.Cast.CastSessionManager? cast;
         lock (Gate)
         {
             runtime = _runtime;
             recorder = _audioRecorder;
             player = _audioPlayer;
+            cast = _cast;
         }
         var ble = _blePtt;
-        if (runtime == null && ble == null && recorder == null && player == null) return;
+        if (runtime == null && ble == null && recorder == null && player == null && cast == null) return;
 
         try
         {
             recorder?.Dispose();
             Task.Run(() => Task.WhenAll(
+                cast?.DisposeAsync().AsTask() ?? Task.CompletedTask,
                 player?.DisposeAsync().AsTask() ?? Task.CompletedTask,
                 runtime?.DisposeAsync().AsTask() ?? Task.CompletedTask,
                 ble?.DisposeAsync().AsTask() ?? Task.CompletedTask)).Wait(timeout);

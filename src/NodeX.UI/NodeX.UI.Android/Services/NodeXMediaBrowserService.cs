@@ -63,6 +63,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
     private Action? _carDisconnected;
     private Action<ReconnectStatus>? _reconnectChanged;   // kept so OnDestroy can unsubscribe (it pinned old instances)
     private Action<NodeConfig>? _configChanged;
+    private Action? _stationChanged;
     private System.Threading.CancellationTokenSource? _carKeyLimit;  // ends a car transmission that runs too long
     private System.Threading.Timer? _rxTimer;
     private string _talkers = "";                  // who the car screen last showed as heard
@@ -93,6 +94,8 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         rt.ReconnectChanged += _reconnectChanged;
         _configChanged = _ => _changed?.Invoke();
         rt.ConfigService.Changed += _configChanged;
+        _stationChanged = () => PublishState();
+        rt.LocalStationChanged += _stationChanged;
 
         // Follow keying on every link so the car shows it and beeps, whoever keyed (a time-out unkey beeps too).
         _linkAdded = Hook;
@@ -143,6 +146,8 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         _reconnectChanged = null;
         if (_configChanged != null) rt.ConfigService.Changed -= _configChanged;
         _configChanged = null;
+        if (_stationChanged != null) rt.LocalStationChanged -= _stationChanged;
+        _stationChanged = null;
         if (_linkAdded != null) rt.LinkAdded -= _linkAdded;
         if (_linkRemoved != null) rt.LinkRemoved -= _linkRemoved;
         foreach (var link in _hooks.Keys.ToArray()) Unhook(link);
@@ -807,28 +812,35 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
 #pragma warning restore CA1422
         session.SetPlaybackState(builder.Build());
 
+        string? stationDesc = CarBrowse.StationDescription(rt.Config.Settings, rt.LocalStation);
         if (node != null)
         {
-            session.SetMetadata(new MediaMetadata.Builder()
-                .PutString(MediaMetadata.MetadataKeyMediaId, node)!
-                .PutString(MediaMetadata.MetadataKeyTitle, CarBrowse.LinkCardTitle(rt.Config.Settings, node, rt.Connections))!
-                .PutString(MediaMetadata.MetadataKeyDisplaySubtitle, subtitle)!
-                .Build());
+            session.SetMetadata(BuildCardMetadata(node, CarBrowse.LinkCardTitle(rt.Config.Settings, node, rt.Connections), subtitle, stationDesc));
         }
         else if (LastRemembered(rt.Config.Settings) is { } lastFav && !string.IsNullOrWhiteSpace(lastFav))
         {
             // EP-2 state restoration: show the last remembered station on the car's media card in Stopped state
             // so the driver sees the station context immediately without auto-dialling.
-            session.SetMetadata(new MediaMetadata.Builder()
-                .PutString(MediaMetadata.MetadataKeyMediaId, lastFav)!
-                .PutString(MediaMetadata.MetadataKeyTitle, CarBrowse.CardTitle(rt.Config.Settings, lastFav))!
-                .PutString(MediaMetadata.MetadataKeyDisplaySubtitle, subtitle)!
-                .Build());
+            session.SetMetadata(BuildCardMetadata(lastFav, CarBrowse.CardTitle(rt.Config.Settings, lastFav), subtitle, stationDesc));
         }
         else
         {
             session.SetMetadata(null);
         }
+    }
+
+    private static MediaMetadata BuildCardMetadata(string mediaId, string title, string subtitle, string? stationDesc)
+    {
+        var meta = new MediaMetadata.Builder()
+            .PutString(MediaMetadata.MetadataKeyMediaId, mediaId)!
+            .PutString(MediaMetadata.MetadataKeyTitle, title)!
+            .PutString(MediaMetadata.MetadataKeyDisplaySubtitle, subtitle)!;
+        if (stationDesc != null)
+        {
+            meta.PutString(MediaMetadata.MetadataKeyDisplayDescription, stationDesc);
+            meta.PutString(MediaMetadata.MetadataKeyAlbum, stationDesc);
+        }
+        return meta.Build()!;
     }
 
     private void Fail(string message)

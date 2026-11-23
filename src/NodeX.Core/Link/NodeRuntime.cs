@@ -53,6 +53,11 @@ public sealed class NodeRuntime : IAsyncDisposable
     private volatile bool _exited;
     private readonly RxActivity _rxActivity = new();
     private long _activitySeq;
+    private readonly object _stationLock = new();
+    private CancellationTokenSource? _stationLookupCts;
+    private string _stationLookupNode = "";
+    private DateTime _stationLastAttemptUtc = DateTime.MinValue;
+    private StationMetadata? _localStation;
 
     public NodeRuntime(
         NodeConfigService configService,
@@ -79,6 +84,7 @@ public sealed class NodeRuntime : IAsyncDisposable
 
         // The network check and NAT keep-alive talk to public STUN servers; a test with its own fake registry does not.
         NetworkCheckServers = registrationFactory == null ? NetworkCheck.DefaultServers : [];
+        LookupLocalStationMetadata = registrationFactory == null;
         _monitor = networkMonitor;
         _ownsMonitor = networkMonitor == null;      // created lazily in StartAsync so previews never watch the network
         _policy = reconnectPolicy ?? new ReconnectPolicy();
@@ -215,6 +221,171 @@ public sealed class NodeRuntime : IAsyncDisposable
 
     /// <summary>Raised (on any thread) whenever registration status changes.</summary>
     public event Action? RegistrationChanged;
+
+    // ----- local station display metadata (callsign + node_frequency from public directory) -----
+
+    /// <summary>Controls automatic background lookups of the local node's callsign and description; tests turn it on explicitly when stubbed.</summary>
+    internal bool LookupLocalStationMetadata { get; set; }
+
+    /// <summary>Minimum delay between failed/unlisted automatic metadata lookup attempts for the same node.</summary>
+    internal TimeSpan StationLookupRetryInterval { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>Resolved public directory metadata for the configured local node, or null when unknown/offline.</summary>
+    public StationMetadata? LocalStation => Volatile.Read(ref _localStation);
+
+    /// <summary>Formatted local station text (<c>KV4S · 523802 · NodeX Portable</c> or <c>Node &lt;number&gt;</c>).</summary>
+    public string LocalStationDisplay => StationMetadata.FormatDisplay(Config.Settings.NodeNumber, LocalStation);
+
+    /// <summary>Raised (on any thread) whenever <see cref="LocalStation"/> changes or clears.</summary>
+    public event Action? LocalStationChanged;
+
+    /// <summary>Immediately fetches public metadata for the configured local node (if valid), updating <see cref="LocalStation"/>.</summary>
+    public async Task RefreshLocalStationAsync(CancellationToken cancellationToken = default)
+    {
+        string node = (Config.Settings.NodeNumber ?? "").Trim();
+        if (_exited || _disposed || !NodeSettingsValidator.IsValidNodeNumber(node))
+        {
+            ClearMismatchedLocalStation(node);
+            return;
+        }
+
+        ClearMismatchedLocalStation(node);
+        StationMetadata? info = await _resolver.LookupStationMetadataAsync(node, cancellationToken).ConfigureAwait(false);
+        ApplyLocalStationResult(node, info);
+    }
+
+    private void ClearMismatchedLocalStation(string activeNode)
+    {
+        bool cleared = false;
+        lock (_stationLock)
+        {
+            if (_localStation != null && !string.Equals(_localStation.NodeNumber, activeNode, StringComparison.Ordinal))
+            {
+                Volatile.Write(ref _localStation, null);
+                cleared = true;
+            }
+        }
+        if (cleared)
+        {
+            LocalStationChanged?.Invoke();
+            PublishBackground();
+        }
+    }
+
+    private void ApplyLocalStationResult(string node, StationMetadata? info)
+    {
+        bool changed = false;
+        lock (_stationLock)
+        {
+            string current = (Config.Settings.NodeNumber ?? "").Trim();
+            if (_disposed || _exited || !string.Equals(current, node, StringComparison.Ordinal))
+                return;
+
+            if (info != null && !Equals(_localStation, info))
+            {
+                Volatile.Write(ref _localStation, info);
+                changed = true;
+            }
+        }
+        if (changed)
+        {
+            Log.Info("station", $"resolved local station: {StationMetadata.FormatDisplay(node, info)}");
+            LocalStationChanged?.Invoke();
+            PublishBackground();
+        }
+    }
+
+    private void TriggerLocalStationLookup(string? nodeNumber, bool force = false)
+    {
+        string node = (nodeNumber ?? "").Trim();
+        bool cleared = false;
+        CancellationTokenSource? cts = null;
+        CancellationToken token = default;
+
+        lock (_stationLock)
+        {
+            if (_localStation != null && !string.Equals(_localStation.NodeNumber, node, StringComparison.Ordinal))
+            {
+                Volatile.Write(ref _localStation, null);
+                cleared = true;
+                var prevCts = _stationLookupCts;
+                _stationLookupCts = null;
+                prevCts?.Cancel();
+                prevCts?.Dispose();
+            }
+
+            if (!LookupLocalStationMetadata || _exited || _disposed || !NodeSettingsValidator.IsValidNodeNumber(node))
+            {
+                var prevCts = _stationLookupCts;
+                _stationLookupCts = null;
+                prevCts?.Cancel();
+                prevCts?.Dispose();
+            }
+            else if (!force && _localStation != null && string.Equals(_localStation.NodeNumber, node, StringComparison.Ordinal))
+            {
+                // Already resolved for this node.
+            }
+            else if (!force && string.Equals(_stationLookupNode, node, StringComparison.Ordinal)
+                     && UtcNow() - _stationLastAttemptUtc < StationLookupRetryInterval)
+            {
+                // Rate-limit automatic retries while offline or for unlisted nodes.
+            }
+            else
+            {
+                _stationLookupNode = node;
+                _stationLastAttemptUtc = UtcNow();
+                cts = new CancellationTokenSource();
+                token = cts.Token;
+                var prevCts = _stationLookupCts;
+                _stationLookupCts = cts;
+                prevCts?.Cancel();
+                prevCts?.Dispose();
+            }
+        }
+
+        if (cleared)
+        {
+            LocalStationChanged?.Invoke();
+            PublishBackground();
+        }
+
+        if (cts != null)
+            _ = FetchLocalStationAsync(node, cts, token);
+    }
+
+    private async Task FetchLocalStationAsync(string node, CancellationTokenSource cts, CancellationToken token)
+    {
+        try
+        {
+            StationMetadata? info = await _resolver.LookupStationMetadataAsync(node, token).ConfigureAwait(false);
+            bool changed = false;
+            lock (_stationLock)
+            {
+                if (_disposed || _exited || token.IsCancellationRequested || !ReferenceEquals(_stationLookupCts, cts))
+                    return;
+                if (!string.Equals((Config.Settings.NodeNumber ?? "").Trim(), node, StringComparison.Ordinal))
+                    return;
+                if (info != null && !Equals(_localStation, info))
+                {
+                    Volatile.Write(ref _localStation, info);
+                    changed = true;
+                }
+            }
+            if (changed)
+            {
+                Log.Info("station", $"resolved local station: {StationMetadata.FormatDisplay(node, info)}");
+                LocalStationChanged?.Invoke();
+                PublishBackground();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception)
+        {
+            // Display enrichment only: failures never block startup, registration, or calls.
+        }
+    }
 
     // ----- link state -----
 
@@ -404,6 +575,7 @@ public sealed class NodeRuntime : IAsyncDisposable
             if (_exited) return;
             var previous = Config;
             Config = cfg;
+            TriggerLocalStationLookup(cfg.Settings.NodeNumber);
             Log.Detailed = cfg.Settings.DetailedLogging;
             SetLiveRxAudio(cfg.Settings.RxGain, cfg.Settings.RxAutoLevel, cfg.Settings.RxLoudnessBoost);
             SetLiveMicGain(cfg.Settings.MicGain);
@@ -612,6 +784,7 @@ public sealed class NodeRuntime : IAsyncDisposable
         SetRegistration(registered, message, registration?.PerceivedAddress, registration?.PerceivedPort ?? 0);
         if (registered)
         {
+            if (LocalStation == null) TriggerLocalStationLookup(Config.Settings.NodeNumber);
             _ = RunNetworkCheckOnceAsync();
             MaybeAutoConnectOnStartup();
         }
@@ -1704,6 +1877,7 @@ public sealed class NodeRuntime : IAsyncDisposable
         //    on it keep it until they end), then tell the registry our new address right away rather than at the
         //    next 60 s cycle: remote nodes validate callers against it.
         RetireEndpoint();
+        if (available && LocalStation == null) TriggerLocalStationLookup(Config.Settings.NodeNumber);
         Task<bool> registration = await RestartRegistrationForNewNetworkAsync(available);
 
         // 2. A call is bound to the old source address, so it cannot continue: dial again from the new one.
@@ -1787,6 +1961,13 @@ public sealed class NodeRuntime : IAsyncDisposable
             if (_ownsMonitor) _monitor.Dispose();
         }
         Interlocked.Exchange(ref _debounceCts, null)?.Cancel();
+        lock (_stationLock)
+        {
+            var cts = _stationLookupCts;
+            _stationLookupCts = null;
+            cts?.Cancel();
+            cts?.Dispose();
+        }
 
         await DisconnectAsync();
 

@@ -427,4 +427,92 @@ public class NodeResolutionTests
         cts.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => r.ResolveNodeAsync("2000", cts.Token));
     }
+
+    [Theory]
+    [InlineData("523802", "KV4S", "NodeX Portable", "KV4S · 523802 · NodeX Portable")]
+    [InlineData("523802", "KV4S", "", "KV4S · 523802")]
+    [InlineData("523802", "", "NodeX Portable", "523802 · NodeX Portable")]
+    [InlineData("523802", "KV4S", "KV4S", "KV4S · 523802")]
+    [InlineData("523802", "523802", "523802", "Node 523802")]
+    [InlineData("523802", "", "", "Node 523802")]
+    public void StationMetadata_FormatDisplay_FormatsCleanlyAndDeduplicates(
+        string node, string callsign, string description, string expected)
+    {
+        var meta = new StationMetadata(node, callsign, description);
+        Assert.Equal(expected, StationMetadata.FormatDisplay(node, meta));
+    }
+
+    [Fact]
+    public void StationMetadata_FormatDisplay_HandlesNullMismatchAndEmpty()
+    {
+        Assert.Equal("Node 523802", StationMetadata.FormatDisplay("523802", null));
+        Assert.Equal("Node 523802", StationMetadata.FormatDisplay("523802", new StationMetadata("523800", "KV4S", "Other")));
+        Assert.Equal("Node not set", StationMetadata.FormatDisplay("", new StationMetadata("523802", "KV4S", "NodeX Portable")));
+        Assert.Equal("Node not set", StationMetadata.FormatDisplay("not set", new StationMetadata("523802", "KV4S", "NodeX Portable")));
+    }
+
+    [Fact]
+    public async Task LookupStationMetadata_ParsesWithoutIpProbeOrDns_CachesAndInvalidates()
+    {
+        var now = new DateTime(2026, 11, 22, 12, 0, 0, DateTimeKind.Utc);
+        string body = """{"node":{"callsign":" KV4S ","node_frequency":" NodeX Portable "}}""";
+        var (r, http, dns) = Create(_ => Json(body), () => now);
+        bool probed = false;
+        r.PortProbe = (_, _) => { probed = true; return Task.FromResult(true); };
+        r.DnsPort = (_, _) => { probed = true; return Task.FromResult<int?>(4569); };
+
+        var first = await r.LookupStationMetadataAsync(" 523802 ");
+        Assert.NotNull(first);
+        Assert.Equal("523802", first!.NodeNumber);
+        Assert.Equal("KV4S", first.Callsign);
+        Assert.Equal("NodeX Portable", first.Description);
+        Assert.Equal("KV4S · 523802 · NodeX Portable", StationMetadata.FormatDisplay("523802", first));
+        Assert.False(probed);
+        Assert.Empty(dns.Hosts);
+        Assert.Single(http.Requests);
+
+        // Cached hit skips HTTP.
+        var second = await r.LookupStationMetadataAsync("523802");
+        Assert.Equal(first, second);
+        Assert.Single(http.Requests);
+
+        // Invalidate drops metadata cache too.
+        r.Invalidate("523802");
+        body = """{"node":{"callsign":"KV4S","node_frequency":"444.250+"}}""";
+        var refreshed = await r.LookupStationMetadataAsync("523802");
+        Assert.Equal("KV4S · 523802 · 444.250+", StationMetadata.FormatDisplay("523802", refreshed));
+        Assert.Equal(2, http.Requests.Count);
+
+        // Expire via ClearCache & TTL.
+        r.ClearCache();
+        now = now.AddMinutes(20);
+        await r.LookupStationMetadataAsync("523802");
+        Assert.Equal(3, http.Requests.Count);
+    }
+
+    [Fact]
+    public async Task LookupStationMetadata_ReusesResolveCache_AndReturnsNullOnFailureOrBlank()
+    {
+        var (r, http, _) = Create(req =>
+            req.RequestUri!.AbsolutePath.EndsWith("/523802")
+                ? Json("""{"node":{"ipaddr":"203.0.113.10","port":4569,"callsign":"KV4S","node_frequency":"NodeX Portable"}}""")
+                : req.RequestUri.AbsolutePath.EndsWith("/4040")
+                    ? NotFound()
+                    : Json("""{"node":{"callsign":"","node_frequency":""}}"""));
+
+        var resolved = await r.ResolveNodeAsync("523802");
+        Assert.NotNull(resolved);
+        Assert.Single(http.Requests);
+
+        var meta = await r.LookupStationMetadataAsync("523802");
+        Assert.Equal("KV4S · 523802 · NodeX Portable", StationMetadata.FormatDisplay("523802", meta));
+        Assert.Single(http.Requests);   // satisfied from ResolveNodeAsync's cache
+
+        Assert.Null(await r.LookupStationMetadataAsync("4040"));
+        Assert.Null(await r.LookupStationMetadataAsync("5555"));
+        Assert.Null(await r.LookupStationMetadataAsync("  "));
+
+        var (offline, _, _) = Create(_ => throw new HttpRequestException("offline"));
+        Assert.Null(await offline.LookupStationMetadataAsync("523802"));
+    }
 }

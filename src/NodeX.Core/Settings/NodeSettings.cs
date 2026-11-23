@@ -184,6 +184,18 @@ public sealed record NodeSettings
     public bool SortLinksByActivity { get; init; } = true;
 
     /// <summary>
+    /// Optional 8-character Google Cast Custom Web Receiver App ID for showing the full NodeX TV dashboard + audio.
+    /// Leave blank to use Chromecast's built-in Default Media Receiver (<c>CC1AD845</c>) fallback.
+    /// </summary>
+    public string CastAppId { get; init; } = "";
+
+    /// <summary>
+    /// Mute this device's local speaker while casting audio to a Chromecast so there is no acoustic echo
+    /// (local microphone/PTT still works normally).
+    /// </summary>
+    public bool CastMuteLocalSpeaker { get; init; } = true;
+
+    /// <summary>
     /// Write per-step timings and protocol state to the troubleshooting log file (in addition to the normal event
     /// lines, which are always logged). Off by default because it is chatty; turn on to chase a problem, then send the log.
     /// </summary>

@@ -17,7 +17,9 @@ NodeX is a free, open-source AllStarLink node app. It has no accounts, no advert
 - **Network address checks (STUN)**: once after registering on a network, and then every 25 seconds while registered over IAX2, NodeX sends a tiny STUN request from its call socket to `stun.l.google.com` (Google) and, for the one-time check, also `stun.cloudflare.com` (Cloudflare). They see your public IP address and port, nothing else. This keeps the mobile carrier's address mapping alive and spots an address change, so other nodes keep accepting your links.
 - **Looking up and linking nodes** (`stats.allstarlink.org`, DNS, and IAX2 over UDP to the node you link): the node numbers you search for or connect to, your node number (the IAX caller identity is `NodeX-<node number>`) and your public IP address. NodeX does not ask for your callsign. Other nodes on the network can see these, as with any AllStarLink node. To find which port a node listens on, NodeX asks your device's DNS servers and, when it cannot use them, the public resolvers 1.1.1.1 (Cloudflare) and 8.8.8.8 (Google), which then see the number of the node being looked up.
 - **Find a node**: the text you type in the search box is sent to `stats.allstarlink.org`.
+- **Station display**: when your node number is set, NodeX queries `stats.allstarlink.org` for your node's public callsign and description (`node_frequency`) so the header, window title, and notifications show your station cleanly. Nothing is queried for unlisted/offline use beyond that public stats page.
 - **Bubble chart links**: tapping "Bubble chart" opens that node's page on `stats.allstarlink.org` in your web browser. Nothing is sent unless you tap it.
+- **Chromecast (optional)**: when you open **Cast** and choose a Chromecast on your local Wi-Fi/LAN, NodeX discovers devices via mDNS (`224.0.0.251:5353`), connects directly over your local network to port `8009`, and streams live node audio and link status to your Chromecast. Unless you configure a Custom Web Receiver App ID, NodeX uses Chromecast's built-in Default Media Receiver (`CC1AD845`) with a local LAN-only HTTP stream secured by a random per-session token; with a custom App ID, Chromecast loads Google's Cast Web Receiver framework and the static receiver page you configure (for example, `https://russell-kv4s.github.io/NodeX/cast/`). Private node hostnames and node passwords are never sent to the TV.
 - **Your voice**: while you key the transmitter, microphone audio is sent to the node you chose, and through it possibly onto the air and to anyone linked to that node. Audio Replay plays saved clips through your device's speaker.
 
 **Not collected:** your location, contacts, photos, files, advertising ID, or anything about other apps. Bluetooth permissions are used only to find and read a push-to-talk button you choose, and the "neverForLocation" flag is set.
@@ -36,7 +38,7 @@ NodeX keeps a small rolling log file on your device (node numbers, IP addresses,
 | Permission | Why |
 |---|---|
 | Microphone | Your voice, only while you key the transmitter (if you deny it you can still listen) |
-| Internet / network state / Wi-Fi state | Linking to nodes and reconnecting when your network changes |
+| Internet / network state / Wi-Fi state / Wi-Fi multicast | Linking to nodes, reconnecting when your network changes, and optional Chromecast mDNS discovery on local Wi-Fi |
 | Notifications | The always-on notification shown while NodeX stays linked in the background |
 | Foreground service, wake lock | Keep the link and audio alive with the screen off |
 | Bluetooth (connect, scan) | Optional Bluetooth push-to-talk button or headset |

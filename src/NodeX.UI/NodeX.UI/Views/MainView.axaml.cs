@@ -17,7 +17,7 @@ public partial class MainView : UserControl
     public const double NarrowBreakpoint = 720;
 
     /// <summary>The one-row header (brand, station, badges, settings) needs more room than the body does.</summary>
-    public const double CompactHeaderBreakpoint = 920;
+    public const double CompactHeaderBreakpoint = 1000;
 
     /// <summary>
     /// Heights below this (a phone turned sideways, a split-screen window) keep the PTT bar docked at the bottom
@@ -71,7 +71,9 @@ public partial class MainView : UserControl
         bool isShort = size.Height < ShortHeightBreakpoint;
         double scale = Math.Max(1, FontSize / 14);
         ApplyHeaderLayout(size.Width < CompactHeaderBreakpoint * scale
-            ? isShort ? HeaderMode.Short : scale > 1.1 ? HeaderMode.Spacious : HeaderMode.Compact
+            ? isShort ? HeaderMode.Short
+              : (scale > 1.1 || size.Width < NarrowBreakpoint) ? HeaderMode.Spacious
+              : HeaderMode.Compact
             : HeaderMode.Wide);
         ApplyLayout(size.Width < NarrowBreakpoint, isShort);
         ApplyPttSizing(size.Width < NarrowBreakpoint || isShort, isShort);
@@ -263,7 +265,7 @@ public partial class MainView : UserControl
         if (_spacePttDown) { e.Handled = true; return; }
         if (DataContext is MainViewModel vm)
         {
-            if (vm.IsSettingsOpen || vm.IsSearchOpen || vm.IsPrivateNodesOpen || vm.IsHistoryOpen) return;   // a panel is in front
+            if (vm.IsSettingsOpen || vm.IsSearchOpen || vm.IsPrivateNodesOpen || vm.IsHistoryOpen || vm.IsCastOpen) return;   // a panel is in front
             _spacePttDown = true;
             e.Handled = true;
             _ = vm.HandleSpacebarPttAsync(true);
@@ -414,8 +416,10 @@ public partial class MainView : UserControl
             Place(HeaderActions, row: 0, column: 2, columnSpan: 1);
             Place(BadgesPanel, row: 1, column: 0, columnSpan: 3);
 
+            StationBadge.Padding = new Thickness(12, 5);
+            StationBadge.CornerRadius = new CornerRadius(16);
             StationBadge.HorizontalAlignment = HorizontalAlignment.Center;
-            StationBadge.Margin = new Thickness(0);
+            StationBadge.Margin = new Thickness(8, 0, 8, 0);
             BadgesPanel.Margin = new Thickness(0, 6, 0, 0);
             HeaderActions.Margin = new Thickness(0);
             BrandTagline.IsVisible = false;
@@ -429,6 +433,8 @@ public partial class MainView : UserControl
             Place(HeaderActions, 0, 1, 1);
             Place(StationBadge, 1, 0, 2);
             Place(BadgesPanel, 2, 0, 2);
+            StationBadge.Padding = new Thickness(12, 5);
+            StationBadge.CornerRadius = new CornerRadius(14);
             StationBadge.HorizontalAlignment = HorizontalAlignment.Stretch;
             StationBadge.Margin = new Thickness(0, 6, 0, 0);
             BadgesPanel.Margin = new Thickness(0, 6, 0, 0);
@@ -437,7 +443,7 @@ public partial class MainView : UserControl
         }
         else if (mode == HeaderMode.Compact)
         {
-            // Slim portrait phone header: Row 0 has brand + station badge + exit; Row 1 has registration/BLE badges.
+            // Slim compact header: Row 0 has brand + station badge + actions; Row 1 has registration/BLE badges.
             HeaderBorder.Padding = new Thickness(12, 8);
             HeaderGrid.ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto");
             HeaderGrid.RowDefinitions = RowDefinitions.Parse("Auto,Auto");
@@ -447,6 +453,8 @@ public partial class MainView : UserControl
             Place(HeaderActions, row: 0, column: 2, columnSpan: 1);
             Place(BadgesPanel, row: 1, column: 0, columnSpan: 3);
 
+            StationBadge.Padding = new Thickness(14, 6);
+            StationBadge.CornerRadius = new CornerRadius(20);
             StationBadge.HorizontalAlignment = HorizontalAlignment.Center;
             StationBadge.Margin = new Thickness(8, 0, 8, 0);
             BadgesPanel.Margin = new Thickness(0, 6, 0, 0);
@@ -464,8 +472,10 @@ public partial class MainView : UserControl
             Place(BadgesPanel, row: 0, column: 2, columnSpan: 1);
             Place(HeaderActions, row: 0, column: 3, columnSpan: 1);
 
+            StationBadge.Padding = new Thickness(14, 6);
+            StationBadge.CornerRadius = new CornerRadius(20);
             StationBadge.HorizontalAlignment = HorizontalAlignment.Center;
-            StationBadge.Margin = new Thickness(0);
+            StationBadge.Margin = new Thickness(8, 0, 8, 0);
             BadgesPanel.Margin = new Thickness(0);
             HeaderActions.Margin = new Thickness(10, 0, 0, 0);
             BrandTagline.IsVisible = true;

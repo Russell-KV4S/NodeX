@@ -11,8 +11,8 @@
     Override the location by setting the NODEX_BUILD_ROOT environment variable.
   -->
   <PropertyGroup>
-    <NodeXVersion>1.35</NodeXVersion>
-    <NodeXVersionCode>38</NodeXVersionCode>
+    <NodeXVersion>1.36</NodeXVersion>
+    <NodeXVersionCode>39</NodeXVersionCode>
     <Version>$(NodeXVersion)</Version>
     <NodeXBuildRoot Condition="'$(NODEX_BUILD_ROOT)' != ''">$([MSBuild]::EnsureTrailingSlash('$(NODEX_BUILD_ROOT)'))</NodeXBuildRoot>
     <NodeXBuildRoot Condition="'$(NodeXBuildRoot)' == ''">$([System.Environment]::GetFolderPath(SpecialFolder.LocalApplicationData))\NodeX\build\</NodeXBuildRoot>

@@ -18,12 +18,15 @@ Ready-to-paste material for the Play Console. **Nothing here has been submitted.
 ```
 NodeX is a standalone AllStarLink node for your phone. Register your own node number, link out to repeaters, hubs and nets, listen, and (with an amateur radio licence) talk. No Asterisk server, no radio, no extra hardware.
 
-• Link up to 8 nodes at once. One is the transmit node; the rest are listen-only with per-node mute
-• Find-a-node search and favourites with your own names
+• Link up to 8 nodes at once, automatically sorted by recent talking/TX activity (or freeze connect order). One is the transmit node; the rest are listen-only with per-node mute
+• Automatic station badge: resolves your node's callsign and description from public AllStarLink stats (or stays Station: Node <number> offline)
+• Find-a-node search and favourites with your own names, plus local private nodes
+• Live RX & TX gain controls with RX auto-level, optional Android speaker boost, and local Audio Replay / WAV sharing
 • Push-to-talk on screen (hold or toggle), from a Bluetooth button, or from a headset key
 • Keeps the link alive with the screen off and reconnects when you move between Wi-Fi and mobile data
 • Optional station-ID reminder. NodeX never transmits for you
 • Android Auto: browse and switch favourite nodes and listen from the car
+• Chromecast: cast live node audio and a Now Playing card (or an optional TV dashboard) to a Chromecast TV or speaker on your Wi-Fi
 • Open source, no ads, no tracking. Your node password stays in the Android Keystore
 
 You need an AllStarLink account with a node number and node password. Transmitting needs a valid amateur radio licence, and you are responsible for identifying and for following the rules of the nodes you link. NodeX does not ask for or verify your callsign. Linked nodes may be connected to real radio transmitters.
@@ -37,6 +40,7 @@ NodeX has no developer server, no accounts, no ads, no analytics and no tracking
 • Nodes you link: your node number, your public IP address and, only while you hold push-to-talk, your voice. This traffic is not encrypted (the AllStarLink protocol is plain UDP). Everyone on that node and on the nodes linked to it can receive it, and it can go out over real radio.
 • Node lookups: node numbers you search for or link are sent to stats.allstarlink.org and DNS. If your own DNS cannot answer, Cloudflare (1.1.1.1) and Google (8.8.8.8) see the node number being looked up.
 • Network address check: every 25 seconds while registered, NodeX sends a tiny request to Google's STUN server (and once to Cloudflare's) to keep your mobile carrier's address mapping alive. They see only your public IP address and port.
+• Chromecast (optional, local Wi-Fi only): scanning for or casting to a Chromecast uses local-network mDNS and a direct LAN connection to the receiver. Node passwords and private node hostnames are never sent to a Cast device.
 
 Audio Replay saves received and transmitted clips on your phone by default. You can disable saving in Settings, delete clips, or share individual WAV files. The diagnostic log stays on your phone unless you choose Send logs. NodeX does not collect your contacts, location, photos or callsign. Your node password stays in the Android Keystore. Nothing is sold or used for advertising.
 

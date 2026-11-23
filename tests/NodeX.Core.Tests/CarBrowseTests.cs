@@ -291,4 +291,16 @@ public class CarBrowseTests
         var @fixed = CarBrowse.OrderActiveConnections([c1, c2, c3], sortByActivity: false).Select(c => c.Node).ToArray();
         Assert.Equal(["523801", "53431", "43136"], @fixed);
     }
+
+    [Fact]
+    public void StationDescription_FormatsResolvedOrFallbackStation_AndNullWhenUnconfigured()
+    {
+        Assert.Null(CarBrowse.StationDescription(new NodeSettings(), null));
+
+        var settings = new NodeSettings { NodeNumber = "523802" };
+        Assert.Equal("Station: Node 523802", CarBrowse.StationDescription(settings, null));
+
+        var resolved = new StationMetadata("523802", "KV4S", "NodeX Portable");
+        Assert.Equal("Station: KV4S · 523802 · NodeX Portable", CarBrowse.StationDescription(settings, resolved));
+    }
 }

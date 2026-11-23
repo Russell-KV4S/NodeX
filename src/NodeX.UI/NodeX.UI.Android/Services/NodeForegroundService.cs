@@ -45,6 +45,7 @@ public sealed class NodeForegroundService : Service
     private AndroidBackgroundKeeper? _keeper;
     private Action<BackgroundState>? _handler;
     private Action<NodeConfig>? _configHandler;
+    private Action? _stationHandler;
     private AndroidHeadsetPtt? _headset;
     private AndroidRadioDucker? _ducker;
     private Action? _carHandler;
@@ -117,6 +118,10 @@ public sealed class NodeForegroundService : Service
         // Settings saved while linked (the headset-button option) take effect without a relink.
         _configHandler = _ => { if (IsRunning) SafeApply(AppServices.Runtime.Background); };
         AppServices.Runtime.ConfigService.Changed += _configHandler;
+
+        // Resolved local callsign/description refreshes the notification subtext without restarting the service.
+        _stationHandler = () => { if (IsRunning) SafeApply(AppServices.Runtime.Background); };
+        AppServices.Runtime.LocalStationChanged += _stationHandler;
 
         // Android Auto connecting or disconnecting changes the audio route and who owns the media buttons.
         _carHandler = () => { if (IsRunning) SafeApply(AppServices.Runtime.Background); };
@@ -394,6 +399,8 @@ public sealed class NodeForegroundService : Service
         _handler = null;
         if (_configHandler != null) AppServices.Runtime.ConfigService.Changed -= _configHandler;
         _configHandler = null;
+        if (_stationHandler != null) AppServices.Runtime.LocalStationChanged -= _stationHandler;
+        _stationHandler = null;
         if (_carHandler != null) CarSession.Changed -= _carHandler;
         _carHandler = null;
         if (_current == this) _current = null;
@@ -460,6 +467,9 @@ public sealed class NodeForegroundService : Service
             .SetCategory(Notification.CategoryService)!
             .SetContentIntent(pending)!;
 
+        if (!string.IsNullOrWhiteSpace(AppServices.Runtime.Config.Settings.NodeNumber))
+            builder.SetSubText($"Station: {AppServices.Runtime.LocalStationDisplay}");
+
         if (state.IsLinked)
         {
             builder.AddAction(global::Android.Resource.Drawable.IcMenuCloseClearCancel, "Disconnect",
@@ -504,9 +514,14 @@ public sealed class NodeForegroundService : Service
         var pendingAck = PendingIntent.GetService(context, 11, ackIntent,
             PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent);
 
+        string? callsign = AppServices.Runtime.LocalStation?.Callsign?.Trim();
+        string idText = !string.IsNullOrEmpty(callsign)
+            ? $"Say your callsign ({callsign}) on the air."
+            : "Say your station callsign on the air.";
+
         var n = new NotificationCompat.Builder(context, IdReminderChannelId)
             .SetContentTitle("Time to identify")!
-            .SetContentText("Say your station callsign on the air.")!
+            .SetContentText(idText)!
             .SetSmallIcon(Resource.Drawable.ic_stat_nodex)!
             .SetAutoCancel(true)!
             .SetCategory(Notification.CategoryReminder)!

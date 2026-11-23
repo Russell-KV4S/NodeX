@@ -9,8 +9,9 @@
         MinWidth="340" MinHeight="480"
         WindowStartupLocation="CenterScreen"
         x:Class="NodeX.UI.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
         Icon="/Assets/nodex.ico"
-        Title="NodeX — AllStarLink Radioless Node"
+        Title="{Binding WindowTitle, FallbackValue='NodeX — AllStarLink Radioless Node'}"
         Background="{DynamicResource ConsoleBackgroundBrush}">
         <views:MainView />
 </Window>

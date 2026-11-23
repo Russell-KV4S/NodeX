@@ -392,4 +392,113 @@ public class NodeRuntimeTests : IDisposable
 
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"Expected immediate dial after registering, took {sw.Elapsed}");
     }
+
+    [Fact]
+    public async Task LocalStation_ResolvesOnStart_ClearsOnNodeChange_AndThrottlesFailures()
+    {
+        DateTime now = new(2026, 11, 22, 12, 0, 0, DateTimeKind.Utc);
+        int dirCalls = 0;
+        bool return404For99999 = true;
+        var dirHttp = new StubHandler(req =>
+        {
+            Interlocked.Increment(ref dirCalls);
+            string path = req.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/523802"))
+            {
+                return new(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"node":{"callsign":"KV4S","node_frequency":"NodeX Portable"}}""",
+                        Encoding.UTF8, "application/json")
+                };
+            }
+            if (path.EndsWith("/99999") && !return404For99999)
+            {
+                return new(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"node":{"callsign":"W1AW","node_frequency":"146.520"}}""",
+                        Encoding.UTF8, "application/json")
+                };
+            }
+            return new(HttpStatusCode.NotFound);
+        });
+
+        var config = new NodeConfigService(new JsonFileSettingsStore(_settingsPath), _secrets);
+        var resolver = new NodeResolution(new HttpClient(dirHttp), utcNow: () => now) { PortProbe = null, DnsPort = null };
+        var registry = new StubHandler(_ => RegistryOk());
+
+        await using var rt = new NodeRuntime(
+            config,
+            audioFactory: () => new FakeAudioDevice(),
+            resolver: resolver,
+            registrationFactory: cfg => new AslRegistrationService(cfg, new HttpClient(registry)))
+        {
+            LookupLocalStationMetadata = true,
+            UtcNow = () => now
+        };
+
+        await config.SaveAsync(new NodeSettings { NodeNumber = "523802" }, "pw");
+        await rt.StartAsync();
+
+        await WaitUntil(() => rt.LocalStation?.NodeNumber == "523802");
+        Assert.Equal("KV4S · 523802 · NodeX Portable", rt.LocalStationDisplay);
+        Assert.Equal(1, Volatile.Read(ref dirCalls));
+
+        // Changing node number clears stale KV4S metadata immediately; 404 keeps clean fallback.
+        var clearedEvent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        rt.LocalStationChanged += () => { if (rt.LocalStation == null) clearedEvent.TrySetResult(); };
+        await config.SaveAsync(new NodeSettings { NodeNumber = "99999" }, "pw");
+        await clearedEvent.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("Node 99999", rt.LocalStationDisplay);
+
+        await WaitUntil(() => Volatile.Read(ref dirCalls) >= 2);
+        Assert.Null(rt.LocalStation);
+
+        // Within retry interval, unrelated config save does not hammer stats API.
+        return404For99999 = false;
+        await config.SaveAsync(new NodeSettings { NodeNumber = "99999", TogglePtt = true }, "pw");
+        await Task.Delay(50);
+        Assert.Equal(2, Volatile.Read(ref dirCalls));
+
+        // Once retry interval elapses, another config apply picks up metadata cleanly.
+        now = now.AddMinutes(2);
+        await config.SaveAsync(new NodeSettings { NodeNumber = "99999", TogglePtt = false }, "pw");
+        await WaitUntil(() => rt.LocalStation?.NodeNumber == "99999");
+        Assert.Equal("W1AW · 99999 · 146.520", rt.LocalStationDisplay);
+    }
+
+    [Fact]
+    public async Task LocalStation_DefaultFakeRegistryMode_MakesZeroUnsolicitedCalls_UnlessExplicitlyRefreshed()
+    {
+        int dirCalls = 0;
+        var dirHttp = new StubHandler(_ =>
+        {
+            Interlocked.Increment(ref dirCalls);
+            return new(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"node":{"callsign":"KV4S","node_frequency":"NodeX Portable"}}""",
+                    Encoding.UTF8, "application/json")
+            };
+        });
+
+        var config = new NodeConfigService(new JsonFileSettingsStore(_settingsPath), _secrets);
+        var resolver = new NodeResolution(new HttpClient(dirHttp)) { PortProbe = null, DnsPort = null };
+        var registry = new StubHandler(_ => RegistryOk());
+
+        await using var rt = new NodeRuntime(
+            config,
+            audioFactory: () => new FakeAudioDevice(),
+            resolver: resolver,
+            registrationFactory: cfg => new AslRegistrationService(cfg, new HttpClient(registry)));
+
+        await config.SaveAsync(new NodeSettings { NodeNumber = "523802", RegisterOnStartup = false }, "pw");
+        await rt.StartAsync();
+        await Task.Delay(50);
+
+        Assert.Equal(0, Volatile.Read(ref dirCalls));
+        Assert.Equal("Node 523802", rt.LocalStationDisplay);
+
+        await rt.RefreshLocalStationAsync();
+        Assert.Equal(1, Volatile.Read(ref dirCalls));
+        Assert.Equal("KV4S · 523802 · NodeX Portable", rt.LocalStationDisplay);
+    }
 }

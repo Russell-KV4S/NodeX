@@ -14,13 +14,13 @@ Rules:
 
 ## Pending
 
-1.35 (code 38), pending Google Play upload (2026-11-22).
+1.36 (code 39), pending Google Play upload (2026-11-22; covers 1.35–1.36).
 
 ```
 <en-US>
-Linked nodes now move the most recently active node (unmuted RX or your own TX) to the top, with older and unheard nodes below.
-Added a Sort: Recent / Sort: Fixed toggle in the Links header so you can freeze connect order any time.
-Android Auto Active Links and Next/Previous stepping follow the same order while keeping Now Playing locked to your selected node.
+Cast station status and live node audio to any Chromecast TV or speaker on your Wi-Fi (works out of the box, or add a Cast App ID for a full TV dashboard).
+Main header, window title, Settings, notifications, and Android Auto now show your node's callsign and description automatically.
+Linked nodes now move recent unmuted RX or your own TX to the top, with a Sort: Recent / Sort: Fixed toggle (plus Android Auto Active Links).
 </en-US>
 ```
 

@@ -147,6 +147,9 @@
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
+        <Style Selector="Button.headerIcon.active">
+            <Setter Property="BorderBrush" Value="{DynamicResource CyanAccentBrush}" />
+        </Style>
         <Style Selector="UserControl.narrow Button.headerIcon">
             <Setter Property="Width" Value="44" />
             <Setter Property="Height" Value="44" />
@@ -252,11 +255,17 @@
                 <Border x:Name="StationBadge" Grid.Column="1" HorizontalAlignment="Center"
                         Background="{DynamicResource CardBackgroundBrush}"
                         BorderBrush="{DynamicResource CardBorderBrush}"
-                        BorderThickness="1" CornerRadius="20" Padding="14,6">
-                    <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="4">
-                        <TextBlock Text="STATION:" FontWeight="SemiBold" FontSize="{DynamicResource FontSize11}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding LocalNodeNumber, StringFormat='Node {0}'}" FontWeight="Bold" FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource CyanAccentBrush}" VerticalAlignment="Center" />
-                    </WrapPanel>
+                        BorderThickness="1" CornerRadius="20" Padding="14,6"
+                        ToolTip.Tip="{Binding StationDisplayText}"
+                        AutomationProperties.Name="{Binding StationAutomationName}">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" VerticalAlignment="Center">
+                        <TextBlock Grid.Column="0" Text="STATION:" FontWeight="SemiBold" FontSize="{DynamicResource FontSize11}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                        <TextBlock x:Name="StationDisplayTextBlock" Grid.Column="1" Text="{Binding StationDisplayText}"
+                                   FontWeight="Bold" FontSize="{DynamicResource FontSize13}"
+                                   Foreground="{DynamicResource CyanAccentBrush}" VerticalAlignment="Center"
+                                   TextWrapping="Wrap" />
+                    </Grid>
                 </Border>
 
                 <!-- Registration + Bluetooth badges (wrap onto a second line when space is tight) -->
@@ -308,6 +317,21 @@
                                   Data="M4.5 11 A7.5 7.5 0 1 1 6.7 16.8 M4.5 5.5 V11 H10 M10.5 9.2 L15 12 L10.5 14.8 Z" />
                             <Ellipse Width="8" Height="8" Fill="{DynamicResource RxGreenBrush}"
                                      IsVisible="{Binding History.HasUnheard}"
+                                     HorizontalAlignment="Right" VerticalAlignment="Top" />
+                        </Grid>
+                    </Button>
+                    <Button x:Name="CastButton" Classes="headerIcon" Classes.active="{Binding IsCasting}"
+                            AutomationProperties.Name="{Binding CastAutomationName}"
+                            ToolTip.Tip="{Binding CastToolTip}"
+                            Command="{Binding OpenCastCommand}">
+                        <Grid Width="26" Height="26">
+                            <!-- Google Cast TV + waves glyph -->
+                            <Path Width="19" Height="19" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Stroke="{DynamicResource CyanAccentBrush}" StrokeThickness="2"
+                                  StrokeLineCap="Round" StrokeJoin="Round"
+                                  Data="M2 16.1 A5 5 0 0 1 5.9 20 M2 12.05 A9 9 0 0 1 9.95 20 M2 8 V6 A2 2 0 0 1 4 4 H20 A2 2 0 0 1 22 6 V18 A2 2 0 0 1 20 20 H14 M2 20 H2.01" />
+                            <Ellipse Width="8" Height="8" Fill="{DynamicResource RxGreenBrush}"
+                                     IsVisible="{Binding IsCasting}"
                                      HorizontalAlignment="Right" VerticalAlignment="Top" />
                         </Grid>
                     </Button>
@@ -388,7 +412,7 @@
                                         CornerRadius="8" BorderThickness="1"
                                         BorderBrush="{DynamicResource AmberAccentBrush}" Background="{DynamicResource WarningBackgroundBrush}">
                                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                                        <TextBlock Text="Time to identify (say your callsign)." FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
+                                        <TextBlock Text="{Binding IdReminderText}" FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
                                                    TextWrapping="Wrap" VerticalAlignment="Center"
                                                    Foreground="{DynamicResource AmberAccentBrush}" />
                                         <Button Grid.Column="1" Content="I've identified" Command="{Binding AcknowledgeIdCommand}"
@@ -562,7 +586,7 @@
                             CornerRadius="8" BorderThickness="1"
                             BorderBrush="{DynamicResource AmberAccentBrush}" Background="{DynamicResource WarningBackgroundBrush}">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                            <TextBlock Text="Time to identify (say your callsign)." FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
+                            <TextBlock Text="{Binding IdReminderText}" FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold"
                                        TextWrapping="Wrap" VerticalAlignment="Center"
                                        Foreground="{DynamicResource AmberAccentBrush}" />
                             <Button Grid.Column="1" Content="I've identified" Command="{Binding AcknowledgeIdCommand}"
@@ -1239,6 +1263,12 @@
         <Border Grid.RowSpan="4" IsVisible="{Binding IsHistoryOpen}"
                 Background="{DynamicResource ConsoleBackgroundBrush}">
             <views:AudioHistoryView DataContext="{Binding History}" />
+        </Border>
+
+        <!-- CHROMECAST OVERLAY -->
+        <Border Grid.RowSpan="4" IsVisible="{Binding IsCastOpen}"
+                Background="{DynamicResource ConsoleBackgroundBrush}">
+            <views:CastView DataContext="{Binding Cast}" />
         </Border>
 
         <!-- SETTINGS OVERLAY (full screen so it works on phones as well as desktop) -->

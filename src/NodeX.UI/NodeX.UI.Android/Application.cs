@@ -66,6 +66,7 @@ namespace NodeX.UI.Android
                 appVersion: AndroidVersionName());
 
             AppServices.RxLoudnessBoostSupported = true;
+            AppServices.MulticastLockAcquirer = () => AcquireMulticastLock(this);
             AppServices.Runtime.RxAudioChanged += (gain, _, boost) =>
                 AndroidAudioDeviceService.SetLoudnessBoost(gain, boost);
             AndroidAudioDeviceService.SetLoudnessBoost(
@@ -88,6 +89,37 @@ namespace NodeX.UI.Android
             // Know when the phone is in a car, so a link started on the phone switches to car audio and the wheel
             // buttons work without first picking a node on the car screen.
             CarConnectionWatcher.Start(this);
+        }
+
+        private static System.IDisposable? AcquireMulticastLock(global::Android.Content.Context context)
+        {
+            try
+            {
+                if (context.GetSystemService(WifiService) is not global::Android.Net.Wifi.WifiManager wifi)
+                    return null;
+                var mcast = wifi.CreateMulticastLock("NodeXCast");
+                if (mcast == null) return null;
+                mcast.SetReferenceCounted(false);
+                mcast.Acquire();
+                return new MulticastLockGuard(mcast);
+            }
+            catch (System.Exception)
+            {
+                return null;
+            }
+        }
+
+        private sealed class MulticastLockGuard(global::Android.Net.Wifi.WifiManager.MulticastLock mcastLock) : System.IDisposable
+        {
+            public void Dispose()
+            {
+                try
+                {
+                    if (mcastLock.IsHeld) mcastLock.Release();
+                }
+                catch (System.Exception) { }
+                mcastLock.Dispose();
+            }
         }
     }
 }

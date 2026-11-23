@@ -122,6 +122,9 @@
                     <StackPanel>
                         <TextBlock Classes="label" Text="Node number" />
                         <TextBox AutomationProperties.Name="Node number" Text="{Binding NodeNumber}" PlaceholderText="e.g. 55553" MaxLength="7" />
+                        <TextBlock Text="{Binding LocalStationSummary}" IsVisible="{Binding HasLocalStationSummary}"
+                                   FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource CyanAccentBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
                     </StackPanel>
 
                     <StackPanel>
@@ -354,6 +357,23 @@
                         <TextBox AutomationProperties.Name="Station ID reminder minutes" Text="{Binding IdReminderMinutesText}" MaxLength="2" />
                         <TextBlock Classes="hint" Text="Counted from when you start transmitting. NodeX only shows a reminder; it never sends an ID or any audio except your voice. You are responsible for following the identification rules that apply to you." />
                     </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- CHROMECAST -->
+            <Border Classes="card">
+                <StackPanel Spacing="14">
+                    <TextBlock Classes="sectionTitle" Text="Chromecast" />
+
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="Cast App ID (optional, for TV dashboard)" />
+                        <TextBox AutomationProperties.Name="Cast App ID" Text="{Binding CastAppId}"
+                                 PlaceholderText="Leave blank for Default Media Receiver (e.g. A1B2C3D4)" MaxLength="8" />
+                        <TextBlock Classes="hint"
+                                   Text="Leave blank to use Chromecast's built-in Default Media Receiver (live audio and Now Playing card, no setup needed). Enter an 8-character Custom Web Receiver App ID pointing to https://russell-kv4s.github.io/NodeX/cast/ to show the full live NodeX TV dashboard + audio." />
+                    </StackPanel>
+
+                    <CheckBox Content="Mute this device's speaker while casting" IsChecked="{Binding CastMuteLocalSpeaker}" />
                 </StackPanel>
             </Border>
 

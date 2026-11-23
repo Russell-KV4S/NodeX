@@ -83,7 +83,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _sortSaveCts = null;
         _idReminder.Dispose();
         History.Dispose();
+        Cast.StateChanged -= OnCastStateChanged;
+        _castManager.Notice -= OnCastNotice;
+        Cast.Dispose();
         _runtime.RegistrationChanged -= OnRegistrationChanged;
+        _runtime.LocalStationChanged -= OnLocalStationChanged;
         _runtime.LinkAdded -= OnRuntimeLinkAdded;
         _runtime.LinkRemoved -= OnRuntimeLinkRemoved;
         _runtime.ConnectionsChanged -= OnConnectionsChanged;
@@ -142,6 +146,22 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public partial string LocalNodeNumber { get; set; } = NotSet;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StationAutomationName), nameof(WindowTitle))]
+    public partial string StationDisplayText { get; set; } = "Node not set";
+
+    public string StationAutomationName => $"Station: {StationDisplayText}";
+
+    public string WindowTitle =>
+        string.Equals(StationDisplayText, "Node not set", StringComparison.OrdinalIgnoreCase)
+            ? "NodeX — AllStarLink Radioless Node"
+            : $"NodeX — Station: {StationDisplayText}";
+
+    public string IdReminderText =>
+        !string.IsNullOrWhiteSpace(_runtime.LocalStation?.Callsign)
+            ? $"Time to identify (say {_runtime.LocalStation!.Callsign.Trim()})."
+            : "Time to identify (say your callsign).";
+
+    [ObservableProperty]
     public partial bool IsAslRegistered { get; set; }
 
     [ObservableProperty]
@@ -181,11 +201,34 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     public bool CloseTopOverlay()
     {
+        if (IsCastOpen) { IsCastOpen = false; return true; }
         if (IsHistoryOpen) { IsHistoryOpen = false; _ = History.StopPlaybackAsync(); return true; }
         if (IsPrivateNodesOpen) { IsPrivateNodesOpen = false; return true; }
         if (IsSearchOpen) { IsSearchOpen = false; return true; }
         if (IsSettingsOpen) { IsSettingsOpen = false; return true; }
         return false;
+    }
+
+    // --- Chromecast overlay ---
+    private readonly NodeX.Core.Cast.CastSessionManager _castManager;
+    public CastViewModel Cast { get; }
+
+    [ObservableProperty]
+    public partial bool IsCastOpen { get; set; }
+
+    public bool IsCasting => Cast.IsCasting;
+    public string CastAutomationName => IsCasting
+        ? $"Casting to {Cast.ActiveDeviceName}"
+        : "Cast screen and sound to Chromecast";
+    public string CastToolTip => IsCasting
+        ? Cast.StatusText
+        : "Cast screen & sound to Chromecast";
+
+    [RelayCommand]
+    public void OpenCast()
+    {
+        Cast.OnOpened();
+        IsCastOpen = true;
     }
 
     // --- Zello-style Audio Replay / History overlay ---
@@ -905,23 +948,39 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         AppServices.IdReminderNotifier?.Invoke(due);
         if (due)
         {
-            LogActivity("[ID] Time to identify (say your callsign).");
+            LogActivity($"[ID] {IdReminderText}");
             IdReminderDue?.Invoke();
         }
     });
 
     /// <summary>Uses the application-wide runtime (see <see cref="AppServices"/>).</summary>
-    public MainViewModel() : this(AppServices.Runtime) { }
+    public MainViewModel() : this(AppServices.Runtime, null, AppServices.Cast) { }
 
-    public MainViewModel(NodeRuntime runtime, NodeDirectory? directory = null)
+    public MainViewModel(
+        NodeRuntime runtime,
+        NodeDirectory? directory = null,
+        NodeX.Core.Cast.CastSessionManager? castManager = null)
     {
         _runtime = runtime;
+        _castManager = castManager ?? (ReferenceEquals(runtime, AppServices.Runtime)
+            ? AppServices.Cast
+            : new NodeX.Core.Cast.CastSessionManager(runtime));
         _idReminder.DueChanged += OnIdReminderDueChanged;
         _acknowledgeId = () => OnUi(AcknowledgeId);
         AppServices.AcknowledgeIdHandler = _acknowledgeId;
         AppServices.HardwarePtt.Pressed += OnHardwarePtt;
         AppServices.DeepLinkReceived += OnDeepLinkReceived;
         HookBle();
+
+        Cast = new CastViewModel(runtime, _castManager);
+        Cast.Closed += () => IsCastOpen = false;
+        Cast.OpenSettingsRequested += () =>
+        {
+            IsCastOpen = false;
+            _ = OpenSettingsAsync();
+        };
+        Cast.StateChanged += OnCastStateChanged;
+        _castManager.Notice += OnCastNotice;
 
         History = new AudioHistoryViewModel(
             isRecordingEnabled: () => _runtime.Config.Settings.SaveAudioHistory);
@@ -959,6 +1018,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         };
 
         runtime.RegistrationChanged += OnRegistrationChanged;
+        runtime.LocalStationChanged += OnLocalStationChanged;
         runtime.LinkAdded += OnRuntimeLinkAdded;
         runtime.LinkRemoved += OnRuntimeLinkRemoved;
         runtime.ConnectionsChanged += OnConnectionsChanged;
@@ -979,6 +1039,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     }
 
     private void OnRegistrationChanged() => OnUi(ApplyRegistration);
+    private void OnLocalStationChanged() => OnUi(ApplyLocalStation);
+    private void OnCastNotice(string message) => LogActivity($"[CAST] {message}");
+    private void OnCastStateChanged()
+    {
+        OnPropertyChanged(nameof(IsCasting));
+        OnPropertyChanged(nameof(CastAutomationName));
+        OnPropertyChanged(nameof(CastToolTip));
+    }
     private void OnRuntimeLinkAdded(NodeLink link) => OnUi(() => AttachLink(link));
     private void OnRuntimeLinkRemoved(NodeLink link) => OnUi(() => DetachLink(link));
     private void OnConnectionsChanged() => OnUi(RefreshLinks);
@@ -1064,7 +1132,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             }
             else
             {
-                LogActivity($"NodeX ready. Node {LocalNodeNumber}.");
+                LogActivity($"NodeX ready. Station: {StationDisplayText}.");
             }
 
             if (AppServices.ConsumePendingDeepLink() is { } pendingLink)
@@ -1582,6 +1650,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         var s = cfg.Settings;
         _idReminder.Configure(s.IdReminderEnabled, TimeSpan.FromMinutes(s.IdReminderMinutes));
         LocalNodeNumber = s.NodeNumber.Length > 0 ? s.NodeNumber : NotSet;
+        ApplyLocalStation();
         RefreshTransmit();
 
         var autoConnect = s.GetEffectiveAutoConnectNodes();
@@ -1639,6 +1708,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             SortLinksByActivity = s.SortLinksByActivity;
 
         RefreshLinks();   // favourite names appear in the link rows
+    }
+
+    private void ApplyLocalStation()
+    {
+        StationDisplayText = _runtime.LocalStationDisplay;
+        OnPropertyChanged(nameof(IdReminderText));
+        Settings.SetLocalStation(_runtime.LocalStation);
     }
 
     private void ApplyRegistration()

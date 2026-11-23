@@ -18,18 +18,20 @@ It is built for a **portable node**: register once, link out to other nodes, and
 
 ## Features
 
-- **Always on, in the background:** on Android a foreground service keeps your links alive with the screen off or the app in the background, and NodeX keeps retrying until *you* disconnect, through Wi-Fi/cellular switches, dropped calls and dead spots, so the node is there when you want it
-- **Multiple nodes at once:** register once with AllStarLink and hold up to **8 simultaneous outbound links** with live mixed audio, per-node mute, and a single explicit transmit target
+- **Always on, in the background:** on Android a foreground service keeps your links alive with the screen off or the app backgrounded, and NodeX keeps retrying until *you* disconnect, through Wi-Fi/cellular switches, dropped calls and dead spots, so the node is there when you want it
+- **Multiple nodes at once:** register once with AllStarLink and hold up to **8 simultaneous outbound links** with live mixed audio, dynamic recent-activity sorting (**Sort: Recent** / **Sort: Fixed**), per-node mute, and a single explicit transmit target
 - **Android Auto:** a native car media app to browse linked nodes and favourites, switch listen/transmit focus, mute, and (full GitHub edition) transmit from the car screen or steering wheel
-- **[Audio Replay and WAV sharing](#audio-replay-and-sharing):** replay received or transmitted audio, jump straight to the last received clip, and share a WAV from either Android edition
+- **[Chromecast (screen & sound)](#chromecast-screen--sound):** cast live node audio and a Now Playing card out of the box—or a full 10-foot TV console dashboard—to a Chromecast TV or speaker on your Wi-Fi from Android or Desktop, with local speaker mute and TV volume controls
+- **[Audio Replay and WAV sharing](#audio-replay-and-sharing):** replay received or transmitted audio, jump straight to the last received clip, combine clips, and share a WAV from either Android edition
 - **Receive & transmit gain + Auto-Level:** adjust live **RX** (`0.5×–4.0×` with soft limiting + **Auto** toggle) and **TX** mic gain right inside the PTT panel or Settings, and use extra speaker boost (`LoudnessEnhancer`) on Android
-- Find-a-node search, favourites with custom labels, and a DTMF keypad for node function codes (sent to the transmit node; Link/Unlink use the Connect box's node)
+- **Automatic station display:** resolves your configured node's public callsign and description/frequency from AllStarLink (falling back cleanly offline) for the header badge, desktop window title, notification, and Android Auto Now Playing
+- Find-a-node search, favourites with custom labels, private/manually addressed nodes, and a DTMF keypad for node function codes (sent to the transmit node; Link/Unlink use the Connect box's node)
 - Push-to-talk: on-screen (momentary or toggle), Bluetooth LE button with a "Learn" wizard, and headset media key
 - Auto-reconnect and seamless Wi-Fi ↔ cellular network handoff
 - Optional station-ID reminder (it never transmits for you)
 - Full Android edition: GitHub update checks and a verified download/install flow
 - Passwords kept in the platform secret store; no telemetry
-- Dark, Light and High contrast themes, with text size from 100% to 150%
+- Dark, Light and High contrast themes (plus Follow system, AMOLED black, Nord, Terminal green, and Sepia), with text size from 100% to 150%
 - Permission explanations in Settings, with Android permission review and a Not now option
 
 ## Connect to multiple nodes at once
@@ -39,16 +41,25 @@ NodeX is built for monitoring and operating across more than one repeater, hub, 
 - **Up to 8 simultaneous links:** stay connected to up to 8 outbound nodes at once, each with its own connection, independent auto-reconnect, live audio, per-node **Mute / Unmute**, and **Disconnect**.
 - **Safe single transmit node:** your first connected node becomes the transmit target; every other linked node stays **listen-only** until you explicitly tap **Transmit here** on another card.
 - **No accidental RF routing:** if your active transmit node drops from the far end, NodeX clears the transmit target rather than silently moving your mic to another connected node, and NodeX never cross-links or repeats audio between connected nodes.
-- **Live activity:** per-node talking indicators and parsed ASL status/link lists show which linked node is active.
+- **Live activity:** per-node talking indicators, dynamic recent-activity sorting (`Sort: Recent` / `Sort: Fixed`), and parsed ASL status/link lists show which linked node is active.
 
 ## Android Auto integration
 
 Take your AllStarLink node on the road as a native Android Auto media app:
 
 - **Browse & dial safely:** switch between **Active Links** and **Favourites** tabs on your car display, tap a favourite to dial, or select any active link to focus it on Now Playing.
-- **Clear car controls:** Now Playing shows who is talking, your link count, and whether you are listening or armed to transmit, with per-node **Transmit here**, **Mute / Unmute**, and **Disconnect** buttons.
+- **Clear car controls:** Now Playing shows who is talking, your station info, your link count, and whether you are listening or armed to transmit, with per-node **Transmit here**, **Mute / Unmute**, and **Disconnect** buttons.
 - **Car-safe media buttons:** **Next / Back** step through connected nodes without dialling new ones, **Pause / Stop** never drop or mute your links, and **Play** takes the car audio back. Nothing is muted unless you press Mute. Any active car transmission is immediately released if focus is lost, the car disconnects, or any media button is pressed.
 - **Play vs full GitHub edition:** the Google Play edition is **listen-only** in the car (you can still browse, switch nodes, mute, and disconnect). The full GitHub APK edition (`NodeX-android.apk`, [install guide](docs/INSTALL_ANDROID.md)) adds an optional **Talk** screen button and optional steering-wheel **Next** or **Back** PTT trigger in **Settings** (disabled by default, with audible key/unkey confirmation tones and a car transmission time limit).
+
+## Chromecast (screen & sound)
+
+Bring your station status, active links, and live AllStarLink audio to any Chromecast TV or Cast speaker on your local Wi-Fi from Android or Desktop:
+
+- **Works out of the box (`CC1AD845`):** zero developer account or fee — leave **Cast App ID** blank in **Settings → Chromecast** to stream live mixed 8 kHz node audio over your LAN alongside a Now Playing card displaying your station label, active linked nodes, and the NodeX logo.
+- **Optional 10-foot TV dashboard (`docs/cast/`):** host the bundled Google Cast CAF v3 Web Receiver (`docs/cast/index.html`, free via GitHub Pages) and paste your Custom Receiver App ID in **Settings → Chromecast** for a full-screen dark TV console (station badge, ASL registration state, live SPK/MIC bars, up to 8 dynamically sorted link cards with green RX / red TX highlights, and low-latency G.711 µ-law Web Audio; see [`docs/cast/README.md`](docs/cast/README.md) and `?demo=1` preview).
+- **Discovery & audio controls:** auto-discover Chromecasts on your LAN via mDNS or enter an IPv4 address manually; adjust TV volume, mute the TV, or mute your phone/PC speaker while keeping local push-to-talk and Audio Replay working normally.
+- **Local-only privacy:** mDNS discovery and CASTV2 streaming stay on your local LAN; node passwords and private node hostnames are never sent to a Cast receiver.
 
 ## Audio Replay and sharing
 
@@ -64,8 +75,9 @@ NodeX is young. This table says what has actually been tested.
 | Platform | Status |
 |---|---|
 | **Windows** | Works. Core protocol validated live against a real ASL3 node. |
-| **Android** | On Google Play internal testing; used on a real phone. Background behaviour, Bluetooth PTT and network handoff are still being tested on devices. |
+| **Android** | On Google Play internal testing / closed Alpha; used on a real phone (v1.30 confirmed IAX2 cellular registration and live links on AT&T). Background behaviour, Bluetooth PTT and network handoff are still being tested on devices. |
 | **Android Auto** | Earlier DHU use succeeded. The latest Play report found missing PTT (disabled in that edition) and an icon regression, fixed in 1.16 but awaiting a car check. Individual voice/focus/cold-start cases still need recording. |
+| **Chromecast** | Pure-.NET discovery, CASTV2 streaming, zero-config LAN WAV fallback (`CC1AD845`) and 10-foot TV receiver (`docs/cast/`) coded and covered by Core/headless UI tests; physical Chromecast hardware & Cast Console App ID verification pending. |
 | **Linux / macOS** | Audio backend written (PortAudio); tested only with a small test program on a Raspberry Pi. The full app has not been run there. |
 | **iOS** | Compiles. Never run on a device; no release planned. See [`docs/IOS_RELEASE.md`](docs/IOS_RELEASE.md) if you want to pick it up. |
 
@@ -115,6 +127,7 @@ Outbound calls use an available local UDP source port. This does not restrict th
 
 - [`PROJECT_SPEC.md`](PROJECT_SPEC.md): architecture, protocol facts, behaviour reference, backlog
 - [`docs/LIVE_VALIDATION.md`](docs/LIVE_VALIDATION.md): results from tests against real nodes
+- [`docs/cast/README.md`](docs/cast/README.md): Chromecast 10-foot TV receiver setup (GitHub Pages + Cast Console)
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`SECURITY.md`](SECURITY.md)
 
 ## Credits

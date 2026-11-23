@@ -145,6 +145,18 @@ public sealed class NodeAudioEngine : IAsyncDisposable
 
     private bool _muted;
 
+    /// <summary>
+    /// When true, local device playback is silenced (e.g., while casting to a Chromecast) without suppressing
+    /// <see cref="RxAudioProcessed"/>, VU meters, or Audio Replay recording.
+    /// </summary>
+    public bool MuteLocalOutput
+    {
+        get => Volatile.Read(ref _muteLocalOutput);
+        set => Volatile.Write(ref _muteLocalOutput, value);
+    }
+
+    private bool _muteLocalOutput;
+
     /// <summary>Smoothed microphone level (updated every 20 ms while capturing).</summary>
     public AudioLevels InputLevel => _inputMeter.Current;
 
@@ -160,8 +172,11 @@ public sealed class NodeAudioEngine : IAsyncDisposable
     /// <summary>Raised when received audio starts (true) or the jitter buffer drains (false).</summary>
     public event Action<bool>? RemoteAudioActiveChanged;
 
-    /// <summary>Raised on the playout thread for each 20 ms unmuted frame (zero allocation when unsubscribed).</summary>
+    /// <summary>Raised on the playout thread for each 20 ms unmuted frame before RX gain (zero allocation when unsubscribed).</summary>
     public event Action<ReadOnlyMemory<short>>? RxFrameDecoded;
+
+    /// <summary>Raised on the playout thread for each 20 ms unmuted active-speech frame after RX gain/auto-level (for Chromecast).</summary>
+    public event Action<ReadOnlyMemory<short>>? RxAudioProcessed;
 
     /// <summary>Raised on the capture thread for each 20 ms transmitted frame after gain/processing.</summary>
     public event Action<ReadOnlyMemory<short>>? TxFrameCaptured;
@@ -423,13 +438,16 @@ public sealed class NodeAudioEngine : IAsyncDisposable
         if (hasAudio) _rxProcessor.Process(frame);
         else _rxProcessor.ObserveSilence();
 
+        if (!Muted && hasAudio && RxAudioProcessed is { } processedHandler)
+            processedHandler(frame);
+
         // A Silence result is all zeros already (JitterBuffer clears it): feed the known level instead of scanning 160
         // samples 50 times a second on every idle link. Same smoothing, same callbacks (battery review 2026-11-21).
         OutputLevelChanged?.Invoke(hasAudio ? _outputMeter.Process(frame) : _outputMeter.Update(AudioLevels.Silent));
 
-        if (Muted)
+        if (Muted || MuteLocalOutput)
         {
-            // Heard-but-silenced: the meter above still moves so the user can see the link is active.
+            // Heard-but-silenced locally: meters, Audio Replay, and Cast still observe active audio.
             if (!_options.KeepAudioPipelineAlive) return;
             Array.Clear(frame);
         }

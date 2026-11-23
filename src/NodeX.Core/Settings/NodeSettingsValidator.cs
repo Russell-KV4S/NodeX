@@ -22,6 +22,7 @@ public static partial class NodeSettingsValidator
         public const string RxGain = nameof(NodeSettings.RxGain);
         public const string TimeOutTimerSeconds = nameof(NodeSettings.TimeOutTimerSeconds);
         public const string IdReminderMinutes = nameof(NodeSettings.IdReminderMinutes);
+        public const string CastAppId = nameof(NodeSettings.CastAppId);
     }
 
     /// <summary>ASL3's registration module stores the secret in an 80-byte buffer.</summary>
@@ -30,7 +31,12 @@ public static partial class NodeSettingsValidator
     [GeneratedRegex(@"^\d{3,7}$")]
     private static partial Regex NodeNumberPattern();
 
+    [GeneratedRegex(@"^[0-9A-Fa-f]{8}$")]
+    private static partial Regex CastAppIdPattern();
+
     public static bool IsValidNodeNumber(string? value) => value != null && NodeNumberPattern().IsMatch(value);
+
+    public static bool IsValidCastAppId(string? value) => value != null && CastAppIdPattern().IsMatch(value.Trim());
 
     /// <summary>Trims text fields and cleans the favourites list.</summary>
     public static NodeSettings Normalize(NodeSettings s) => s with
@@ -39,6 +45,7 @@ public static partial class NodeSettingsValidator
         DefaultTargetNode = (s.DefaultTargetNode ?? "").Trim(),
         AutoConnectNodes = CleanAutoConnectNodes(s),
         RegistrationUrl = (s.RegistrationUrl ?? "").Trim(),
+        CastAppId = (s.CastAppId ?? "").Trim().ToUpperInvariant(),
         FavoriteNodes = (s.FavoriteNodes ?? [])
             .Select(n => (n ?? "").Trim())
             .Where(n => n.Length > 0)
@@ -174,6 +181,9 @@ public static partial class NodeSettingsValidator
 
         if (s.IdReminderMinutes is < 1 or > 60)
             issues.Add(new(Fields.IdReminderMinutes, "ID reminder interval must be between 1 and 60 minutes."));
+
+        if (s.CastAppId.Length > 0 && !IsValidCastAppId(s.CastAppId))
+            issues.Add(new(Fields.CastAppId, "Chromecast App ID must be blank or 8 hex characters (e.g. A1B2C3D4)."));
 
         return issues;
     }

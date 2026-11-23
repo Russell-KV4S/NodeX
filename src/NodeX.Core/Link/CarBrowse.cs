@@ -340,4 +340,16 @@ public static class CarBrowse
         var partial = favorites.Where(f => TitleFor(settings, f).Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
         return partial.Count == 1 ? partial[0] : null;
     }
+
+    /// <summary>
+    /// Formats the local station summary for Android Auto Now Playing metadata (e.g.
+    /// <c>Station: KV4S · 523802 · NodeX Portable</c>), or null when no local node is configured.
+    /// </summary>
+    public static string? StationDescription(NodeSettings settings, StationMetadata? localStation)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        string node = (settings.NodeNumber ?? "").Trim();
+        if (node.Length == 0) return null;
+        return $"Station: {StationMetadata.FormatDisplay(node, localStation)}";
+    }
 }
