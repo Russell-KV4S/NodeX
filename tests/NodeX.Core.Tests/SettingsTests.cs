@@ -148,6 +148,17 @@ public class SettingsStoreTests : IDisposable
         var s = await new JsonFileSettingsStore(FilePath).LoadAsync();
         Assert.Equal(new NodeSettings().NodeNumber, s.NodeNumber);
         Assert.Equal(180, s.TimeOutTimerSeconds);
+        Assert.True(s.SortLinksByActivity);
+    }
+
+    [Fact]
+    public async Task LegacyJsonWithoutSortLinksByActivity_DefaultsToTrue()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+        await File.WriteAllTextAsync(FilePath, """{"nodeNumber":"55553"}""");
+        var s = await new JsonFileSettingsStore(FilePath).LoadAsync();
+        Assert.Equal("55553", s.NodeNumber);
+        Assert.True(s.SortLinksByActivity);
     }
 
     [Fact]
@@ -160,6 +171,7 @@ public class SettingsStoreTests : IDisposable
             FavoriteNodes = ["1999", "27339"], IaxPort = 4570, RegisterOnStartup = false,
             InputDeviceId = "mic-1", OutputDeviceId = "spk-2", MicGain = 2.5f,
             RxGain = 2.5f, RxAutoLevel = true, RxLoudnessBoost = true,
+            SortLinksByActivity = false,
             TimeOutTimerSeconds = 90, TogglePtt = true
         };
 

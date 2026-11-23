@@ -51,6 +51,24 @@ public sealed class NodeConnection
     /// <summary>True when received audio from this node is silenced (it is still received and shown).</summary>
     public bool Muted { get; internal set; }
 
+    private long _lastActivitySeq;
+
+    /// <summary>
+    /// Monotonic sequence stamped on qualifying unmuted RX or local TX (0 = no activity yet).
+    /// Shared by phone/desktop UI and Android Auto so both show the same recency order.
+    /// </summary>
+    public long LastActivitySeq => Volatile.Read(ref _lastActivitySeq);
+
+    internal void NoteActivity(long sequence)
+    {
+        long current;
+        while (sequence > (current = Volatile.Read(ref _lastActivitySeq)))
+        {
+            if (Interlocked.CompareExchange(ref _lastActivitySeq, sequence, current) == current)
+                return;
+        }
+    }
+
     // ----- supervisor state, used only by NodeRuntime -----
 
     /// <summary>The user wants this node linked (true until they hang up or recovery gives up).</summary>

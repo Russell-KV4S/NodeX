@@ -1,5 +1,9 @@
 # Change log
 
+## 2026-11-22: 1.35 / code 38
+
+- **Dynamic linked-node sorting across phone, desktop & Android Auto (`NodeConnection.LastActivitySeq`, `NodeRuntime.RxActivity`, `LinkActivityOrder`, `NodeSettings.SortLinksByActivity`):** linked-node lists now default to ordering by most recent activity (**Sort: Recent**), moving the latest unmuted remote RX or local PTT transmission to the top and keeping older and `Not heard yet` nodes at the bottom in connect order. Muted nodes still update their RX status without jumping, inline favorite renaming pauses reordering until closed so the text box keeps focus, and a quick **Sort: Recent** / **Sort: Fixed** header button in both phone (`CompactLinksCard`) and desktop (`LinksCard`) links cards persists the preference. Android Auto's **Active Links** tab and steering-wheel Next/Back stepping follow the same shared Core recency order (`CarBrowse.OrderActiveConnections`, throttled `NotifyChildrenChanged(ActiveFolderId)` ≥ 2 s in `NodeXMediaBrowserService`, eliminating the duplicate Android Auto `RxActivity` instance) while keeping **Now Playing** pinned to the driver's selected node. Added unit and headless UI tests (`LinkActivityOrderTests`, `CarBrowseTests`, `RxActivityTests`, `NodeRuntimeMultiLinkTests`, `MainViewModelTests`, `AppearanceTests`, `SettingsTests`, `SettingsTransferTests`, `SettingsViewModelTests`); physical phone and DHU/car verification remain pending.
+
 ## 2026-11-22: 1.34 / code 37
 
 - **RX indicator hold across speech pauses (`RxActivity`):** raised `RxActivity.VoiceHold` from `500 ms` to `2000 ms` (`2.0 s`) so hubs that do not send `KEY` (`43136`, `60108`, `53431`) keep the green RX indicator lit when an operator pauses briefly or speaks softly, while clearing `LastSoundTicks` immediately on `UNKEY` so the indicator still drops at once when the over ends (preserving the `-40 dBFS` noise gate). Updated `RxActivityTests` and `MainViewModel`.

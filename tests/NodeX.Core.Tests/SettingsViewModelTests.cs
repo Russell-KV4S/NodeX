@@ -302,4 +302,24 @@ public class SettingsViewModelTests : IDisposable
         Assert.False(reloaded.Settings.RxAutoLevel);
         Assert.False(reloaded.Settings.RxLoudnessBoost);
     }
+
+    [Fact]
+    public async Task Save_PreservesSortLinksByActivity()
+    {
+        await _config.SaveAsync(new NodeSettings
+        {
+            NodeNumber = "523802",
+            SortLinksByActivity = false
+        }, "pw");
+
+        var vm = Create();
+        await vm.LoadAsync();
+        vm.TimeOutSecondsText = "120";
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.False(vm.HasError);
+
+        var reloaded = await _config.LoadAsync();
+        Assert.Equal(120, reloaded.Settings.TimeOutTimerSeconds);
+        Assert.False(reloaded.Settings.SortLinksByActivity);
+    }
 }

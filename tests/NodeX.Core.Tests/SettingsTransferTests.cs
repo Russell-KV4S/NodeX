@@ -15,6 +15,7 @@ public class SettingsTransferTests
         RxGain = 3.0f,
         RxAutoLevel = true,
         RxLoudnessBoost = true,
+        SortLinksByActivity = false,
         TogglePtt = true,
         InputDeviceId = "mic-on-this-phone",
         OutputDeviceId = "speaker-on-this-phone"
@@ -36,6 +37,7 @@ public class SettingsTransferTests
         Assert.Equal(3.0f, s.RxGain);
         Assert.True(s.RxAutoLevel);
         Assert.True(s.RxLoudnessBoost);
+        Assert.False(s.SortLinksByActivity);
         Assert.True(s.TogglePtt);
         Assert.Null(s.InputDeviceId);
         Assert.Null(s.OutputDeviceId);

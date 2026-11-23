@@ -228,4 +228,67 @@ public class CarBrowseTests
         Assert.False(only.Playable);
         Assert.Equal(CarBrowse.NoActiveId, only.MediaId);
     }
+
+    [Fact]
+    public void Active_items_sort_by_recent_activity_and_keep_disconnect_all_at_bottom()
+    {
+        var s = Settings("27339", "2000", "5555");
+        var c1 = new NodeConnection("27339");
+        var c2 = new NodeConnection("2000");
+        var c3 = new NodeConnection("5555");
+        var c4 = new NodeConnection("9000");
+        c3.NoteActivity(1);
+        c1.NoteActivity(2);
+
+        var items = CarBrowse.BuildActiveItems(s, [c1, c2, c3, c4], transmitNode: "27339", talkingNodes: new HashSet<string> { "27339" });
+
+        Assert.Equal(
+            [
+                CarBrowse.ActivePrefix + "27339",
+                CarBrowse.ActivePrefix + "5555",
+                CarBrowse.ActivePrefix + "2000",
+                CarBrowse.ActivePrefix + "9000",
+                CarBrowse.DisconnectAllId
+            ],
+            items.Select(i => i.MediaId));
+    }
+
+    [Fact]
+    public void Active_items_keep_connect_order_when_sort_by_activity_is_off()
+    {
+        var s = Settings("27339", "2000", "5555") with { SortLinksByActivity = false };
+        var c1 = new NodeConnection("27339");
+        var c2 = new NodeConnection("2000");
+        var c3 = new NodeConnection("5555");
+        c3.NoteActivity(5);
+
+        var items = CarBrowse.BuildActiveItems(s, [c1, c2, c3], transmitNode: "27339");
+
+        Assert.Equal(
+            [
+                CarBrowse.ActivePrefix + "27339",
+                CarBrowse.ActivePrefix + "2000",
+                CarBrowse.ActivePrefix + "5555",
+                CarBrowse.DisconnectAllId
+            ],
+            items.Select(i => i.MediaId));
+    }
+
+    [Fact]
+    public void OrderActiveConnections_matches_recent_or_fixed_wheel_step_order()
+    {
+        var c1 = new NodeConnection("523801");
+        var c2 = new NodeConnection("53431");
+        var c3 = new NodeConnection("43136");
+        c3.NoteActivity(4);
+        c2.NoteActivity(2);
+
+        var recent = CarBrowse.OrderActiveConnections([c1, c2, c3], sortByActivity: true).Select(c => c.Node).ToArray();
+        Assert.Equal(["43136", "53431", "523801"], recent);
+        Assert.Equal("53431", CarBrowse.Neighbor(recent, "43136", +1));
+        Assert.Equal("523801", CarBrowse.Neighbor(recent, "43136", -1));
+
+        var @fixed = CarBrowse.OrderActiveConnections([c1, c2, c3], sortByActivity: false).Select(c => c.Node).ToArray();
+        Assert.Equal(["523801", "53431", "43136"], @fixed);
+    }
 }

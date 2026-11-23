@@ -190,6 +190,31 @@ public static class CarBrowse
         BuildFavoritesItems(settings);
 
     /// <summary>
+    /// Orders active connections by recent unmuted RX / local TX when <paramref name="sortByActivity"/> is true,
+    /// keeping unheard nodes at the bottom in connect order.
+    /// </summary>
+    public static IReadOnlyList<NodeConnection> OrderActiveConnections(IReadOnlyList<NodeConnection> connections, bool sortByActivity)
+    {
+        ArgumentNullException.ThrowIfNull(connections);
+        if (!sortByActivity || connections.Count <= 1) return connections;
+
+        var byNode = new Dictionary<string, NodeConnection>(connections.Count, StringComparer.Ordinal);
+        var entries = new LinkActivityOrder.Entry[connections.Count];
+        for (int i = 0; i < connections.Count; i++)
+        {
+            var c = connections[i];
+            byNode[c.Node] = c;
+            entries[i] = new LinkActivityOrder.Entry(c.Node, i, c.LastActivitySeq);
+        }
+
+        var ordered = LinkActivityOrder.Order(entries, sortByActivity: true);
+        var result = new NodeConnection[ordered.Count];
+        for (int i = 0; i < ordered.Count; i++)
+            result[i] = byNode[ordered[i]];
+        return result;
+    }
+
+    /// <summary>
     /// Rows for the Active Links folder: one row per connected/reconnecting node ("523801 · UL Cloud Node" with a
     /// status line such as "TRANSMIT HERE · Connected · Hearing now"), and a disconnect-all row when several links
     /// exist. Selecting a row only shows that node on the car's now-playing screen, where its Mute, Disconnect and
@@ -202,7 +227,7 @@ public static class CarBrowse
         IReadOnlySet<string>? talkingNodes = null)
     {
         var items = new List<CarBrowseItem>();
-        foreach (var conn in connections)
+        foreach (var conn in OrderActiveConnections(connections, settings.SortLinksByActivity))
         {
             string node = conn.Node;
             bool isTx = node == transmitNode;

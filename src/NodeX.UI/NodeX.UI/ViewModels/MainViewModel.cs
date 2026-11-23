@@ -78,12 +78,16 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _gainSaveCts?.Cancel();
         _gainSaveCts?.Dispose();
         _gainSaveCts = null;
+        _sortSaveCts?.Cancel();
+        _sortSaveCts?.Dispose();
+        _sortSaveCts = null;
         _idReminder.Dispose();
         History.Dispose();
         _runtime.RegistrationChanged -= OnRegistrationChanged;
         _runtime.LinkAdded -= OnRuntimeLinkAdded;
         _runtime.LinkRemoved -= OnRuntimeLinkRemoved;
         _runtime.ConnectionsChanged -= OnConnectionsChanged;
+        _runtime.LinkActivityChanged -= OnRuntimeLinkActivityChanged;
         _runtime.ErrorOccurred -= OnRuntimeError;
         _runtime.Notice -= LogActivity;
         _runtime.ReconnectChanged -= OnRuntimeReconnect;
@@ -389,8 +393,30 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     // --- Linked nodes: up to NodeRuntime.MaxLinks at once, one of them the transmit node ---
 
-    /// <summary>One row per linked node, in the order they were added.</summary>
+    /// <summary>One row per linked node, ordered by recent activity or connect order.</summary>
     public ObservableCollection<LinkItemViewModel> LinkItems { get; } = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LinkSortButtonText), nameof(LinkSortAutomationName), nameof(LinkSortToolTip))]
+    public partial bool SortLinksByActivity { get; set; } = true;
+
+    public string LinkSortButtonText => SortLinksByActivity ? "Sort: Recent" : "Sort: Fixed";
+
+    public string LinkSortAutomationName => SortLinksByActivity
+        ? "Link sort order: most recent activity first. Activate to switch to fixed connect order."
+        : "Link sort order: fixed connect order. Activate to switch to most recent activity first.";
+
+    public string LinkSortToolTip => SortLinksByActivity
+        ? "Most recently active node moves to the top (muted nodes stay put). Click to freeze in connect order."
+        : "Links stay in connect order. Click to move the most recently active node to the top.";
+
+    [RelayCommand]
+    public void ToggleSortLinksByActivity()
+    {
+        SortLinksByActivity = !SortLinksByActivity;
+        ReorderLinkItems(_runtime.Connections);
+        ScheduleSaveLinkSort();
+    }
 
     public bool HasLinks => LinkItems.Count > 0;
     public bool HasMultipleLinks => LinkItems.Count > 1;
@@ -936,6 +962,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         runtime.LinkAdded += OnRuntimeLinkAdded;
         runtime.LinkRemoved += OnRuntimeLinkRemoved;
         runtime.ConnectionsChanged += OnConnectionsChanged;
+        runtime.LinkActivityChanged += OnRuntimeLinkActivityChanged;
         runtime.ErrorOccurred += OnRuntimeError;
         runtime.Notice += LogActivity;
         runtime.ReconnectChanged += OnRuntimeReconnect;
@@ -1341,6 +1368,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private bool _applyingConfig;
     private System.Threading.CancellationTokenSource? _gainSaveCts;
     private int _pendingGainSaveCount;
+    private System.Threading.CancellationTokenSource? _sortSaveCts;
+    private int _pendingSortSaveCount;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RxGainDisplay))]
@@ -1396,10 +1425,57 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         if (!cfg.IsComplete || cfg.Password == null) return;
 
         int ticket = System.Threading.Interlocked.Increment(ref _pendingGainSaveCount);
-        _ = SaveAudioGainsAsync(debounceMs, ticket, cts.Token);
+        _ = SaveDeferredSettingsAsync(
+            debounceMs,
+            s => Math.Abs(s.RxGain - _runtime.LiveRxGain) >= 0.001f
+                || s.RxAutoLevel != _runtime.LiveRxAutoLevel
+                || Math.Abs(s.MicGain - _runtime.LiveMicGain) >= 0.001f,
+            s => s with
+            {
+                RxGain = _runtime.LiveRxGain,
+                RxAutoLevel = _runtime.LiveRxAutoLevel,
+                MicGain = _runtime.LiveMicGain
+            },
+            () =>
+            {
+                if (System.Threading.Volatile.Read(ref _pendingGainSaveCount) == ticket)
+                    System.Threading.Volatile.Write(ref _pendingGainSaveCount, 0);
+            },
+            "audio gain",
+            cts.Token);
     }
 
-    private async Task SaveAudioGainsAsync(int debounceMs, int ticket, System.Threading.CancellationToken ct)
+    private void ScheduleSaveLinkSort()
+    {
+        _sortSaveCts?.Cancel();
+        _sortSaveCts?.Dispose();
+        var cts = _sortSaveCts = new System.Threading.CancellationTokenSource();
+
+        var cfg = _runtime.Config;
+        if (!cfg.IsComplete || cfg.Password == null) return;
+
+        int ticket = System.Threading.Interlocked.Increment(ref _pendingSortSaveCount);
+        bool sortByActivity = SortLinksByActivity;
+        _ = SaveDeferredSettingsAsync(
+            debounceMs: 0,
+            s => s.SortLinksByActivity != sortByActivity,
+            s => s with { SortLinksByActivity = sortByActivity },
+            () =>
+            {
+                if (System.Threading.Volatile.Read(ref _pendingSortSaveCount) == ticket)
+                    System.Threading.Volatile.Write(ref _pendingSortSaveCount, 0);
+            },
+            "link sort order",
+            cts.Token);
+    }
+
+    private async Task SaveDeferredSettingsAsync(
+        int debounceMs,
+        Func<NodeSettings, bool> hasChanges,
+        Func<NodeSettings, NodeSettings> apply,
+        Action clearTicket,
+        string failureSubject,
+        System.Threading.CancellationToken ct)
     {
         try
         {
@@ -1408,29 +1484,18 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
             var cfg = _runtime.Config;
             if (!cfg.IsComplete || cfg.Password == null) return;
+            if (!hasChanges(cfg.Settings)) return;
 
-            float rxGain = _runtime.LiveRxGain;
-            bool rxAuto = _runtime.LiveRxAutoLevel;
-            float micGain = _runtime.LiveMicGain;
-            if (Math.Abs(cfg.Settings.RxGain - rxGain) < 0.001f
-                && cfg.Settings.RxAutoLevel == rxAuto
-                && Math.Abs(cfg.Settings.MicGain - micGain) < 0.001f)
-                return;
-
-            await _runtime.ConfigService.SaveAsync(
-                cfg.Settings with { RxGain = rxGain, RxAutoLevel = rxAuto, MicGain = micGain },
-                cfg.Password,
-                ct);
+            await _runtime.ConfigService.SaveAsync(apply(cfg.Settings), cfg.Password, ct);
         }
         catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException) { }
         catch (Exception ex)
         {
-            LogActivity($"[ERROR] Could not save audio gain: {ex.Message}");
+            LogActivity($"[ERROR] Could not save {failureSubject}: {ex.Message}");
         }
         finally
         {
-            if (System.Threading.Volatile.Read(ref _pendingGainSaveCount) == ticket)
-                System.Threading.Volatile.Write(ref _pendingGainSaveCount, 0);
+            clearTicket();
         }
     }
 
@@ -1570,6 +1635,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             }
         }
 
+        if (System.Threading.Volatile.Read(ref _pendingSortSaveCount) == 0)
+            SortLinksByActivity = s.SortLinksByActivity;
+
         RefreshLinks();   // favourite names appear in the link rows
     }
 
@@ -1633,23 +1701,21 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             if (!conns.Any(c => c.Node == node)) LinkItems.RemoveAt(i);
         }
 
-        for (int i = 0; i < conns.Count; i++)
+        foreach (var c in conns)
         {
-            var c = conns[i];
-            int at = -1;
-            for (int j = 0; j < LinkItems.Count; j++)
-                if (LinkItems[j].Node == c.Node) { at = j; break; }
-
-            if (at < 0)
-                LinkItems.Insert(Math.Min(i, LinkItems.Count),
-                    new LinkItemViewModel(c.Node, LabelFor, SelectTransmitNode, ToggleMuteNode, DisconnectOne,
-                        IsFavoriteNode, ToggleFavoriteNode, SaveFavoriteNodeLabel,
-                        IsAutoConnectTarget, ToggleAutoConnectNode));
-            else if (at != i)
-                LinkItems.Move(at, i);
-
-            LinkItems[i].Refresh(c);
+            var item = LinkItems.FirstOrDefault(l => l.Node == c.Node);
+            if (item == null)
+            {
+                item = new LinkItemViewModel(c.Node, LabelFor, SelectTransmitNode, ToggleMuteNode, DisconnectOne,
+                    IsFavoriteNode, ToggleFavoriteNode, SaveFavoriteNodeLabel,
+                    IsAutoConnectTarget, ToggleAutoConnectNode,
+                    onEditingEnded: () => ReorderLinkItems(_runtime.Connections));
+                LinkItems.Add(item);
+            }
+            item.Refresh(c);
         }
+
+        ReorderLinkItems(conns);
 
         if (!HasMultipleLinks) IsConfirmingDisconnectAll = false;
         OnPropertyChanged(nameof(HasLinks));
@@ -1664,6 +1730,49 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         IsTransmitting = _runtime.Links.Any(l => l.Ptt.IsPttActive);
         RefreshTransmit();
         RefreshHero(conns);
+    }
+
+    private void OnRuntimeLinkActivityChanged(string node) => OnUi(() => SyncActivityAndReorder(node));
+
+    private void SyncActivityAndReorder(string node)
+    {
+        var conn = _runtime.Connections.FirstOrDefault(c => c.Node == node);
+        var item = LinkItems.FirstOrDefault(l => l.Node == node);
+        if (conn == null || item == null) return;
+        item.NoteActivity(conn.LastActivitySeq);
+        ReorderLinkItems(_runtime.Connections);
+    }
+
+    private void ReorderLinkItems(IReadOnlyList<NodeConnection> conns)
+    {
+        if (LinkItems.Count <= 1 || LinkItems.Any(l => l.IsEditingLabel)) return;
+
+        var connectOrder = new Dictionary<string, int>(conns.Count, StringComparer.Ordinal);
+        for (int i = 0; i < conns.Count; i++)
+            connectOrder[conns[i].Node] = i;
+
+        var entries = new LinkActivityOrder.Entry[LinkItems.Count];
+        for (int i = 0; i < LinkItems.Count; i++)
+        {
+            var item = LinkItems[i];
+            int idx = connectOrder.TryGetValue(item.Node, out int found) ? found : int.MaxValue;
+            entries[i] = new LinkActivityOrder.Entry(item.Node, idx, item.LastActivitySeq);
+        }
+
+        var ordered = LinkActivityOrder.Order(entries, SortLinksByActivity);
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            string targetNode = ordered[i];
+            if (LinkItems[i].Node == targetNode) continue;
+            for (int j = i + 1; j < LinkItems.Count; j++)
+            {
+                if (LinkItems[j].Node == targetNode)
+                {
+                    LinkItems.Move(j, i);
+                    break;
+                }
+            }
+        }
     }
 
     /// <summary>Reconnect status with a live countdown ("in 42 s") while a retry is waiting.</summary>

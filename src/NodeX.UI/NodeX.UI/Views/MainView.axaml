@@ -196,6 +196,9 @@
         <Style Selector="UserControl.narrow Button#RxAutoLevelButton">
             <Setter Property="MinHeight" Value="24" />
         </Style>
+        <Style Selector="UserControl.narrow Button.sortToggle">
+            <Setter Property="MinHeight" Value="28" />
+        </Style>
 
         <!-- Phone bottom navigation: the selected tab is bold with a cyan bar on top, not colour alone -->
         <Style Selector="Button.navTab">
@@ -577,8 +580,18 @@
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBlock Grid.Column="0" Text="LINKS" FontWeight="Bold" FontSize="{DynamicResource FontSize12}"
                                            Foreground="{DynamicResource CyanAccentBrush}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="1" Text="{Binding LinkCountText}" IsVisible="{Binding HasLinks}" FontSize="{DynamicResource FontSize11}"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                                            IsVisible="{Binding HasLinks}" VerticalAlignment="Center">
+                                    <Button x:Name="CompactLinkSortButton" Classes="autoToggle sortToggle" Classes.active="{Binding SortLinksByActivity}"
+                                            Command="{Binding ToggleSortLinksByActivityCommand}"
+                                            Content="{Binding LinkSortButtonText}"
+                                            AutomationProperties.Name="{Binding LinkSortAutomationName}"
+                                            ToolTip.Tip="{Binding LinkSortToolTip}"
+                                            Padding="8,2" MinHeight="26"
+                                            FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding LinkCountText}" FontSize="{DynamicResource FontSize11}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                </StackPanel>
                             </Grid>
                             <StackPanel Spacing="8" IsVisible="{Binding !HasLinks}">
                                 <TextBlock Text="Not linked to any node." FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -678,10 +691,19 @@
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBlock Grid.Column="0" Text="Linked nodes" FontWeight="Bold" FontSize="{DynamicResource FontSize14}"
                                            Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                                <Border Grid.Column="1" CornerRadius="10" Padding="8,3" Background="{DynamicResource SelectedBackgroundBrush}">
-                                    <TextBlock Text="{Binding LinkCountText}" FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource CyanAccentBrush}" />
-                                </Border>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <Button x:Name="LinkSortButton" Classes="autoToggle sortToggle" Classes.active="{Binding SortLinksByActivity}"
+                                            Command="{Binding ToggleSortLinksByActivityCommand}"
+                                            Content="{Binding LinkSortButtonText}"
+                                            AutomationProperties.Name="{Binding LinkSortAutomationName}"
+                                            ToolTip.Tip="{Binding LinkSortToolTip}"
+                                            Padding="8,2" MinHeight="26"
+                                            FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold" />
+                                    <Border CornerRadius="10" Padding="8,3" Background="{DynamicResource SelectedBackgroundBrush}" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding LinkCountText}" FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource CyanAccentBrush}" />
+                                    </Border>
+                                </StackPanel>
                             </Grid>
                             <TextBlock Text="Choose one node to transmit to. All other links are listen-only."
                                        FontSize="{DynamicResource FontSize12}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />

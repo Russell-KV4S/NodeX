@@ -21,6 +21,7 @@ public sealed partial class LinkItemViewModel : ObservableObject
     private readonly Action<string, string> _saveLabel;
     private readonly Func<string, bool> _isAutoConnect;
     private readonly Action<string> _toggleAutoConnect;
+    private readonly Action? _onEditingEnded;
     private string _canonicalTarget;
     private string _shownLabel = "";
 
@@ -34,7 +35,8 @@ public sealed partial class LinkItemViewModel : ObservableObject
         Action<string>? toggleFavorite = null,
         Action<string, string>? saveLabel = null,
         Func<string, bool>? isAutoConnect = null,
-        Action<string>? toggleAutoConnect = null)
+        Action<string>? toggleAutoConnect = null,
+        Action? onEditingEnded = null)
     {
         Node = node;
         _canonicalTarget = node;
@@ -47,6 +49,7 @@ public sealed partial class LinkItemViewModel : ObservableObject
         _saveLabel = saveLabel ?? ((_, _) => { });
         _isAutoConnect = isAutoConnect ?? (_ => false);
         _toggleAutoConnect = toggleAutoConnect ?? (_ => { });
+        _onEditingEnded = onEditingEnded;
         Title = $"Node {node}";
     }
 
@@ -96,6 +99,15 @@ public sealed partial class LinkItemViewModel : ObservableObject
 
     /// <summary>When audio from this node last started or stopped arriving (null = not heard this session).</summary>
     private DateTime? _lastHeard;
+
+    /// <summary>Monotonic sequence stamped on qualifying unmuted RX or local TX; 0 = no activity yet.</summary>
+    public long LastActivitySeq { get; private set; }
+
+    /// <summary>Records an activity sequence number so recent nodes sort ahead of older/unheard nodes.</summary>
+    public void NoteActivity(long sequence)
+    {
+        if (sequence > LastActivitySeq) LastActivitySeq = sequence;
+    }
 
     [ObservableProperty]
     public partial string LastHeardText { get; set; } = "Not heard yet";
@@ -187,6 +199,7 @@ public sealed partial class LinkItemViewModel : ObservableObject
     /// <summary>Copies the connection's current state. Call on the UI thread.</summary>
     public void Refresh(NodeConnection c)
     {
+        NoteActivity(c.LastActivitySeq);
         IsPrivate = c.IsPrivate;
         _canonicalTarget = c.IsPrivate && c.PrivateAddress != null ? c.PrivateAddress.CanonicalInput : Node;
         IsAutoConnect = _isAutoConnect(_canonicalTarget);
@@ -273,8 +286,9 @@ public sealed partial class LinkItemViewModel : ObservableObject
     [RelayCommand]
     public void SaveLabel()
     {
-        _saveLabel(Node, LabelInput);
         IsEditingLabel = false;
+        _saveLabel(Node, LabelInput);
+        _onEditingEnded?.Invoke();
     }
 
     /// <summary>
@@ -289,5 +303,6 @@ public sealed partial class LinkItemViewModel : ObservableObject
     {
         if (!IsEditingLabel) LabelInput = _labelFor(Node);   // start from the saved name, dropping any abandoned edit
         IsEditingLabel = !IsEditingLabel;
+        if (!IsEditingLabel) _onEditingEnded?.Invoke();
     }
 }

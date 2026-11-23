@@ -346,4 +346,45 @@ public class AppearanceTests
         }
         finally { window.Close(); }
     }
+
+    [AvaloniaTheory]
+    [InlineData(420, 860, "Dark", 1.0)]
+    [InlineData(420, 860, "HighContrast", 1.5)]
+    [InlineData(1050, 760, "Dark", 1.0)]
+    public void LinkSortToggle_RendersCleanlyInPhoneAndDesktopHeaders(int width, int height, string theme, double textScale)
+    {
+        Appearance.Apply(Application.Current!, new() { Theme = theme, TextScale = textScale });
+        using var vm = new MainViewModel();
+        vm.LinkItems.Add(new LinkItemViewModel("523800", _ => "KV4S Cloud", _ => { }, _ => { }, _ => { }));
+        vm.LinkItems.Add(new LinkItemViewModel("43136", _ => "Ham Radio 2.0 Hub", _ => { }, _ => { }, _ => { }));
+        var view = new MainView { DataContext = vm };
+        var window = new Window { Content = view, Width = width, Height = height };
+        window.Show();
+        try
+        {
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick(3);
+
+            string buttonName = width < 720 ? "CompactLinkSortButton" : "LinkSortButton";
+            var sortBtn = view.FindControl<Button>(buttonName)!;
+
+            Assert.True(sortBtn.IsEffectivelyVisible);
+            Assert.Contains("active", sortBtn.Classes);
+            Assert.Equal("Sort: Recent", sortBtn.Content);
+
+            var origin = sortBtn.TranslatePoint(default, window)!.Value;
+            Assert.True(origin.X >= 0 && origin.X + sortBtn.Bounds.Width <= width + 1,
+                $"Expected {buttonName} inside window width {width}, got X={origin.X:F1} W={sortBtn.Bounds.Width:F1}");
+            Assert.True(origin.Y >= 0 && origin.Y + sortBtn.Bounds.Height <= height + 1);
+            if (textScale <= 1.01)
+                Assert.True(sortBtn.Bounds.Height <= 36, $"Expected compact sort button <= 36 px, got {sortBtn.Bounds.Height:F1}");
+
+            vm.ToggleSortLinksByActivityCommand.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+            Assert.Equal("Sort: Fixed", sortBtn.Content);
+            Assert.DoesNotContain("active", sortBtn.Classes);
+        }
+        finally { window.Close(); }
+    }
 }

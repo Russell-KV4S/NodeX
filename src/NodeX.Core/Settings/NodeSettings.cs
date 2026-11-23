@@ -178,6 +178,12 @@ public sealed record NodeSettings
     public int AudioHistoryMaxClips { get; init; } = Audio.AudioHistoryStore.DefaultMaxClips;
 
     /// <summary>
+    /// Order linked nodes dynamically with the most recently active (unmuted RX or local TX) node at the top and
+    /// oldest / not-yet-heard nodes at the bottom. Turn off to keep nodes in their fixed connect order.
+    /// </summary>
+    public bool SortLinksByActivity { get; init; } = true;
+
+    /// <summary>
     /// Write per-step timings and protocol state to the troubleshooting log file (in addition to the normal event
     /// lines, which are always logged). Off by default because it is chatty; turn on to chase a problem, then send the log.
     /// </summary>

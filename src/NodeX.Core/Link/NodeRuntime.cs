@@ -51,6 +51,8 @@ public sealed class NodeRuntime : IAsyncDisposable
     private int _startupAutoConnectDone;
     private bool _disposed;
     private volatile bool _exited;
+    private readonly RxActivity _rxActivity = new();
+    private long _activitySeq;
 
     public NodeRuntime(
         NodeConfigService configService,
@@ -82,6 +84,7 @@ public sealed class NodeRuntime : IAsyncDisposable
         _policy = reconnectPolicy ?? new ReconnectPolicy();
         _configureSession = configureSession;
         Config = new NodeConfig(new NodeSettings(), null);
+        _rxActivity.NodeBecameActive += OnRxNodeBecameActive;
     }
 
     public NodeConfigService ConfigService { get; }
@@ -260,6 +263,12 @@ public sealed class NodeRuntime : IAsyncDisposable
                 return _transmitNode;
         }
     }
+
+    /// <summary>Shared remote-RX tracker used by Android Auto and activity ordering.</summary>
+    public RxActivity RxActivity => _rxActivity;
+
+    /// <summary>Raised on any thread when an unmuted node starts receiving or the user keys PTT on a node.</summary>
+    public event Action<string>? LinkActivityChanged;
 
     /// <summary>Raised when a call is created. May be raised on any thread.</summary>
     public event Action<NodeLink>? LinkAdded;
@@ -977,6 +986,8 @@ public sealed class NodeRuntime : IAsyncDisposable
             throw new OperationCanceledException($"Node {c.Node} was disconnected before the call started.");
         }
 
+        link.Ptt.PttStateChanged += (active, _) => { if (active) RecordConnectionActivity(c); };
+        _rxActivity.Attach(link);
         ApplyTransmitFlags();          // sets this link's TransmitEnabled from the current choice
         LinkAdded?.Invoke(link);
         ConnectionsChanged?.Invoke();
@@ -1319,9 +1330,24 @@ public sealed class NodeRuntime : IAsyncDisposable
     /// <param name="transient">True when another attempt follows, so the connection is kept.</param>
     /// <param name="byUser">The user hung up (see <see cref="RemoveConnection"/>).</param>
     /// <param name="reason">Why the node is being forgotten (only used when not <paramref name="transient"/>).</param>
+    private void OnRxNodeBecameActive(string node)
+    {
+        var c = FindConnection(node);
+        if (c == null || c.Muted) return;
+        RecordConnectionActivity(c);
+    }
+
+    private void RecordConnectionActivity(NodeConnection c)
+    {
+        c.NoteActivity(Interlocked.Increment(ref _activitySeq));
+        try { LinkActivityChanged?.Invoke(c.Node); }
+        catch (Exception) { /* a UI subscriber's error must not drop audio/network frames */ }
+    }
+
     private async Task EndLinkAsync(NodeConnection c, NodeLink link, bool transient, bool byUser = false, string reason = "")
     {
         if (!c.TryClearLink(link)) return;
+        _rxActivity.Detach(link);
 
         try
         {
@@ -1750,6 +1776,9 @@ public sealed class NodeRuntime : IAsyncDisposable
     {
         if (_disposed) return;
         _disposed = true;
+
+        _rxActivity.NodeBecameActive -= OnRxNodeBecameActive;
+        _rxActivity.Dispose();
 
         ConfigService.Changed -= OnConfigSaved;
         if (_monitor != null)

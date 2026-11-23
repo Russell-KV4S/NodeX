@@ -21,6 +21,7 @@ public sealed class RxActivity : IDisposable
 
     private sealed class Watch
     {
+        public NodeLink? Link;
         public volatile bool Keyed;
         public long LastVoiceTicks;
         public long LastSoundTicks;
@@ -36,6 +37,12 @@ public sealed class RxActivity : IDisposable
     public RxActivity(Func<long>? clock = null) => _clock = clock ?? (() => Environment.TickCount64);
 
     /// <summary>
+    /// Raised when a node starts receiving (either via KEY or on a voice-only rising edge after silence).
+    /// May fire on network/audio threads.
+    /// </summary>
+    public event Action<string>? NodeBecameActive;
+
+    /// <summary>
     /// Marks a node that has been seen sending KEY. Kept across reconnects, so a hub that streams frames while idle is
     /// not lit by them just because a fresh call has not seen its first KEY yet.
     /// </summary>
@@ -45,7 +52,7 @@ public sealed class RxActivity : IDisposable
     public void Attach(NodeLink link)
     {
         string node = link.Target.NodeNumber;
-        var watch = new Watch();
+        var watch = new Watch { Link = link };
 
         void OnKeyed(bool keyed)
         {
@@ -53,18 +60,28 @@ public sealed class RxActivity : IDisposable
             {
                 Interlocked.Exchange(ref watch.KeyedAtTicks, _clock());
                 lock (_gate) _keySenders.Add(node);
+                watch.Keyed = true;
+                try { NodeBecameActive?.Invoke(node); } catch (Exception) { }
             }
             else
             {
                 Interlocked.Exchange(ref watch.LastSoundTicks, 0);
+                watch.Keyed = false;
             }
-            watch.Keyed = keyed;
         }
         void OnVoice(ushort _, ReadOnlyMemory<byte> payload)
         {
             long now = _clock();
             Interlocked.Exchange(ref watch.LastVoiceTicks, now);
-            if (HasSound(payload.Span)) Interlocked.Exchange(ref watch.LastSoundTicks, now);
+            if (HasSound(payload.Span))
+            {
+                long prevSound = Interlocked.Exchange(ref watch.LastSoundTicks, now);
+                if (Interlocked.Read(ref watch.KeyedAtTicks) == 0
+                    && (prevSound == 0 || now - prevSound >= VoiceHold.TotalMilliseconds))
+                {
+                    try { NodeBecameActive?.Invoke(node); } catch (Exception) { }
+                }
+            }
         }
 
         link.Session.RemoteKeyedChanged += OnKeyed;
@@ -94,6 +111,19 @@ public sealed class RxActivity : IDisposable
             if (!_watches.Remove(node, out w)) return;
         }
         w.Detach();
+    }
+
+    /// <summary>Stops following <paramref name="link"/> only if it is still the active watch for its node.</summary>
+    public void Detach(NodeLink link)
+    {
+        string node = link.Target.NodeNumber;
+        Watch? w;
+        lock (_gate)
+        {
+            if (!_watches.TryGetValue(node, out var current) || !ReferenceEquals(current.Link, link)) return;
+            _watches.Remove(node, out w);
+        }
+        w?.Detach();
     }
 
     /// <summary>Nodes heard right now, in the order they were attached.</summary>

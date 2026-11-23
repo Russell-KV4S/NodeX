@@ -3,7 +3,7 @@
 Changes that have shipped on GitHub but **not yet on Google Play**. When the next Play release is made, paste the
 block below into Play Console's release notes, then move the entry under "Play releases" and empty "Pending".
 
-**Last Play release:** 1.33 (code 36), closed Alpha (sent for review), 2026-11-22.
+**Last Play release:** 1.34 (code 37), closed Alpha (sent for review), 2026-11-22.
 **Bundle to upload next** is `NodeX-android-play.aab` from the latest GitHub release.
 
 Rules:
@@ -14,7 +14,19 @@ Rules:
 
 ## Pending
 
-1.34 (code 37), pending Google Play upload (2026-11-22).
+1.35 (code 38), pending Google Play upload (2026-11-22).
+
+```
+<en-US>
+Linked nodes now move the most recently active node (unmuted RX or your own TX) to the top, with older and unheard nodes below.
+Added a Sort: Recent / Sort: Fixed toggle in the Links header so you can freeze connect order any time.
+Android Auto Active Links and Next/Previous stepping follow the same order while keeping Now Playing locked to your selected node.
+</en-US>
+```
+
+## Play releases
+
+- 1.34 (code 37), 2026-11-22, closed Alpha only (sent for review; restarted the 1.33 review; Wi-Fi feature warning gone, nothing to ignore). Notes sent:
 
 ```
 <en-US>
@@ -22,8 +34,6 @@ Kept the green RX indicator steady during brief speech pauses on hubs that do no
 Marked Wi-Fi hardware as optional in the Android manifest to widen device compatibility.
 </en-US>
 ```
-
-## Play releases
 
 - 1.33 (code 36), 2026-11-22, closed Alpha only (sent for review; restarted the 1.25 review; android.hardware.wifi warning ignored again; covers 1.26-1.33). Notes sent:
 

@@ -62,11 +62,13 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
     private Action? _carChanged;
     private Action? _carDisconnected;
     private Action<ReconnectStatus>? _reconnectChanged;   // kept so OnDestroy can unsubscribe (it pinned old instances)
+    private Action<NodeConfig>? _configChanged;
     private System.Threading.CancellationTokenSource? _carKeyLimit;  // ends a car transmission that runs too long
-    private readonly RxActivity _rx = new();
     private System.Threading.Timer? _rxTimer;
     private string _talkers = "";                  // who the car screen last showed as heard
     private long _talkersShownAt;
+    private string _lastActiveOrder = "";
+    private long _activeOrderNotifiedAt;
     private ToneGenerator? _tone;
     private string? _notice;                       // short message shown on the car screen (why Talk was refused)
     private readonly Dictionary<NodeLink, Action<bool, PttSource>> _hooks = [];
@@ -89,6 +91,8 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         rt.ConnectionsChanged += _changed;
         _reconnectChanged = _ => _changed?.Invoke();
         rt.ReconnectChanged += _reconnectChanged;
+        _configChanged = _ => _changed?.Invoke();
+        rt.ConfigService.Changed += _configChanged;
 
         // Follow keying on every link so the car shows it and beeps, whoever keyed (a time-out unkey beeps too).
         _linkAdded = Hook;
@@ -97,9 +101,8 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         rt.LinkRemoved += _linkRemoved;
         foreach (var existing in rt.Links) Hook(existing);
 
-        // Who is talking: refresh the car's subtitle when the set of heard nodes changes. Polled because the "voice
-        // within 500 ms" rule ends by itself, with no event. Changes are shown at most every 2 s so the car screen
-        // does not flicker (Android Auto may announce metadata changes).
+        // Who is talking and Active Links recency order: polled because VoiceHold (2000 ms) ends by itself with no
+        // event. Changes are throttled to at most every 2 s so the car screen does not flicker.
         _rxTimer = new System.Threading.Timer(_ => RefreshTalkers(), null, 700, 700);
 
         // Cold start: Android Auto can bind this service with no Activity, so the runtime is started here too.
@@ -138,12 +141,13 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         _changed = null;
         if (_reconnectChanged != null) rt.ReconnectChanged -= _reconnectChanged;
         _reconnectChanged = null;
+        if (_configChanged != null) rt.ConfigService.Changed -= _configChanged;
+        _configChanged = null;
         if (_linkAdded != null) rt.LinkAdded -= _linkAdded;
         if (_linkRemoved != null) rt.LinkRemoved -= _linkRemoved;
         foreach (var link in _hooks.Keys.ToArray()) Unhook(link);
         _rxTimer?.Dispose();
         _rxTimer = null;
-        _rx.Dispose();
         if (_carChanged != null) CarSession.Changed -= _carChanged;
         _carChanged = null;
         if (_carDisconnected != null) CarSession.Disconnected -= _carDisconnected;
@@ -215,7 +219,7 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
                 else if (parentId == CarBrowse.ActiveFolderId)
                 {
                     var conns = rt.Connections;
-                    var talking = new HashSet<string>(_rx.Talking());
+                    var talking = new HashSet<string>(rt.RxActivity.Talking());
                     foreach (var item in CarBrowse.BuildActiveItems(rt.Config.Settings, conns, rt.TransmitNode, talking))
                         items.Add(ToMediaItem(item));
                 }
@@ -593,30 +597,46 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         };
         _hooks[link] = handler;
         link.Ptt.PttStateChanged += handler;
-        _rx.Attach(link);
     }
 
     private void Unhook(NodeLink link)
     {
-        _rx.Detach(link.Target.NodeNumber);
         if (_hooks.Remove(link, out var handler)) link.Ptt.PttStateChanged -= handler;
     }
+
+    private static string ActiveOrderSignature(NodeRuntime rt) =>
+        string.Join(",", CarBrowse.OrderActiveConnections(rt.Connections, rt.Config.Settings.SortLinksByActivity).Select(c => c.Node));
 
     /// <summary>The names of the nodes heard right now ("East Coast Reflector, 2000"), or empty.</summary>
     private string TalkersText()
     {
-        var settings = AppServices.Runtime.Config.Settings;
-        var links = AppServices.Runtime.Connections;
-        return string.Join(", ", _rx.Talking().Select(n => CarBrowse.LinkTitle(settings, n, links)));
+        var rt = AppServices.Runtime;
+        var settings = rt.Config.Settings;
+        var links = rt.Connections;
+        return string.Join(", ", rt.RxActivity.Talking().Select(n => CarBrowse.LinkTitle(settings, n, links)));
     }
 
     private void RefreshTalkers()
     {
         try
         {
+            var rt = AppServices.Runtime;
+            long tick = System.Environment.TickCount64;
+
+            if (rt.Connections.Count > 1)
+            {
+                string order = ActiveOrderSignature(rt);
+                if (order != _lastActiveOrder && tick - _activeOrderNotifiedAt >= 2000)
+                {
+                    _lastActiveOrder = order;
+                    _activeOrderNotifiedAt = tick;
+                    try { NotifyChildrenChanged(CarBrowse.ActiveFolderId); }
+                    catch (Exception) { /* head unit disconnected or not ready */ }
+                }
+            }
+
             if (_nowPlaying == null) return;
             string now = TalkersText();
-            long tick = System.Environment.TickCount64;
             if (now == _talkers || tick - _talkersShownAt < 2000) return;
 
             _talkers = now;
@@ -642,7 +662,10 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
     /// </summary>
     private void Step(int direction)
     {
-        var connected = AppServices.Runtime.Connections.Select(c => c.Node).ToList();
+        var rt = AppServices.Runtime;
+        var connected = CarBrowse.OrderActiveConnections(rt.Connections, rt.Config.Settings.SortLinksByActivity)
+            .Select(c => c.Node)
+            .ToList();
         string? next = CarBrowse.Neighbor(connected, _nowPlaying, direction);
         if (next == null || next == _nowPlaying) return;
 
@@ -694,6 +717,8 @@ public sealed class NodeXMediaBrowserService : MediaBrowserService, AudioManager
         // In a car, a link adopted from the phone becomes the car's audio like one picked on the car screen, so the
         // wheel buttons are sent to NodeX.
         else if (adopted && CarSession.Connected) BeginCarSession();
+        _lastActiveOrder = ActiveOrderSignature(rt);
+        _activeOrderNotifiedAt = System.Environment.TickCount64;
         PublishState();
         NotifyChanges();
     }

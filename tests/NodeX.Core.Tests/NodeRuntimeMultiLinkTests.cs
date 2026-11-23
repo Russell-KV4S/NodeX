@@ -596,4 +596,47 @@ public class NodeRuntimeMultiLinkTests : IDisposable
         Assert.Equal("2000", rt.TransmitNode);
         Assert.Single(rt.Links);
     }
+
+    [Fact]
+    public async Task LinkActivity_TracksUnmutedRxVoiceOnlyAndLocalTx_SkipsMuted_AndFeedsCarBrowse()
+    {
+        await using var rt = await CreateAsync();
+        var txLink = await LinkAsync(rt, "2000");
+        await LinkAsync(rt, "3000");
+        await LinkAsync(rt, "4000");
+        await LinkAsync(rt, "5000");
+
+        // Muted node receives RX status without recording activity sequence.
+        rt.SetMuted("3000", true);
+        await _remotes["3000"].SendControlAsync(ControlSubclass.AstControlKey);
+        await Wait.UntilAsync(() => rt.RxActivity.IsReceiving("3000"));
+        Assert.Equal(0, Conn(rt, "3000").LastActivitySeq);
+
+        // Unmuted KEY raises activity sequence on node 4000.
+        await _remotes["4000"].SendControlAsync(ControlSubclass.AstControlKey);
+        await Wait.UntilAsync(() => Conn(rt, "4000").LastActivitySeq > 0);
+        long seq4000 = Conn(rt, "4000").LastActivitySeq;
+
+        // Voice-only loud frame without KEY raises activity sequence on node 5000.
+        await _remotes["5000"].SendAsync(FrameType.Voice, 0x04, 20, new byte[160]);
+        await Wait.UntilAsync(() => Conn(rt, "5000").LastActivitySeq > seq4000);
+        long seq5000 = Conn(rt, "5000").LastActivitySeq;
+
+        // Local PTT transmission moves transmit node 2000 ahead of everything else.
+        await txLink.Ptt.SetPttStateAsync(true, PttSource.UiButton);
+        await Wait.UntilAsync(() => Conn(rt, "2000").LastActivitySeq > seq5000);
+        await txLink.Ptt.SetPttStateAsync(false, PttSource.UiButton);
+
+        var carItems = CarBrowse.BuildActiveItems(rt.Config.Settings, rt.Connections, rt.TransmitNode,
+            rt.RxActivity.Talking().ToHashSet());
+        Assert.Equal(
+            [
+                CarBrowse.ActivePrefix + "2000",
+                CarBrowse.ActivePrefix + "5000",
+                CarBrowse.ActivePrefix + "4000",
+                CarBrowse.ActivePrefix + "3000",
+                CarBrowse.DisconnectAllId
+            ],
+            carItems.Select(i => i.MediaId));
+    }
 }
