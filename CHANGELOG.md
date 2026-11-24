@@ -1,5 +1,14 @@
 # Change log
 
+## 2026-11-24: 1.37 / code 40
+
+- **Android background-resume stale layout & missing text fix (`AppServices`, `App`, `MainActivity`, `MainViewModel`, `MainView`):**
+  - Added `AppServices.ViewResumeRefreshRequested` / `RequestViewResumeRefresh()` wired from `App.axaml.cs` (`IActivatableLifetime.Activated`) and `MainActivity` (`OnPause` + `OnWindowFocusChanged` + `OnConfigurationChanged`, plus expanded `ConfigurationChanges` for `ScreenLayout | SmallestScreenSize | Keyboard | KeyboardHidden`).
+  - Added `MainView.RefreshLayoutAfterResume()` to re-run responsive layout and invalidate measure, arrange, and visual caches across the entire visual subtree immediately on resume and again on the next `RequestAnimationFrame` (plus explicit header invalidation in `ApplyHeaderLayout` so `StationBadge` never retains a stale wrapped height or causes status pills to clip).
+  - Deferred `ReorderLinkItems` while backgrounded (`_isForeground` / `_needsLinkReorder` flushed in `SetForeground(true)`) and replaced `ObservableCollection<T>.Move` with `RemoveAt` + `Insert` (`MainViewModel`) so Avalonia `ItemsControl` containers never keep stale/blank `TextBlock` or `HyperlinkButton` bounds when reordered off-screen.
+  - Replaced `WrapPanel` around `Title` + `PRIVATE` badge in `CompactLinksCard` and `LinksCard` with constrained `Grid ColumnDefinitions="*,Auto"` (`MainView.axaml`) and set `VerticalContentAlignment="Center"` on phone `Transmit here` and `Connect to a node…` buttons (`MainView.axaml`).
+- **Validation:** `dotnet build NodeX.sln` and `NodeX.UI.Android` succeed with 0 warnings and 0 errors; **900 Core** and **69 headless UI** tests pass (including `RecentActivityOrdering_DefersReorderWhileBackgrounded_AndAppliesOnResume` and `CompactLinks_ReorderAndResumeRefresh_RenderTitlesBubbleChartAndCenteredButtons` with verified Skia screenshots). Physical Android phone background-resume confirmation remains pending.
+
 ## 2026-11-22: 1.36 / code 39
 
 - **Chromecast screen & sound (Android + Desktop, `src/NodeX.Core/Cast/`, `docs/cast/`, `CastView`, `CastViewModel`):**

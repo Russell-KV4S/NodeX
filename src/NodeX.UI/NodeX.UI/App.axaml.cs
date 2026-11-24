@@ -69,7 +69,11 @@ public partial class App : Application
         // Stop the UI refresh timer while the app is not visible (mobile).
         if (TryGetFeature(typeof(IActivatableLifetime)) is IActivatableLifetime activatable)
         {
-            activatable.Activated += (_, _) => viewModel.SetForeground(true);
+            activatable.Activated += (_, _) =>
+            {
+                viewModel.SetForeground(true);
+                AppServices.RequestViewResumeRefresh();
+            };
             activatable.Deactivated += (_, _) => viewModel.SetForeground(false);
         }
 

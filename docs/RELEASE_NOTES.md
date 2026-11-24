@@ -1,3 +1,12 @@
+NodeX 1.37 fixes **Android background-resume UI layout & missing-text glitches** (where returning to the app after being in the background could leave the station badge stretched, status pills clipped, or link titles / Bubble chart links missing until switching tabs) and centers the phone **Transmit here** button label.
+
+- **Clean background-resume refresh:** Re-applies responsive layout and refreshes the visual tree on foreground resume, window focus restoration, and configuration changes, and defers dynamic link-card reordering while backgrounded until you return to the app.
+- **Link card layout & button alignment:** Uses constrained grids for link card titles so ellipsis trimming and `PRIVATE` badges lay out reliably, replaces collection `Move` with remove/insert to avoid stale row containers, and vertically centers `Transmit here` and `Connect to a node…` button labels on phones.
+
+Automated builds, 900 Core tests, and 69 headless UI tests pass (with Skia screenshot checks); physical Android phone background-resume verification remains pending.
+
+**From 1.36**
+
 NodeX 1.36 adds **Chromecast screen & sound** across Android and Desktop plus **automatic local-station callsign/description display** across the header, window title, Settings, notifications, and Android Auto.
 
 - **Chromecast screen & sound (Android + Desktop):** Tap the new Cast button in the top header to discover Chromecast TVs and Cast speakers on your Wi-Fi (or enter a Chromecast IPv4 address directly).

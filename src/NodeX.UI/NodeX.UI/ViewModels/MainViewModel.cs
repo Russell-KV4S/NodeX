@@ -117,6 +117,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     }
     private volatile float _micMeter;   // written on audio threads, applied by the UI timer
     private DateTime? _backgroundedAt;
+    private bool _isForeground = true;
+    private bool _needsLinkReorder;
 
     /// <summary>Per-link event hookups and receive meter; touched on the UI thread only.</summary>
     private readonly Dictionary<NodeLink, LinkWatch> _watches = [];
@@ -1078,6 +1080,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     public void SetForeground(bool foreground)
     {
+        _isForeground = foreground;
         if (foreground)
         {
             // Coming back after a while: the OS may have throttled us, so re-register now instead of waiting
@@ -1085,6 +1088,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             if (_backgroundedAt is { } since && DateTime.UtcNow - since > TimeSpan.FromSeconds(30))
                 _runtime.NotifyResumed();
             _backgroundedAt = null;
+            if (_needsLinkReorder)
+            {
+                _needsLinkReorder = false;
+                ReorderLinkItems(_runtime.Connections);
+            }
         }
         else
         {
@@ -1821,6 +1829,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     private void ReorderLinkItems(IReadOnlyList<NodeConnection> conns)
     {
+        if (!_isForeground)
+        {
+            _needsLinkReorder = true;
+            return;
+        }
         if (LinkItems.Count <= 1 || LinkItems.Any(l => l.IsEditingLabel)) return;
 
         var connectOrder = new Dictionary<string, int>(conns.Count, StringComparer.Ordinal);
@@ -1844,7 +1857,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             {
                 if (LinkItems[j].Node == targetNode)
                 {
-                    LinkItems.Move(j, i);
+                    var moved = LinkItems[j];
+                    LinkItems.RemoveAt(j);
+                    LinkItems.Insert(i, moved);
                     break;
                 }
             }

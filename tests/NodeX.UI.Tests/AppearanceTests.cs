@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Styling;
@@ -454,6 +455,130 @@ public class AppearanceTests
                 Directory.CreateDirectory(output);
                 using var bitmap = window.CaptureRenderedFrame();
                 using var file = File.Create(Path.Combine(output, $"StationHeader-{theme}-{textScale:F1}-{width}x{height}.png"));
+                bitmap!.Save(file, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+            }
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaTheory]
+    [InlineData("Dark", 1.0)]
+    [InlineData("HighContrast", 1.5)]
+    public async Task CompactLinks_ReorderAndResumeRefresh_RenderTitlesBubbleChartAndCenteredButtons(string theme, double textScale)
+    {
+        Appearance.Apply(Application.Current!, new() { Theme = theme, TextScale = textScale });
+        using var vm = new MainViewModel
+        {
+            LocalNodeNumber = "523802",
+            StationDisplayText = "KV4S · 523802 · NodeX Portable",
+            IsAslRegistered = true,
+            AslStatusText = "ASL Registered · 4 min",
+            BleStatusText = "BLE PTT: not available"
+        };
+
+        var pub1 = new LinkItemViewModel("43136", _ => "DoDropIn", _ => { }, _ => { }, _ => { })
+        {
+            StatusText = "CONNECTED",
+            RttText = "RTT 25 ms",
+            IsConnected = true,
+            LastHeardText = "Last heard 11:44 AM (just now)",
+            RemoteLinksText = "Also linked: 57226, 669050, 576333, 606260, 444661 (+41 more)"
+        };
+        var pub2 = new LinkItemViewModel("60108", _ => "East Coast Hub", _ => { }, _ => { }, _ => { })
+        {
+            StatusText = "CONNECTED",
+            RttText = "RTT 14 ms",
+            IsConnected = true,
+            LastHeardText = "Last heard 11:36 AM (2 min ago)",
+            RemoteLinksText = "Also linked: 49260, 478980, 41271, 682423, 478981"
+        };
+        var priv = new LinkItemViewModel("523800", _ => "KV4S Cloud", _ => { }, _ => { }, _ => { })
+        {
+            IsPrivate = true,
+            Title = "523800 · KV4S Cloud",
+            StatusText = "CONNECTED",
+            RttText = "RTT 66 ms",
+            IsConnected = true,
+            IsTransmitTarget = true,
+            LastHeardText = "Not heard yet"
+        };
+        vm.LinkItems.Add(pub1);
+        vm.LinkItems.Add(pub2);
+        vm.LinkItems.Add(priv);
+
+        var view = new MainView { DataContext = vm };
+        var window = new Window { Content = view, Width = 420, Height = 860 };
+        window.Show();
+        try
+        {
+            await Task.Delay(100);
+            Dispatcher.UIThread.RunJobs();
+
+            // Simulate dynamic reordering via RemoveAt + Insert followed by resume refresh.
+            var moved = vm.LinkItems[1];
+            vm.LinkItems.RemoveAt(1);
+            vm.LinkItems.Insert(0, moved);
+            AppServices.RequestViewResumeRefresh();
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick(3);
+
+            var stationBadge = view.FindControl<Border>("StationBadge")!;
+            if (textScale <= 1.01)
+                Assert.True(stationBadge.Bounds.Height <= 40, $"Expected compact StationBadge <= 40 px, got {stationBadge.Bounds.Height:F1}");
+
+            var badgesPanel = view.FindControl<Control>("BadgesPanel")!;
+            foreach (var pill in badgesPanel.GetVisualChildren().OfType<Border>().Where(b => b.IsEffectivelyVisible))
+            {
+                var pillOrigin = pill.TranslatePoint(default, window)!.Value;
+                foreach (var tb in pill.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible))
+                {
+                    var tbOrigin = tb.TranslatePoint(default, window)!.Value;
+                    Assert.True(pill.Bounds.Width >= tb.Bounds.Width,
+                        $"Badge pill width {pill.Bounds.Width:F1} < TextBlock '{tb.Text}' width {tb.Bounds.Width:F1}");
+                    Assert.True(tbOrigin.X + tb.Bounds.Width <= pillOrigin.X + pill.Bounds.Width + 1,
+                        $"Badge text '{tb.Text}' overflowed pill right edge");
+                }
+            }
+
+            var compactList = view.FindControl<ItemsControl>("CompactLinksList")!;
+            for (int i = 0; i < compactList.ItemCount; i++)
+            {
+                var container = compactList.ContainerFromIndex(i);
+                Assert.NotNull(container);
+                var item = vm.LinkItems[i];
+
+                var titleBlock = container!.GetVisualDescendants().OfType<TextBlock>()
+                    .FirstOrDefault(t => t.Text == item.Title);
+                Assert.NotNull(titleBlock);
+                Assert.True(titleBlock!.IsEffectivelyVisible);
+                Assert.True(titleBlock.Bounds.Width > 20 && titleBlock.Bounds.Height > 10,
+                    $"Expected non-zero Title bounds for '{item.Title}', got {titleBlock.Bounds.Size}");
+
+                if (item.HasBubbleChart)
+                {
+                    var bubbleLink = container.GetVisualDescendants().OfType<HyperlinkButton>()
+                        .FirstOrDefault(h => Equals(h.Content, "Bubble chart ↗"));
+                    Assert.NotNull(bubbleLink);
+                    Assert.True(bubbleLink!.IsEffectivelyVisible);
+                    Assert.True(bubbleLink.Bounds.Width > 20 && bubbleLink.Bounds.Height > 10,
+                        $"Expected non-zero Bubble chart bounds for '{item.Title}', got {bubbleLink.Bounds.Size}");
+                }
+
+                if (item.CanSelectTransmit)
+                {
+                    var txButton = container.GetVisualDescendants().OfType<Button>()
+                        .FirstOrDefault(b => Equals(b.Content, "Transmit here"));
+                    Assert.NotNull(txButton);
+                    Assert.Equal(VerticalAlignment.Center, txButton!.VerticalContentAlignment);
+                }
+            }
+
+            var output = Environment.GetEnvironmentVariable("NODEX_SCREENSHOT_DIR");
+            if (!string.IsNullOrWhiteSpace(output))
+            {
+                Directory.CreateDirectory(output);
+                using var bitmap = window.CaptureRenderedFrame();
+                using var file = File.Create(Path.Combine(output, $"CompactLinks-{theme}-{textScale:F1}-420x860.png"));
                 bitmap!.Save(file, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
             }
         }

@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.VisualTree;
 using NodeX.UI.ViewModels;
 
 namespace NodeX.UI.Views;
@@ -229,20 +230,86 @@ public partial class MainView : UserControl
 
     private bool _spacePttDown;
     private WindowBase? _window;
+    private bool _resumeRefreshPending;
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
         _window = TopLevel.GetTopLevel(this) as WindowBase;
         if (_window != null) _window.Deactivated += OnWindowDeactivated;
+        AppServices.ViewResumeRefreshRequested += OnViewResumeRefreshRequested;
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        AppServices.ViewResumeRefreshRequested -= OnViewResumeRefreshRequested;
+        _resumeRefreshPending = false;
         if (_window != null) _window.Deactivated -= OnWindowDeactivated;
         _window = null;
         ReleaseSpacePtt();
         base.OnDetachedFromVisualTree(e);
+    }
+
+    private void OnViewResumeRefreshRequested()
+    {
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+            ScheduleResumeRefresh();
+        else
+            Avalonia.Threading.Dispatcher.UIThread.Post(ScheduleResumeRefresh, Avalonia.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void ScheduleResumeRefresh()
+    {
+        if (TopLevel.GetTopLevel(this) == null) return;
+        RefreshLayoutAfterResume();
+        if (_resumeRefreshPending) return;
+        _resumeRefreshPending = true;
+        // On Android, Activated/OnResume can run one frame before SurfaceCreated finishes attaching the new Skia
+        // surface; running a second pass inside RequestAnimationFrame guarantees the live surface repaints cleanly.
+        TopLevel.GetTopLevel(this)?.RequestAnimationFrame(_ =>
+        {
+            _resumeRefreshPending = false;
+            if (TopLevel.GetTopLevel(this) != null)
+                RefreshLayoutAfterResume();
+        });
+    }
+
+    /// <summary>
+    /// Re-applies responsive layout and invalidates measure, arrange and visuals across the entire visual subtree so
+    /// stale Android surface/text-layout caches never survive a background → foreground transition.
+    /// </summary>
+    public void RefreshLayoutAfterResume()
+    {
+        if (Bounds.Width > 0 && Bounds.Height > 0)
+            RefreshResponsiveLayout(Bounds.Size);
+
+        InvalidateSubtree(this);
+        if (TopLevel.GetTopLevel(this) is { } topLevel)
+        {
+            topLevel.InvalidateMeasure();
+            topLevel.InvalidateArrange();
+            topLevel.InvalidateVisual();
+        }
+    }
+
+    private static void InvalidateSubtree(Visual root)
+    {
+        if (root is Layoutable rootLayout)
+        {
+            rootLayout.InvalidateMeasure();
+            rootLayout.InvalidateArrange();
+        }
+        root.InvalidateVisual();
+
+        foreach (var visual in root.GetVisualDescendants())
+        {
+            if (visual is Layoutable layout)
+            {
+                layout.InvalidateMeasure();
+                layout.InvalidateArrange();
+            }
+            visual.InvalidateVisual();
+        }
     }
 
     /// <summary>
@@ -480,6 +547,11 @@ public partial class MainView : UserControl
             HeaderActions.Margin = new Thickness(10, 0, 0, 0);
             BrandTagline.IsVisible = true;
         }
+
+        HeaderGrid.InvalidateMeasure();
+        StationBadge.InvalidateMeasure();
+        StationDisplayTextBlock.InvalidateMeasure();
+        BadgesPanel.InvalidateMeasure();
     }
 
     private void ApplyBodyLayout(bool narrow, bool dock)

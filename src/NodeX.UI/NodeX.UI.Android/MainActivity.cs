@@ -20,7 +20,7 @@ public class AudioShareFileProvider : AndroidX.Core.Content.FileProvider;
     RoundIcon = "@mipmap/ic_launcher_round",
     MainLauncher = true,
     LaunchMode = LaunchMode.SingleTop,
-    ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.UiMode)]
+    ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Keyboard | ConfigChanges.KeyboardHidden)]
 [IntentFilter(
     new[] { global::Android.Content.Intent.ActionView },
     Categories = new[] { global::Android.Content.Intent.CategoryDefault, global::Android.Content.Intent.CategoryBrowsable },
@@ -31,6 +31,7 @@ public class MainActivity : AvaloniaMainActivity
     private const int PermissionRequestCode = 1001;
 
     private bool _micPermanentlyDenied;
+    private bool _wasPaused;
 
     /// <summary>The visible activity, so "Exit NodeX" can close it.</summary>
     public static MainActivity? Current { get; private set; }
@@ -89,6 +90,12 @@ public class MainActivity : AvaloniaMainActivity
             AppServices.DeliverDeepLink(data);
     }
 
+    protected override void OnPause()
+    {
+        _wasPaused = true;
+        base.OnPause();
+    }
+
     protected override void OnResume()
     {
         base.OnResume();
@@ -98,6 +105,22 @@ public class MainActivity : AvaloniaMainActivity
 #if !PLAY_STORE
         _ = AppServices.Updates.CheckAutomaticallyAsync();
 #endif
+    }
+
+    public override void OnWindowFocusChanged(bool hasFocus)
+    {
+        base.OnWindowFocusChanged(hasFocus);
+        if (hasFocus && _wasPaused)
+        {
+            _wasPaused = false;
+            AppServices.RequestViewResumeRefresh();
+        }
+    }
+
+    public override void OnConfigurationChanged(global::Android.Content.Res.Configuration newConfig)
+    {
+        base.OnConfigurationChanged(newConfig);
+        AppServices.RequestViewResumeRefresh();
     }
 
     /// <summary>

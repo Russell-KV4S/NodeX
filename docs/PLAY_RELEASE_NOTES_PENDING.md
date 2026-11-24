@@ -14,13 +14,14 @@ Rules:
 
 ## Pending
 
-1.36 (code 39), pending Google Play upload (2026-11-22; covers 1.35–1.36).
+1.37 (code 40), pending Google Play upload (2026-11-24; covers 1.35–1.37).
 
 ```
 <en-US>
-Cast station status and live node audio to any Chromecast TV or speaker on your Wi-Fi (works out of the box, or add a Cast App ID for a full TV dashboard).
-Main header, window title, Settings, notifications, and Android Auto now show your node's callsign and description automatically.
-Linked nodes now move recent unmuted RX or your own TX to the top, with a Sort: Recent / Sort: Fixed toggle (plus Android Auto Active Links).
+Cast station status and live audio to Chromecast TVs/speakers on Wi-Fi (out of the box or custom TV dashboard).
+Header, title, Settings, notifications, and Android Auto show your node callsign and description automatically.
+Linked nodes sort recent RX/TX to the top with a Sort: Recent/Fixed toggle (plus Android Auto Active Links).
+Fixed Android background-resume layout/text glitches and centered phone Transmit here buttons.
 </en-US>
 ```
 

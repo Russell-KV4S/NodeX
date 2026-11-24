@@ -292,6 +292,28 @@ public class MainViewModelTests
         Assert.Equal(["2000", "3000"], f.Vm.LinkItems.Select(l => l.Node).ToArray());
     }
 
+    [AvaloniaFact]
+    public async Task RecentActivityOrdering_DefersReorderWhileBackgrounded_AndAppliesOnResume()
+    {
+        await using var f = new Fixture();
+        await f.Vm.InitializeAsync();
+        await f.Connect("2000");
+        await f.Connect("3000");
+        await f.Connect("4000");
+
+        Assert.Equal(["2000", "3000", "4000"], f.Vm.LinkItems.Select(l => l.Node).ToArray());
+
+        f.Vm.SetForeground(false);
+        await f.C.SendControlAsync(Iax2Protocol.ControlSubclass.AstControlKey);
+        await Until(() => f.Runtime.Connections.Single(c => c.Node == "4000").LastActivitySeq > 0);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(["2000", "3000", "4000"], f.Vm.LinkItems.Select(l => l.Node).ToArray());
+
+        f.Vm.SetForeground(true);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(["4000", "2000", "3000"], f.Vm.LinkItems.Select(l => l.Node).ToArray());
+    }
+
     private sealed class StationStatsHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

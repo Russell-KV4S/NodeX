@@ -162,6 +162,12 @@ public static class AppServices
     /// <summary>Raised when the OS hands a <c>nodex://</c> link to the running app.</summary>
     public static event Action<string>? DeepLinkReceived;
 
+    /// <summary>Raised when the OS returns the app to the foreground or changes window configuration, so views can drop stale layout/surface caches.</summary>
+    public static event Action? ViewResumeRefreshRequested;
+
+    /// <summary>Asks any attached main view to re-measure, re-arrange and repaint after resuming from the background.</summary>
+    public static void RequestViewResumeRefresh() => ViewResumeRefreshRequested?.Invoke();
+
     /// <summary>Delivers a <c>nodex://</c> URI from a platform head (Android intent, desktop protocol handler).</summary>
     public static void DeliverDeepLink(string? uri)
     {

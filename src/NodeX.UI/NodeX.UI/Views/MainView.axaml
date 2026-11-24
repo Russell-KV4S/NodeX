@@ -620,9 +620,10 @@
                             <StackPanel Spacing="8" IsVisible="{Binding !HasLinks}">
                                 <TextBlock Text="Not linked to any node." FontSize="{DynamicResource FontSize13}" Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <Button Content="Connect to a node…" Click="OnGoToNodesClick" HorizontalAlignment="Left"
+                                        VerticalContentAlignment="Center"
                                         Padding="14,8" CornerRadius="6" FontSize="{DynamicResource FontSize13}" FontWeight="SemiBold" />
                             </StackPanel>
-                            <ItemsControl ItemsSource="{Binding LinkItems}">
+                            <ItemsControl x:Name="CompactLinksList" ItemsSource="{Binding LinkItems}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <StackPanel Spacing="6" />
@@ -633,17 +634,17 @@
                                         <Border Classes="linkRow" Classes.tx="{Binding IsTransmitTarget}" Classes.rx="{Binding IsReceiving}" Padding="10,8">
                                             <StackPanel Spacing="6">
                                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                                    <WrapPanel Grid.Column="0" Orientation="Horizontal" ItemSpacing="6" LineSpacing="2" VerticalAlignment="Center">
-                                                        <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSize14}" FontWeight="Bold"
+                                                    <Grid Grid.Column="0" ColumnDefinitions="*,Auto" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                        <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="{DynamicResource FontSize14}" FontWeight="Bold"
                                                                    TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                                                                    Foreground="{DynamicResource TextPrimaryBrush}" />
-                                                        <Border IsVisible="{Binding IsPrivate}" CornerRadius="5" Padding="5,1" VerticalAlignment="Center"
+                                                        <Border Grid.Column="1" Margin="6,0,0,0" IsVisible="{Binding IsPrivate}" CornerRadius="5" Padding="5,1" VerticalAlignment="Center"
                                                                 Background="{DynamicResource PrivateBackgroundBrush}"
                                                                 BorderBrush="{DynamicResource PrivateBorderBrush}" BorderThickness="1">
                                                             <TextBlock Text="PRIVATE" FontSize="{DynamicResource FontSize10}" FontWeight="Bold"
                                                                        Foreground="{DynamicResource CyanAccentBrush}" />
                                                         </Border>
-                                                    </WrapPanel>
+                                                    </Grid>
                                                     <Border Grid.Column="1" IsVisible="{Binding IsTransmitTarget}" VerticalAlignment="Center"
                                                             CornerRadius="6" Padding="8,3" Background="{DynamicResource TransmitFillBrush}">
                                                         <TextBlock Text="TRANSMIT" FontSize="{DynamicResource FontSize11}" FontWeight="Black" Foreground="{DynamicResource OnRedBrush}" />
@@ -680,6 +681,7 @@
                                                     <Button Grid.Column="0" IsVisible="{Binding CanSelectTransmit}" Content="Transmit here"
                                                             Command="{Binding SelectTransmitCommand}"
                                                             AutomationProperties.Name="{Binding SelectAutomationName}"
+                                                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                                             Background="{DynamicResource SelectedBackgroundBrush}" CornerRadius="6" Padding="8,6" FontSize="{DynamicResource FontSize11}" FontWeight="SemiBold" />
                                                     <Button Grid.Column="2" Command="{Binding ToggleMuteCommand}"
                                                             AutomationProperties.Name="{Binding MuteAutomationName}"
@@ -732,7 +734,7 @@
                             <TextBlock Text="Choose one node to transmit to. All other links are listen-only."
                                        FontSize="{DynamicResource FontSize12}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
 
-                            <ItemsControl ItemsSource="{Binding LinkItems}">
+                            <ItemsControl x:Name="LinksList" ItemsSource="{Binding LinkItems}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <StackPanel Spacing="8" />
@@ -744,17 +746,17 @@
                                             <StackPanel Spacing="8">
                                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                                     <StackPanel Grid.Column="0">
-                                                        <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="2">
-                                                            <TextBlock Text="{Binding Title}" FontSize="{DynamicResource FontSize15}" FontWeight="Bold"
+                                                        <Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Left">
+                                                            <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="{DynamicResource FontSize15}" FontWeight="Bold"
                                                                        TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                                                                        Foreground="{DynamicResource TextPrimaryBrush}" />
-                                                            <Border IsVisible="{Binding IsPrivate}" CornerRadius="5" Padding="6,1" VerticalAlignment="Center"
+                                                            <Border Grid.Column="1" Margin="6,0,0,0" IsVisible="{Binding IsPrivate}" CornerRadius="5" Padding="6,1" VerticalAlignment="Center"
                                                                     Background="{DynamicResource PrivateBackgroundBrush}"
                                                                     BorderBrush="{DynamicResource PrivateBorderBrush}" BorderThickness="1">
                                                                 <TextBlock Text="PRIVATE" FontSize="{DynamicResource FontSize10}" FontWeight="Bold"
                                                                            Foreground="{DynamicResource CyanAccentBrush}" />
                                                             </Border>
-                                                        </WrapPanel>
+                                                        </Grid>
                                                         <TextBlock Text="{Binding Details}" FontSize="{DynamicResource FontSize11}" TextTrimming="CharacterEllipsis"
                                                                    IsVisible="{Binding HasDetails}"
                                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -849,6 +851,7 @@
                                                     <Button Grid.Column="2" Content="Transmit here" Command="{Binding SelectTransmitCommand}"
                                                             IsVisible="{Binding CanSelectTransmit}"
                                                             AutomationProperties.Name="{Binding SelectAutomationName}"
+                                                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                                             Background="{DynamicResource SelectedBackgroundBrush}" CornerRadius="6" Padding="12,6" FontSize="{DynamicResource FontSize12}" FontWeight="SemiBold" />
                                                 </Grid>
 
